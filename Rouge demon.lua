@@ -1,13 +1,3 @@
-
-Search
-
-Get Paid to Paste!
-Rogue Demon 01.10.25
-
-Bottom of paste
--- No Dash Cooldown Script for Knit Framework
--- Removes dash cooldowns and enables unlimited dashing
-
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
