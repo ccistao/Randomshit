@@ -1,0 +1,259 @@
+-- ============================================================
+--  AUTO REPAIR DOOR - Bản hoàn chỉnh
+--  Remote: ReplicatedStorage.Remotes.Base:FireServer("repair")
+--  CD check: Hud > Repair > Cover | Size.Y.Offset <= 0.02 = hết CD
+--  HP check: HealthList (tìm đệ quy TextLabel "cur/max")
+--  Giới hạn: tối đa 3 lần nhấn mỗi lần cửa xuống thấp
+-- ============================================================
+
+local Players      = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UIS          = game:GetService("UserInputService")
+local RS           = game:GetService("ReplicatedStorage")
+local player       = Players.LocalPlayer
+local playerGui    = player:WaitForChild("PlayerGui")
+
+local old = playerGui:FindFirstChild("AutoRepairUI")
+if old then old:Destroy() end
+
+-- ============================================================
+-- CẤU HÌNH
+-- ============================================================
+local HP_THRESHOLD  = 0.75   -- Nhấn khi máu cửa <= 75%
+local HP_RESET      = 0.90   -- Máu >= 90% = cửa đã hồi, reset bộ đếm
+local INTERVAL      = 0.05   -- Kiểm tra mỗi 0.05s
+local CD_TOLERANCE  = 0.02   -- Cover.Y.Offset <= 0.02 = hết CD
+local MAX_REPAIRS   = 3      -- Tối đa 3 lần mỗi đợt cửa thấp
+
+-- ============================================================
+-- LẤY REMOTE
+-- ============================================================
+local function getRemote()
+    local remotes = RS:FindFirstChild("Remotes")
+    return remotes and remotes:FindFirstChild("Base")
+end
+
+-- ============================================================
+-- LẤY COVER (kiểm tra cooldown)
+-- ============================================================
+local function getCover()
+    local hud = playerGui:FindFirstChild("Hud")
+    if not hud then return nil end
+    local repair = hud:FindFirstChild("Repair")
+    return repair and repair:FindFirstChild("Cover")
+end
+
+local function isReady()
+    local cover = getCover()
+    if not cover then return true end
+    return cover.Size.Y.Offset <= CD_TOLERANCE
+end
+
+-- ============================================================
+-- LẤY % MÁU CỬA
+-- ============================================================
+local function getDoorHp()
+    local hud = playerGui:FindFirstChild("Hud")
+    if not hud then return nil end
+    local hl = hud:FindFirstChild("HealthList")
+    if not hl then return nil end
+    for _, v in ipairs(hl:GetDescendants()) do
+        if v:IsA("TextLabel") then
+            local cur, max = string.match(v.Text, "(%d+)/(%d+)")
+            if cur and max then
+                local m = tonumber(max)
+                if m and m > 0 then return tonumber(cur) / m end
+            end
+        end
+    end
+    return nil
+end
+
+-- ============================================================
+-- UI - NHỎ GỌN, KÉO ĐƯỢC
+-- ============================================================
+local sg = Instance.new("ScreenGui")
+sg.Name = "AutoRepairUI"; sg.ResetOnSpawn = false
+sg.DisplayOrder = 999; sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.Parent = playerGui
+
+local panel = Instance.new("Frame")
+panel.Size = UDim2.new(0, 150, 0, 86)
+panel.Position = UDim2.new(0, 10, 0.5, -43)
+panel.BackgroundColor3 = Color3.fromRGB(12, 12, 22)
+panel.BackgroundTransparency = 0.1
+panel.BorderSizePixel = 0; panel.Parent = sg
+Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 14)
+local ps = Instance.new("UIStroke", panel)
+ps.Color = Color3.fromRGB(99,102,241); ps.Thickness = 1.5; ps.Transparency = 0.4
+
+-- Header
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1,0,0,24)
+header.BackgroundColor3 = Color3.fromRGB(99,102,241)
+header.BorderSizePixel = 0; header.Parent = panel
+Instance.new("UICorner", header).CornerRadius = UDim.new(0,14)
+local hpatch = Instance.new("Frame")
+hpatch.Size = UDim2.new(1,0,0,10); hpatch.Position = UDim2.new(0,0,1,-10)
+hpatch.BackgroundColor3 = Color3.fromRGB(99,102,241)
+hpatch.BorderSizePixel = 0; hpatch.Parent = header
+
+local hTitle = Instance.new("TextLabel")
+hTitle.Size = UDim2.new(1,-8,1,0); hTitle.Position = UDim2.new(0,8,0,0)
+hTitle.BackgroundTransparency = 1; hTitle.Text = "AUTO REPAIR"
+hTitle.TextColor3 = Color3.fromRGB(255,255,255); hTitle.TextSize = 11
+hTitle.Font = Enum.Font.GothamBold
+hTitle.TextXAlignment = Enum.TextXAlignment.Left; hTitle.Parent = header
+
+-- Toggle button
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(1,-12,0,28); toggleBtn.Position = UDim2.new(0,6,0,28)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(34,197,94)
+toggleBtn.BorderSizePixel = 0; toggleBtn.Text = "ON"
+toggleBtn.TextColor3 = Color3.fromRGB(255,255,255); toggleBtn.TextSize = 13
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.AutoButtonColor = false; toggleBtn.Parent = panel
+Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0,8)
+
+-- Trạng thái
+local statusLbl = Instance.new("TextLabel")
+statusLbl.Size = UDim2.new(1,-12,0,12); statusLbl.Position = UDim2.new(0,6,0,59)
+statusLbl.BackgroundTransparency = 1; statusLbl.Text = "Khoi dong..."
+statusLbl.TextColor3 = Color3.fromRGB(180,180,180); statusLbl.TextSize = 10
+statusLbl.Font = Enum.Font.Gotham
+statusLbl.TextXAlignment = Enum.TextXAlignment.Left; statusLbl.Parent = panel
+
+-- Bộ đếm lần/đợt
+local countLbl = Instance.new("TextLabel")
+countLbl.Size = UDim2.new(1,-12,0,12); countLbl.Position = UDim2.new(0,6,0,72)
+countLbl.BackgroundTransparency = 1
+countLbl.Text = "Dot nay: 0/" .. MAX_REPAIRS
+countLbl.TextColor3 = Color3.fromRGB(130,130,130); countLbl.TextSize = 10
+countLbl.Font = Enum.Font.Gotham
+countLbl.TextXAlignment = Enum.TextXAlignment.Left; countLbl.Parent = panel
+
+-- ============================================================
+-- DRAG
+-- ============================================================
+local dragging, dragStart, startPos = false, nil, nil
+header.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = Vector2.new(inp.Position.X, inp.Position.Y)
+        startPos = panel.Position
+    end
+end)
+UIS.InputChanged:Connect(function(inp)
+    if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement
+    or inp.UserInputType == Enum.UserInputType.Touch) then
+        local d = Vector2.new(inp.Position.X, inp.Position.Y) - dragStart
+        panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X,
+                                    startPos.Y.Scale, startPos.Y.Offset + d.Y)
+    end
+end)
+UIS.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+-- ============================================================
+-- TOGGLE
+-- ============================================================
+local enabled         = true
+local repairTotal     = 0
+local repairThisRound = 0   -- reset mỗi khi cửa hồi lại
+local wasLow          = false
+
+local C_ON  = Color3.fromRGB(34,  197, 94)
+local C_OFF = Color3.fromRGB(239, 68,  68)
+local C_ACT = Color3.fromRGB(250, 204, 21)
+local C_MAX = Color3.fromRGB(156, 163, 175)
+
+local function setEnabled(v)
+    enabled = v
+    TweenService:Create(toggleBtn, TweenInfo.new(0.2), {
+        BackgroundColor3 = v and C_ON or C_OFF
+    }):Play()
+    toggleBtn.Text = v and "ON" or "OFF"
+    if not v then statusLbl.Text = "Da tat" end
+end
+
+toggleBtn.MouseButton1Click:Connect(function() setEnabled(not enabled) end)
+
+task.spawn(function()
+    task.wait(1)
+    statusLbl.Text = getRemote() and "Remote OK!" or "KHONG THAY REMOTE!"
+end)
+
+-- ============================================================
+-- VÒNG LẶP CHÍNH
+-- ============================================================
+while task.wait(INTERVAL) do
+    if not enabled then continue end
+
+    local hp = getDoorHp()
+    if hp == nil then
+        statusLbl.Text = "Khong thay HP"
+        continue
+    end
+
+    local pct = math.floor(hp * 100)
+
+    -- Cửa hồi đủ cao → reset bộ đếm đợt
+    if hp >= HP_RESET and wasLow then
+        wasLow = false
+        repairThisRound = 0
+        countLbl.Text = "Dot nay: 0/" .. MAX_REPAIRS
+        countLbl.TextColor3 = Color3.fromRGB(130, 130, 130)
+    end
+
+    -- Cửa ổn
+    if hp > HP_THRESHOLD then
+        statusLbl.Text = "HP: " .. pct .. "% | OK"
+        continue
+    end
+
+    -- Đánh dấu cửa đang thấp
+    wasLow = true
+
+    -- Đã đủ MAX lần trong đợt này
+    if repairThisRound >= MAX_REPAIRS then
+        statusLbl.Text = "Du " .. MAX_REPAIRS .. " lan, cho..."
+        countLbl.Text = "Dot nay: " .. repairThisRound .. "/" .. MAX_REPAIRS
+        countLbl.TextColor3 = C_MAX
+        continue
+    end
+
+    -- Còn CD
+    if not isReady() then
+        local cover = getCover()
+        local cdVal = cover and string.format("%.2f", cover.Size.Y.Offset) or "?"
+        statusLbl.Text = "CD: " .. cdVal .. " | " .. pct .. "%"
+        continue
+    end
+
+    -- Hết CD, chưa đủ MAX → nhấn!
+    local remote = getRemote()
+    if remote then
+        remote:FireServer("repair")
+        repairThisRound += 1
+        repairTotal += 1
+
+        local c = repairThisRound >= MAX_REPAIRS and C_MAX or Color3.fromRGB(134, 239, 172)
+        countLbl.Text = "Dot nay: " .. repairThisRound .. "/" .. MAX_REPAIRS
+        countLbl.TextColor3 = c
+        statusLbl.Text = "Sua! " .. pct .. "% | tong: " .. repairTotal
+
+        TweenService:Create(toggleBtn, TweenInfo.new(0.08), {BackgroundColor3 = C_ACT}):Play()
+        task.delay(0.25, function()
+            if enabled then
+                TweenService:Create(toggleBtn, TweenInfo.new(0.15), {BackgroundColor3 = C_ON}):Play()
+            end
+        end)
+    else
+        statusLbl.Text = "Khong thay remote!"
+    end
+end
