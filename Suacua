@@ -173,6 +173,7 @@ local enabled         = true
 local repairTotal     = 0
 local repairThisRound = 0   -- reset mỗi khi cửa hồi lại
 local wasLow          = false
+local lastFireTime    = 0   -- hard cooldown chống spam
 
 local C_ON  = Color3.fromRGB(34,  197, 94)
 local C_OFF = Color3.fromRGB(239, 68,  68)
@@ -234,7 +235,7 @@ while task.wait(INTERVAL) do
         continue
     end
 
-    -- Còn CD
+    -- Còn CD (Cover check + hard cooldown)
     if not isReady() then
         local cover = getCover()
         local cdVal = cover and string.format("%.2f", cover.Size.Y.Offset) or "?"
@@ -242,10 +243,18 @@ while task.wait(INTERVAL) do
         continue
     end
 
+    -- Hard cooldown: không nhấn quá 1 lần mỗi 0.8s
+    local now = tick()
+    if (now - lastFireTime) < 0.8 then
+        statusLbl.Text = "Hard CD... | " .. pct .. "%"
+        continue
+    end
+
     -- Hết CD, chưa đủ MAX → nhấn!
     local remote = getRemote()
     if remote then
         remote:FireServer("repair")
+        lastFireTime = now
         repairThisRound += 1
         repairTotal += 1
 
