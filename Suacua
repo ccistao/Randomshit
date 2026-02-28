@@ -227,25 +227,37 @@ while task.wait(INTERVAL) do
     -- Đánh dấu cửa đang thấp
     wasLow = true
 
-    -- Đã đủ MAX lần trong đợt này
+    -- Kiểm tra CD trước
+    local cdReady = isReady()
+    local now = tick()
+    local hardReady = (now - lastFireTime) >= 0.8
+
+    -- Nếu hết CD và đã đủ MAX → reset bộ đếm để tiếp tục sửa
+    -- (cửa vẫn đang bị đánh, không cần chờ máu hồi cao)
+    if repairThisRound >= MAX_REPAIRS and cdReady and hardReady then
+        repairThisRound = 0
+        countLbl.Text = "Dot nay: 0/" .. MAX_REPAIRS
+        countLbl.TextColor3 = Color3.fromRGB(130, 130, 130)
+    end
+
+    -- Đã đủ MAX và CD chưa xong → chờ
     if repairThisRound >= MAX_REPAIRS then
-        statusLbl.Text = "Du " .. MAX_REPAIRS .. " lan, cho..."
+        statusLbl.Text = "Du " .. MAX_REPAIRS .. " lan, cho CD..."
         countLbl.Text = "Dot nay: " .. repairThisRound .. "/" .. MAX_REPAIRS
         countLbl.TextColor3 = C_MAX
         continue
     end
 
-    -- Còn CD (Cover check + hard cooldown)
-    if not isReady() then
+    -- Còn CD
+    if not cdReady then
         local cover = getCover()
         local cdVal = cover and string.format("%.2f", cover.Size.Y.Offset) or "?"
         statusLbl.Text = "CD: " .. cdVal .. " | " .. pct .. "%"
         continue
     end
 
-    -- Hard cooldown: không nhấn quá 1 lần mỗi 0.8s
-    local now = tick()
-    if (now - lastFireTime) < 0.8 then
+    -- Hard cooldown
+    if not hardReady then
         statusLbl.Text = "Hard CD... | " .. pct .. "%"
         continue
     end
