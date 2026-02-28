@@ -20,7 +20,7 @@ if old then old:Destroy() end
 -- CẤU HÌNH
 -- ============================================================
 local HP_THRESHOLD  = 0.82   -- Nhấn khi máu cửa <= 75%
-local HP_RESET      = 0.90   -- Máu >= 90% = cửa đã hồi, reset bộ đếm
+local HP_RESET      = 0.99   -- Máu >= 90% = cửa đã hồi, reset bộ đếm
 local INTERVAL      = 0.05   -- Kiểm tra mỗi 0.05s
 local CD_TOLERANCE  = 0.02   -- Cover.Y.Offset <= 0.02 = hết CD
 local MAX_REPAIRS   = 3      -- Tối đa 3 lần mỗi đợt cửa thấp
