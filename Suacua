@@ -57,9 +57,16 @@ local function getDoorHp()
     if not hud then return nil end
     local hl = hud:FindFirstChild("HealthList")
     if not hl then return nil end
-    for _, v in ipairs(hl:GetDescendants()) do
-        if v:IsA("TextLabel") then
-            local cur, max = string.match(v.Text, "(%d+)/(%d+)")
+    -- Di dung path: HealthList > HealthSlot > ProgressBar > Title
+    -- Tranh bat nham TextLabel o noi khac (nhu thanh mau nhan vat)
+    for _, slot in ipairs(hl:GetChildren()) do
+        if not slot:IsA("Frame") then continue end
+        local pb = slot:FindFirstChild("ProgressBar")
+        if not pb then continue end
+        local title = pb:FindFirstChild("Title")
+        if title and title:IsA("TextLabel") then
+            local clean = title.Text:gsub(",", "")
+            local cur, max = string.match(clean, "(%d+)/(%d+)")
             if cur and max then
                 local m = tonumber(max)
                 if m and m > 0 then return tonumber(cur) / m end
