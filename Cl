@@ -86,7 +86,7 @@ local MODE          = "Balanced"   -- "Balanced" hoặc "Focus"
 local SELECTED      = {}           -- [modelName_tileIndex] = true
 local UPGRADE_DELAY = 0.8
 local checkboxBtns  = {}           -- ref để update UI
-
+local towerCache = {}
 -- ============================================================
 -- HÀM TIỆN ÍCH
 -- ============================================================
@@ -343,8 +343,6 @@ local statusLbl = makeLbl(panel, "San sang", 312, 234, 100, 20, Color3.fromRGB(1
 -- ============================================================
 -- LOGIC TÍCH CHỌN
 -- ============================================================
-local towerCache = {}   -- list tháp hiện tại từ lần quét gần nhất
-
 local function rebuildCheckboxes()
     -- Xoá cũ nhưng GIỮ NGUYÊN trạng thái SELECTED
     for _, c in ipairs(scrollFrame:GetChildren()) do
