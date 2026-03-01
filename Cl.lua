@@ -26,34 +26,40 @@ local UpgradeRemote = Remotes:WaitForChild("Upgrade")
 -- Quét hotbar vạn năng: parent của Buy button = Frame tên TowerID
 -- sibling TextLabel "Title" = tên hiển thị đẹp
 local function scanHotbarTowers()
-    local hud = LP.PlayerGui:FindFirstChild("Hud")
     local result = {}
-    local seen = {}
+    ID_TO_NAME = {} -- reset map
+
+    local hud = LP.PlayerGui:FindFirstChild("Hud")
     if hud then
         for _, v in ipairs(hud:GetDescendants()) do
             if v:IsA("ImageButton") and v.Name == "Buy" then
                 local slotFrame = v.Parent
-                if not slotFrame then continue end
-                local towerId = slotFrame.Name
-                local titleLbl = slotFrame:FindFirstChild("Title")
-                if not titleLbl or not titleLbl:IsA("TextLabel") then continue end
-                local displayName = titleLbl.Text
-                if displayName == "" or seen[towerId] then continue end
-                seen[towerId] = true
-                -- Giá nằm ở Buy.Amount trong slot
-                local cost = 0
-                local buyFrame = slotFrame:FindFirstChild("Buy")
-                if buyFrame then
-                    local amountLbl = buyFrame:FindFirstChild("Amount")
-                    if amountLbl then
-                        local num = (amountLbl.Text or ""):gsub(",",""):match("%d+")
-                        if num then cost = tonumber(num) or 0 end
+                if slotFrame then
+                    local towerId = slotFrame.Name
+                    local titleLbl = slotFrame:FindFirstChild("Title")
+                    if titleLbl and titleLbl:IsA("TextLabel") and titleLbl.Text ~= "" then
+
+                        -- lưu vào map
+                        ID_TO_NAME[towerId] = titleLbl.Text
+
+                        -- scan cost
+                        local cost = 0
+                        local buyBtn = slotFrame:FindFirstChild("Buy")
+                        if buyBtn then
+                            local amt = buyBtn:FindFirstChild("Amount")
+                            if amt then
+                                local num = (amt.Text or ""):gsub(",",""):match("%d+")
+                                if num then cost = tonumber(num) or 0 end
+                            end
+                        end
+
+                        table.insert(result, { name = titleLbl.Text, id = towerId, cost = cost })
                     end
                 end
-                table.insert(result, { name = displayName, id = towerId, cost = cost })
             end
         end
     end
+
     return result
 end
 
