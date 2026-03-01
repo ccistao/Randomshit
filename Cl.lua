@@ -167,7 +167,12 @@ task.spawn(function()
 end)
 local function getTowerDisplayName(model)
     local cleanId = model.Name:gsub("%d+$", "")
-    return ID_TO_NAME[cleanId] or cleanId
+
+    if ID_TO_NAME and ID_TO_NAME[cleanId] then
+        return ID_TO_NAME[cleanId]
+    end
+
+    return model.Name
 end
 -- Trả về list {model, key} của tất cả tháp trên base
 local function getAllTowers(base)
