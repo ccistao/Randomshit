@@ -474,9 +474,6 @@ local statusLbl = makeLbl(panel, "San sang", 312, 234, 100, 20, Color3.fromRGB(1
 -- ============================================================
 local function rebuildCheckboxes()
 
-    towerCache = towerCache or {}
-
-    -- Xoá UI cũ
     for _, c in ipairs(scrollFrame:GetChildren()) do
         if c:IsA("Frame") then
             c:Destroy()
@@ -490,24 +487,7 @@ local function rebuildCheckboxes()
         return
     end
 
-    -- 🔥 QUAN TRỌNG: tạo newCache ở đây
-    local newCache = getAllTowers(base) or {}
-
-    -- Thêm tower mới vào cache (không reset cái cũ)
-    for _, info in ipairs(newCache) do
-        local exists = false
-
-        for _, old in ipairs(towerCache) do
-            if old.key == info.key then
-                exists = true
-                break
-            end
-        end
-
-        if not exists then
-            table.insert(towerCache, info)
-        end
-    end
+    towerCache = getAllTowers(base) or {}
 
     if #towerCache == 0 then
         statusLbl.Text = "Base chua co thap nao"
@@ -516,7 +496,6 @@ local function rebuildCheckboxes()
 
     statusLbl.Text = #towerCache .. " thap"
 
-    -- Build UI
     for _, info in ipairs(towerCache) do
         local row = Instance.new("Frame")
         row.Size = UDim2.new(1,-4,0,28)
