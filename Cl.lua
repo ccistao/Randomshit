@@ -278,6 +278,32 @@ miniIcon.AutoButtonColor = false; miniIcon.Visible = false; miniIcon.Parent = sg
 Instance.new("UICorner", miniIcon).CornerRadius = UDim.new(0,12)
 local miStroke = Instance.new("UIStroke", miniIcon)
 miStroke.Color = Color3.fromRGB(255,255,255); miStroke.Thickness = 1.5; miStroke.Transparency = 0.5
+
+-- Drag cho miniIcon
+llocal miDragging, miDragStart, miStartPos = false, nil, nil
+miniIcon.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        miDragging = true
+        miDragStart = Vector2.new(inp.Position.X, inp.Position.Y)
+        miStartPos = miniIcon.Position
+    end
+end)
+UIS.InputChanged:Connect(function(inp)
+    if miDragging and (inp.UserInputType == Enum.UserInputType.MouseMovement
+    or inp.UserInputType == Enum.UserInputType.Touch) then
+        local d = Vector2.new(inp.Position.X, inp.Position.Y) - miDragStart
+        miniIcon.Position = UDim2.new(miStartPos.X.Scale, miStartPos.X.Offset + d.X,
+                                      miStartPos.Y.Scale, miStartPos.Y.Offset + d.Y)
+    end
+end)
+UIS.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        miDragging = false
+    end
+end)
+
 minBtn.MouseButton1Click:Connect(function()
     panel.Visible = false
     miniIcon.Visible = true
@@ -286,43 +312,6 @@ end)
 miniIcon.MouseButton1Click:Connect(function()
     panel.Visible = true
     miniIcon.Visible = false
-end)
--- Drag cho miniIcon
-local miniDragInput
-local miniDragging = false
-local miniDragStart
-local miniStartPos
-
-miniIcon.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 
-    or input.UserInputType == Enum.UserInputType.Touch then
-        
-        miniDragStart = input.Position
-        miniStartPos = miniIcon.Position
-        miniDragging = true
-        miniDragInput = input
-    end
-end)
-
-UIS.InputChanged:Connect(function(input)
-    if input == miniDragInput and miniDragging then
-        
-        local delta = input.Position - miniDragStart
-        
-        miniIcon.Position = UDim2.new(
-            miniStartPos.X.Scale,
-            miniStartPos.X.Offset + delta.X,
-            miniStartPos.Y.Scale,
-            miniStartPos.Y.Offset + delta.Y
-        )
-    end
-end)
-
-miniIcon.InputEnded:Connect(function(input)
-    if input == miniDragInput then
-        miniDragging = false
-        miniDragInput = nil
-    end
 end)
 -- Tiền ở header bên phải
 local moneyLbl = Instance.new("TextLabel")
@@ -340,52 +329,26 @@ task.spawn(function()
 end)
 
 -- Drag
-local panelDragInput
-local panelDragging = false
-local panelDragStart
-local panelStartPos
-local DRAG_THRESHOLD = 5
-
-header.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 
-    or input.UserInputType == Enum.UserInputType.Touch then
-        
-        panelDragStart = input.Position
-        panelStartPos = panel.Position
-        panelDragging = false
-        panelDragInput = input
+local dragging, dragStart, startPos = false, nil, nil
+header.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = Vector2.new(inp.Position.X, inp.Position.Y)
+        startPos = panel.Position
     end
 end)
-
-UIS.InputChanged:Connect(function(input)
-    if input == panelDragInput then
-        
-        local delta = input.Position - panelDragStart
-        
-        if not panelDragging then
-            if delta.Magnitude > DRAG_THRESHOLD then
-                panelDragging = true
-            else
-                return
-            end
-        end
-
-        local screen = workspace.CurrentCamera.ViewportSize
-        local newX = panelStartPos.X.Offset + delta.X
-        local newY = panelStartPos.Y.Offset + delta.Y
-        
-        newX = math.clamp(newX, 0, screen.X - panel.AbsoluteSize.X)
-        newY = math.clamp(newY, 0, screen.Y - panel.AbsoluteSize.Y)
-        
-        panel.Position = UDim2.new(0, newX, 0, newY)
+UIS.InputChanged:Connect(function(inp)
+    if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement
+    or inp.UserInputType == Enum.UserInputType.Touch) then
+        local d = Vector2.new(inp.Position.X, inp.Position.Y) - dragStart
+        panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X,
+                                    startPos.Y.Scale, startPos.Y.Offset + d.Y)
     end
 end)
-
-header.InputEnded:Connect(function(input)
-    if input == panelDragInput then
-        panelDragging = false
-        panelDragInput = nil
-    end
+UIS.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then dragging = false end
 end)
 -- Helper button
 local function makeBtn(parent, text, color, x, y, w, h)
