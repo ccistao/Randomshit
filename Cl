@@ -128,7 +128,7 @@ local function getAllTowers(base)
     for ti, tile in ipairs(tiles:GetChildren()) do
         for _, obj in ipairs(tile:GetChildren()) do
             if obj:IsA("Model") then
-                local key = "Slot_" .. tile.Name .. "_" .. ti
+                local key = obj:GetDebugId()
                 table.insert(list, { model = obj, key = key, displayName = obj.Name })
             end
         end
