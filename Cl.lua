@@ -305,7 +305,9 @@ miniIcon.InputBegan:Connect(function(input)
 end)
 
 UIS.InputChanged:Connect(function(input)
-	if input == miDragInput and miDragInput then
+	if input == miDragInput 
+	and miDragInput 
+	and input.UserInputState == Enum.UserInputState.Change then
 		
 		local delta = input.Position - miDragStart
 		
@@ -369,7 +371,9 @@ header.InputBegan:Connect(function(input)
 end)
 
 UIS.InputChanged:Connect(function(input)
-	if input == dragInput and dragInput then
+	if input == dragInput 
+	and dragInput 
+	and input.UserInputState == Enum.UserInputState.Change then
 		
 		local delta = input.Position - dragStart
 		
