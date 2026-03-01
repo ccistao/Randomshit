@@ -166,12 +166,12 @@ task.spawn(function()
     end
 end)
 local function getTowerDisplayName(model)
-    local cleanId = model.Name:gsub("%d+$", "")
-
-    if ID_TO_NAME and ID_TO_NAME[cleanId] then
-        return ID_TO_NAME[cleanId]
-    end
-
+    if model.Name == "Farm3" then
+        return "Money Printer"
+	end
+    if ID_TO_NAME[model.Name] then
+        return ID_TO_NAME[model.Name]
+	end
     return model.Name
 end
 -- Trả về list {model, key} của tất cả tháp trên base
