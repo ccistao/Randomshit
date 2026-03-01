@@ -1,5 +1,11 @@
 -- ============================================================
---  AUTO TOWER V10 - FIXED DRAG & SELECTION
+--  AUTO TOWER V10
+--  - Quét TẤT CẢ tháp trên base (kể cả không có trong hotbar)
+--  - Tích chọn tháp nào muốn nâng
+--  - Balanced: nâng đều tất cả đã tích
+--  - Focus: nâng full 1 cái mới chuyển sang cái tiếp
+--  Buy:     Hotbar:FireServer("buy", towerID, tilePart)
+--  Upgrade: Upgrade:FireServer("upgrade", towerModel)
 -- ============================================================
 
 local Players  = game:GetService("Players")
@@ -19,6 +25,7 @@ local UpgradeRemote = Remotes:WaitForChild("Upgrade")
 
 -- ============================================================
 -- MAP tên hiển thị ↔ ID gửi server
+-- Thêm vào đây nếu có tháp mới
 -- ============================================================
 local DISPLAY_TO_ID = {
     ["Crossbow"]    = "Turret1",
@@ -39,6 +46,7 @@ local function scanHotbarTowers()
                 local id = DISPLAY_TO_ID[txt]
                 if id and not seen[id] then
                     seen[id] = true
+                    -- Lấy giá: tìm TextLabel anh em có dấu $
                     local cost = 0
                     if v.Parent then
                         for _, sib in ipairs(v.Parent:GetDescendants()) do
@@ -58,6 +66,7 @@ local function scanHotbarTowers()
         end
     end
 
+    -- Fallback
     if #result == 0 then
         result = {
             { name = "Crossbow",    id = "Turret1", cost = 50 },
@@ -73,22 +82,25 @@ local BUY_TOWERS = scanHotbarTowers()
 -- STATE
 -- ============================================================
 local AUTO_UPGRADE  = false
-local MODE          = "Balanced" 
-local SELECTED      = {}           
+local MODE          = "Balanced"   -- "Balanced" hoặc "Focus"
+local SELECTED      = {}           -- [modelName_tileIndex] = true
 local UPGRADE_DELAY = 0.8
-local checkboxBtns  = {}           
+local checkboxBtns  = {}           -- ref để update UI
 
 -- ============================================================
 -- HÀM TIỆN ÍCH
 -- ============================================================
 local function getMoney()
+    -- Tiền lưu trong Player attribute "currency"
     return LP:GetAttribute("currency") or 0
 end
 
+-- Lấy level hiện tại của tháp
 local function getTowerLevel(model)
     return model:GetAttribute("level") or model:GetAttribute("Level") or 0
 end
 
+-- Max level: Farm* = 5, còn lại (súng/tháp) = 10
 local function getMaxLevel(model)
     local name = model.Name:lower()
     if name:find("farm") then return 5 end
@@ -118,9 +130,19 @@ local function getMyBase()
         local owner = b:FindFirstChild("Owner")
         if owner and owner.Value == LP then return b end
     end
-    return nil
+    -- fallback: base gần nhất
+    local nearest, dist = nil, 300
+    for _, b in ipairs(bases:GetChildren()) do
+        local bp = b:FindFirstChild("Base") or b:FindFirstChildWhichIsA("BasePart")
+        if bp then
+            local d = (char.HumanoidRootPart.Position - bp.Position).Magnitude
+            if d < dist then dist = d; nearest = b end
+        end
+    end
+    return nearest
 end
 
+-- Trả về list {model, key} của tất cả tháp trên base
 local function getAllTowers(base)
     local list = {}
     local tiles = base:FindFirstChild("Tiles")
@@ -137,15 +159,17 @@ local function getAllTowers(base)
 end
 
 -- ============================================================
--- UI SETUP
+-- UI - LAYOUT NGANG (2 cột)
 -- ============================================================
 local sg = Instance.new("ScreenGui")
 sg.Name = "TowerUI"; sg.ResetOnSpawn = false
-sg.DisplayOrder = 999; sg.Parent = LP.PlayerGui
+sg.DisplayOrder = 999; sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.Parent = LP.PlayerGui
 
+-- Panel ngang: rộng 420, cao vừa đủ
 local panel = Instance.new("Frame")
 panel.Size = UDim2.new(0, 420, 0, 310)
-panel.Position = UDim2.new(0.5, -210, 1, -320)
+panel.Position = UDim2.new(0.5, -210, 1, -320)  -- bám đáy màn hình
 panel.BackgroundColor3 = Color3.fromRGB(12,12,22)
 panel.BackgroundTransparency = 0.08
 panel.BorderSizePixel = 0; panel.Parent = sg
@@ -153,6 +177,7 @@ Instance.new("UICorner", panel).CornerRadius = UDim.new(0,14)
 local pStroke = Instance.new("UIStroke", panel)
 pStroke.Color = Color3.fromRGB(99,102,241); pStroke.Thickness = 1.5; pStroke.Transparency = 0.4
 
+-- Header (kéo được)
 local header = Instance.new("Frame")
 header.Size = UDim2.new(1,0,0,26)
 header.BackgroundColor3 = Color3.fromRGB(99,102,241)
@@ -160,16 +185,22 @@ header.BorderSizePixel = 0; header.Parent = panel
 Instance.new("UICorner", header).CornerRadius = UDim.new(0,14)
 local hpatch = Instance.new("Frame")
 hpatch.Size = UDim2.new(1,0,0,10); hpatch.Position = UDim2.new(0,0,1,-10)
-hpatch.BackgroundColor3 = Color3.fromRGB(99,102,241); hpatch.Parent = header
+hpatch.BackgroundColor3 = Color3.fromRGB(99,102,241); hpatch.BorderSizePixel = 0; hpatch.Parent = header
 
 local hTitle = Instance.new("TextLabel")
 hTitle.Size = UDim2.new(0,200,1,0); hTitle.Position = UDim2.new(0,8,0,0)
-hTitle.BackgroundTransparency = 1; hTitle.Text = "AUTO TOWER V10 [FIXED]"
-hTitle.TextColor3 = Color3.fromRGB(255,255,255); hTitle.TextSize = 12; hTitle.Font = Enum.Font.GothamBold; hTitle.TextXAlignment = Enum.TextXAlignment.Left; hTitle.Parent = header
+hTitle.BackgroundTransparency = 1; hTitle.Text = "AUTO TOWER V10"
+hTitle.TextColor3 = Color3.fromRGB(255,255,255); hTitle.TextSize = 12
+hTitle.Font = Enum.Font.GothamBold; hTitle.TextXAlignment = Enum.TextXAlignment.Left
+hTitle.Parent = header
 
+-- Tiền ở header bên phải
 local moneyLbl = Instance.new("TextLabel")
 moneyLbl.Size = UDim2.new(0,140,1,0); moneyLbl.Position = UDim2.new(1,-148,0,0)
-moneyLbl.BackgroundTransparency = 1; moneyLbl.TextColor3 = Color3.fromRGB(250,204,21); moneyLbl.TextSize = 12; moneyLbl.Font = Enum.Font.GothamBold; moneyLbl.TextXAlignment = Enum.TextXAlignment.Right; moneyLbl.Parent = header
+moneyLbl.BackgroundTransparency = 1; moneyLbl.Text = "💰 $---"
+moneyLbl.TextColor3 = Color3.fromRGB(250,204,21); moneyLbl.TextSize = 12
+moneyLbl.Font = Enum.Font.GothamBold; moneyLbl.TextXAlignment = Enum.TextXAlignment.Right
+moneyLbl.Parent = header
 
 task.spawn(function()
     while panel.Parent do
@@ -178,70 +209,66 @@ task.spawn(function()
     end
 end)
 
--- ============================================================
--- FIXED DRAG LOGIC (Không bị nhảy/teleport)
--- ============================================================
-local dragging, dragInput, dragStart, startPos
-
-header.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+-- Drag
+local dragging, dragStart, startPos = false, nil, nil
+header.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
         dragging = true
-        dragStart = input.Position
+        dragStart = Vector2.new(inp.Position.X, inp.Position.Y)
         startPos = panel.Position
-
-        -- Lắng nghe khi thả tay/chuột để dừng kéo
-        local releaseConn
-        releaseConn = input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-                if releaseConn then releaseConn:Disconnect() end
-            end
-        end)
     end
 end)
-
-header.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
+UIS.InputChanged:Connect(function(inp)
+    if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement
+    or inp.UserInputType == Enum.UserInputType.Touch) then
+        local d = Vector2.new(inp.Position.X, inp.Position.Y) - dragStart
+        panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X,
+                                    startPos.Y.Scale, startPos.Y.Offset + d.Y)
     end
 end)
-
-UIS.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - dragStart
-        -- Cập nhật vị trí dựa trên Delta so với vị trí gốc lúc bấm
-        panel.Position = UDim2.new(
-            startPos.X.Scale, startPos.X.Offset + delta.X,
-            startPos.Y.Scale, startPos.Y.Offset + delta.Y
-        )
-    end
+UIS.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then dragging = false end
 end)
 
--- ============================================================
--- CÁC PHẦN CÒN LẠI (GIỮ NGUYÊN)
--- ============================================================
+-- Helper button
 local function makeBtn(parent, text, color, x, y, w, h)
     h = h or 30; w = w or 120
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(0,w,0,h); btn.Position = UDim2.new(0,x,0,y)
     btn.BackgroundColor3 = color; btn.BorderSizePixel = 0
-    btn.Text = text; btn.TextColor3 = Color3.fromRGB(255,255,255); btn.TextSize = 10; btn.Font = Enum.Font.GothamBold; btn.AutoButtonColor = false; btn.Parent = parent
+    btn.Text = text; btn.TextColor3 = Color3.fromRGB(255,255,255)
+    btn.TextSize = 10; btn.Font = Enum.Font.GothamBold
+    btn.AutoButtonColor = false; btn.Parent = parent
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0,7)
     return btn
 end
 
 local function makeLbl(parent, text, x, y, w, h, color, size)
     local l = Instance.new("TextLabel")
-    l.Size = UDim2.new(0,w,0,h or 14); l.Position = UDim2.new(0,x,0,y); l.BackgroundTransparency = 1; l.Text = text; l.TextColor3 = color or Color3.fromRGB(148,163,184); l.TextSize = size or 10; l.Font = Enum.Font.GothamBold; l.TextXAlignment = Enum.TextXAlignment.Left; l.Parent = parent
+    l.Size = UDim2.new(0,w,0,h or 14); l.Position = UDim2.new(0,x,0,y)
+    l.BackgroundTransparency = 1; l.Text = text
+    l.TextColor3 = color or Color3.fromRGB(148,163,184); l.TextSize = size or 10
+    l.Font = Enum.Font.GothamBold; l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Parent = parent
     return l
 end
 
--- CỘT TRÁI
+-- ============================================================
+-- CỘT TRÁI: MUA THÁP (x=6, width=196)
+-- ============================================================
 makeLbl(panel, "MUA THÁP", 8, 30, 190, 14, Color3.fromRGB(148,163,184), 10)
-local buyBtns = {}
+
+local buyBtns = {}  -- ref các nút mua để xoá khi refresh
+
 local function rebuildBuyButtons()
-    for _, b in ipairs(buyBtns) do if b then b:Destroy() end end
+    -- Xoá nút cũ
+    for _, b in ipairs(buyBtns) do
+        if b and b.Parent then b:Destroy() end
+    end
     buyBtns = {}
+
     BUY_TOWERS = scanHotbarTowers()
     local buyY = 46
     for _, t in ipairs(BUY_TOWERS) do
@@ -251,106 +278,331 @@ local function rebuildBuyButtons()
         local orig = label
         btn.MouseButton1Click:Connect(function()
             local tile = getTileUnderFoot()
-            if tile then BuildRemote:FireServer("buy", t.id, tile); btn.Text = t.name .. " ✓"
-            else btn.Text = "Khong thay tile!" end
+            if tile then
+                BuildRemote:FireServer("buy", t.id, tile)
+                btn.Text = t.name .. " ✓"
+            else
+                btn.Text = "Khong thay tile!"
+            end
             task.delay(1.2, function() btn.Text = orig end)
         end)
         buyY += 32
     end
 end
+
 rebuildBuyButtons()
 
+-- Tự refresh nút mua mỗi 3s (khi hotbar game thay đổi)
+task.spawn(function()
+    while panel.Parent do
+        task.wait(3)
+        rebuildBuyButtons()
+    end
+end)
+
+-- Separator dọc
 local sepV = Instance.new("Frame")
-sepV.Size = UDim2.new(0,1,1,-30); sepV.Position = UDim2.new(0,208,0,28); sepV.BackgroundColor3 = Color3.fromRGB(60,60,80); sepV.BorderSizePixel = 0; sepV.Parent = panel
+sepV.Size = UDim2.new(0,1,1,-30); sepV.Position = UDim2.new(0,208,0,28)
+sepV.BackgroundColor3 = Color3.fromRGB(60,60,80); sepV.BorderSizePixel = 0; sepV.Parent = panel
 
--- CỘT PHẢI
+-- ============================================================
+-- CỘT PHẢI: NÂNG CẤP (x=214, width=200)
+-- ============================================================
 makeLbl(panel, "THÁP NÂNG CẤP", 214, 30, 200, 14, Color3.fromRGB(148,163,184), 10)
+
+-- ScrollingFrame checkbox
 local scrollFrame = Instance.new("ScrollingFrame")
-scrollFrame.Size = UDim2.new(0,196,0,120); scrollFrame.Position = UDim2.new(0,214,0,46); scrollFrame.BackgroundColor3 = Color3.fromRGB(6,6,16); scrollFrame.BackgroundTransparency = 0.3; scrollFrame.ScrollBarThickness = 3; scrollFrame.CanvasSize = UDim2.new(0,0,0,0); scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y; scrollFrame.Parent = panel
+scrollFrame.Size = UDim2.new(0,196,0,120)
+scrollFrame.Position = UDim2.new(0,214,0,46)
+scrollFrame.BackgroundColor3 = Color3.fromRGB(6,6,16)
+scrollFrame.BackgroundTransparency = 0.3
+scrollFrame.BorderSizePixel = 0
+scrollFrame.ScrollBarThickness = 3
+scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(99,102,241)
+scrollFrame.CanvasSize = UDim2.new(0,0,0,0)
+scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scrollFrame.Parent = panel
 Instance.new("UICorner", scrollFrame).CornerRadius = UDim.new(0,6)
-local scrollLayout = Instance.new("UIListLayout", scrollFrame); scrollLayout.Padding = UDim.new(0,2)
+local scrollLayout = Instance.new("UIListLayout", scrollFrame)
+scrollLayout.Padding = UDim.new(0,2)
+Instance.new("UIPadding", scrollFrame).PaddingTop = UDim.new(0,3)
 
-local scanBtn    = makeBtn(panel, "🔍 Quet lai", Color3.fromRGB(79,70,229),  214, 170, 94, 26)
+-- Row 1: Quét + Chọn tất cả
+local scanBtn    = makeBtn(panel, "🔍 Da quet", Color3.fromRGB(79,70,229),  214, 170, 94, 26)
 local selAllBtn  = makeBtn(panel, "Chọn tất cả",  Color3.fromRGB(55,65,81),   312, 170, 98, 26)
-local modeBtn    = makeBtn(panel, "⚖ Balanced", Color3.fromRGB(14,116,144), 214, 200, 94, 26)
-local autoBtn    = makeBtn(panel, "▶ Auto: OFF", Color3.fromRGB(150,50,50),  312, 200, 98, 26)
-local manualBtn  = makeBtn(panel, "Nâng 1 lần", Color3.fromRGB(22,163,74), 214, 230, 94, 26)
-local statusLbl  = makeLbl(panel, "San sang", 312, 234, 100, 20, Color3.fromRGB(130,130,130), 10)
 
-local towerCache = {}
+-- Row 2: Mode + Auto
+local modeBtn = makeBtn(panel, "⚖ Balanced", Color3.fromRGB(14,116,144), 214, 200, 94, 26)
+local autoBtn = makeBtn(panel, "▶ Auto: OFF", Color3.fromRGB(150,50,50),  312, 200, 98, 26)
+
+-- Row 3: Nâng 1 lần + Status
+local manualBtn = makeBtn(panel, "Nâng 1 lần", Color3.fromRGB(22,163,74), 214, 230, 94, 26)
+local statusLbl = makeLbl(panel, "San sang", 312, 234, 100, 20, Color3.fromRGB(130,130,130), 10)
+
+-- ============================================================
+-- LOGIC TÍCH CHỌN
+-- ============================================================
+local towerCache = {}   -- list tháp hiện tại từ lần quét gần nhất
+
 local function rebuildCheckboxes()
+    -- Xoá cũ nhưng GIỮ NGUYÊN trạng thái SELECTED
+    for _, c in ipairs(scrollFrame:GetChildren()) do
+        if c:IsA("Frame") then c:Destroy() end
+    end
+    checkboxBtns = {}
+
     local base = getMyBase()
-    if not base then return end
+    if not base then
+        statusLbl.Text = "Khong thay base!"
+        return
+    end
+
     local newCache = getAllTowers(base)
-    if #newCache == #towerCache then return end
-    for _, c in ipairs(scrollFrame:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
+
+    -- Chỉ rebuild nếu số tháp thay đổi (tránh flicker)
+    if #newCache == #towerCache then
+        -- Kiểm tra có tháp mới không
+        local same = true
+        for i, info in ipairs(newCache) do
+            if not towerCache[i] or towerCache[i].key ~= info.key then
+                same = false; break
+            end
+        end
+        if same then return end
+    end
+
     towerCache = newCache
+
+    if #towerCache == 0 then
+        statusLbl.Text = "Base chua co thap nao"
+        return
+    end
+
+    statusLbl.Text = #towerCache .. " thap"
+
     for _, info in ipairs(towerCache) do
         local row = Instance.new("Frame")
-        row.Size = UDim2.new(1,-4,0,28); row.BackgroundTransparency = 1; row.Parent = scrollFrame
+        row.Size = UDim2.new(1,-4,0,28)
+        row.BackgroundTransparency = 1
+        row.BorderSizePixel = 0
+        row.Parent = scrollFrame
+
+        -- Checkbox button
         local cb = Instance.new("TextButton")
-        cb.Size = UDim2.new(0,20,0,20); cb.Position = UDim2.new(0,4,0.5,-10)
+        cb.Size = UDim2.new(0,20,0,20)
+        cb.Position = UDim2.new(0,4,0.5,-10)
         cb.BackgroundColor3 = SELECTED[info.key] and Color3.fromRGB(22,163,74) or Color3.fromRGB(50,50,70)
-        cb.Text = SELECTED[info.key] and "✔" or ""; cb.TextColor3 = Color3.fromRGB(255,255,255); cb.Font = Enum.Font.GothamBold; cb.BorderSizePixel = 0; cb.Parent = row
+        cb.Text = SELECTED[info.key] and "✔" or ""
+        cb.TextColor3 = Color3.fromRGB(255,255,255)
+        cb.TextSize = 12; cb.Font = Enum.Font.GothamBold
+        cb.BorderSizePixel = 0; cb.AutoButtonColor = false
+        cb.Parent = row
         Instance.new("UICorner", cb).CornerRadius = UDim.new(0,5)
+
+        -- Label tên tháp
         local lbl = Instance.new("TextLabel")
-        lbl.Size = UDim2.new(1,-30,1,0); lbl.Position = UDim2.new(0,28,0,0); lbl.BackgroundTransparency = 1; lbl.Text = info.displayName; lbl.TextColor3 = Color3.fromRGB(210,210,210); lbl.TextSize = 11; lbl.Font = Enum.Font.Gotham; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.Parent = row
+        lbl.Size = UDim2.new(1,-30,1,0)
+        lbl.Position = UDim2.new(0,28,0,0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = info.displayName
+        lbl.TextColor3 = Color3.fromRGB(210,210,210)
+        lbl.TextSize = 11; lbl.Font = Enum.Font.Gotham
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.Parent = row
+
+        local key = info.key
         cb.MouseButton1Click:Connect(function()
-            SELECTED[info.key] = not SELECTED[info.key]
-            cb.Text = SELECTED[info.key] and "✔" or ""
-            cb.BackgroundColor3 = SELECTED[info.key] and Color3.fromRGB(22,163,74) or Color3.fromRGB(50,50,70)
+            SELECTED[key] = not SELECTED[key]
+            cb.Text = SELECTED[key] and "✔" or ""
+            cb.BackgroundColor3 = SELECTED[key] and Color3.fromRGB(22,163,74) or Color3.fromRGB(50,50,70)
         end)
+
+        table.insert(checkboxBtns, {cb = cb, key = key})
     end
 end
 
+-- Auto quét mỗi 2 giây
 scanBtn.MouseButton1Click:Connect(rebuildCheckboxes)
-task.spawn(function() while panel.Parent do task.wait(2); rebuildCheckboxes() end end)
+task.spawn(function()
+    while panel.Parent do
+        task.wait(2)
+        rebuildCheckboxes()
+    end
+end)
 
+-- Chọn / bỏ chọn tất cả
+local allSelected = false
 selAllBtn.MouseButton1Click:Connect(function()
-    local all = not SELECTED[towerCache[1] and towerCache[1].key or ""]
-    for _, info in ipairs(towerCache) do SELECTED[info.key] = all end
-    towerCache = {} rebuildCheckboxes()
+    allSelected = not allSelected
+    selAllBtn.Text = allSelected and "Bỏ chọn tất cả" or "Chọn tất cả"
+    for _, info in ipairs(towerCache) do
+        SELECTED[info.key] = allSelected
+    end
+    for _, item in ipairs(checkboxBtns) do
+        item.cb.Text = allSelected and "✔" or ""
+        item.cb.BackgroundColor3 = allSelected and Color3.fromRGB(22,163,74) or Color3.fromRGB(50,50,70)
+    end
 end)
 
+-- Mode toggle
 modeBtn.MouseButton1Click:Connect(function()
-    MODE = (MODE == "Balanced" and "Focus" or "Balanced")
-    modeBtn.Text = (MODE == "Balanced" and "⚖ Balanced" or "🎯 Focus")
-    modeBtn.BackgroundColor3 = (MODE == "Balanced" and Color3.fromRGB(14,116,144) or Color3.fromRGB(124,58,237))
+    MODE = MODE == "Balanced" and "Focus" or "Balanced"
+    if MODE == "Balanced" then
+        modeBtn.Text = "⚖ BALANCED - Nâng đều"
+        modeBtn.BackgroundColor3 = Color3.fromRGB(14,116,144)
+    else
+        modeBtn.Text = "🎯 FOCUS - Full 1 cái"
+        modeBtn.BackgroundColor3 = Color3.fromRGB(124,58,237)
+    end
 end)
 
+-- Auto toggle
 autoBtn.MouseButton1Click:Connect(function()
     AUTO_UPGRADE = not AUTO_UPGRADE
     autoBtn.Text = "▶ AUTO UPGRADE: " .. (AUTO_UPGRADE and "ON" or "OFF")
     autoBtn.BackgroundColor3 = AUTO_UPGRADE and Color3.fromRGB(22,163,74) or Color3.fromRGB(150,50,50)
 end)
 
--- LOGIC UPGRADE (Giữ nguyên)
+-- ============================================================
+-- HÀM NÂNG CẤP
+-- ============================================================
 local function getSelectedTowers()
     local base = getMyBase()
     if not base then return {} end
     local all = getAllTowers(base)
     local filtered = {}
-    for _, info in ipairs(all) do if SELECTED[info.key] then table.insert(filtered, info.model) end end
-    if #filtered == 0 then for _, info in ipairs(all) do table.insert(filtered, info.model) end end
+    for _, info in ipairs(all) do
+        if SELECTED[info.key] then
+            table.insert(filtered, info.model)
+        end
+    end
+    -- Nếu không tích gì → nâng tất cả
+    if #filtered == 0 then
+        for _, info in ipairs(all) do
+            table.insert(filtered, info.model)
+        end
+    end
     return filtered
 end
 
+-- Lấy cost từ BillboardGui "Upgrade" trên tháp (nếu có)
+local function getUpgradeCost(model)
+    for _, v in ipairs(model:GetDescendants()) do
+        if v:IsA("BillboardGui") and v.Name == "Upgrade" then
+            -- Tìm TextLabel có số tiền
+            for _, lbl in ipairs(v:GetDescendants()) do
+                if lbl:IsA("TextLabel") then
+                    local num = lbl.Text:gsub("[^%d]", "")
+                    local n = tonumber(num)
+                    if n and n > 0 then return n end
+                end
+            end
+        end
+    end
+    return 0  -- 0 = không biết cost, cứ thử
+end
+
+local function canAfford(model)
+    local cost = getUpgradeCost(model)
+    if cost == 0 then return true end  -- không đọc được cost thì cứ thử
+    return getMoney() >= cost
+end
+
 local function doUpgradeBalanced(towers)
+    local upgraded = 0
+    local maxed = 0
     for _, tw in ipairs(towers) do
-        if not tw or not tw.Parent or isMaxLevel(tw) then continue end
-        UpgradeRemote:FireServer("upgrade", tw)
-        task.wait(0.1)
+        if not tw or not tw.Parent then continue end
+        if isMaxLevel(tw) then
+            maxed += 1
+            continue
+        end
+        if canAfford(tw) then
+            UpgradeRemote:FireServer("upgrade", tw)
+            upgraded += 1
+        else
+            statusLbl.Text = "Thieu tien: " .. tw.Name .. " (lv" .. getTowerLevel(tw) .. ")"
+        end
+        task.wait(0.15)
+    end
+    if maxed == #towers then
+        statusLbl.Text = "Tat ca da MAX level!"
+        AUTO_UPGRADE = false
+        autoBtn.Text = "▶ AUTO UPGRADE: OFF"
+        autoBtn.BackgroundColor3 = Color3.fromRGB(150,50,50)
     end
 end
 
+local function doUpgradeFocus(towers)
+    -- Focus: nâng 1 cái đến lv max rồi mới chuyển cái tiếp
+    -- Farm max = lv5, súng/tháp max = lv10
+    for _, tw in ipairs(towers) do
+        if not tw or not tw.Parent then continue end
+
+        local maxLv = getMaxLevel(tw)
+
+        while AUTO_UPGRADE do
+            if not tw or not tw.Parent then break end
+
+            local curLv = getTowerLevel(tw)
+            if curLv >= maxLv then
+                statusLbl.Text = tw.Name .. " MAX (lv" .. curLv .. ") → next"
+                task.wait(0.3)
+                break
+            end
+
+            if not canAfford(tw) then
+                statusLbl.Text = "Cho tien: " .. tw.Name .. " lv" .. curLv .. "/" .. maxLv
+                task.wait(0.5)
+                continue
+            end
+
+            UpgradeRemote:FireServer("upgrade", tw)
+            statusLbl.Text = "Focus: " .. tw.Name .. " lv" .. curLv .. " → " .. maxLv
+            task.wait(0.35)
+        end
+    end
+
+    if AUTO_UPGRADE then
+        statusLbl.Text = "Tat ca da MAX! Auto off"
+        AUTO_UPGRADE = false
+        autoBtn.Text = "▶ AUTO UPGRADE: OFF"
+        autoBtn.BackgroundColor3 = Color3.fromRGB(150,50,50)
+    end
+end
+
+-- Nút nâng 1 lần
+manualBtn.MouseButton1Click:Connect(function()
+    local towers = getSelectedTowers()
+    if #towers == 0 then statusLbl.Text = "Khong co thap!"; return end
+    doUpgradeBalanced(towers)
+    statusLbl.Text = "Da nang " .. #towers .. " thap!"
+end)
+
+-- ============================================================
+-- VÒNG LẶP AUTO UPGRADE
+-- ============================================================
 task.spawn(function()
     while true do
         task.wait(UPGRADE_DELAY)
         if not AUTO_UPGRADE then continue end
-        local t = getSelectedTowers()
-        if #t > 0 then doUpgradeBalanced(t) end
+
+        local towers = getSelectedTowers()
+        if #towers == 0 then
+            statusLbl.Text = "Chua quet thap"
+            continue
+        end
+
+        if MODE == "Balanced" then
+            doUpgradeBalanced(towers)
+            statusLbl.Text = "Balanced: " .. #towers .. " thap"
+        else
+            doUpgradeFocus(towers)
+            statusLbl.Text = "Focus: " .. #towers .. " thap"
+        end
     end
 end)
 
+-- Quét ngay lúc khởi động
 task.delay(1, rebuildCheckboxes)
-print("[TowerV10 Fixed Drag] Da chay!")
+print("[TowerV10] Da chay!")
