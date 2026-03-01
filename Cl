@@ -145,19 +145,20 @@ end
 -- Trả về list {model, key} của tất cả tháp trên base
 local function getAllTowers(base)
     local list = {}
-    local tiles = base:FindFirstChild("Tiles")
-    if not tiles then return list end
-    for ti, tile in ipairs(tiles:GetChildren()) do
-        for _, obj in ipairs(tile:GetChildren()) do
-            if obj:IsA("Model") then
-                local key = obj:GetDebugId()
-                table.insert(list, { model = obj, key = key, displayName = obj.Name })
-            end
+
+    for _, obj in ipairs(base:GetDescendants()) do
+        if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") then
+            local key = obj:GetDebugId()
+
+            table.insert(list, {
+                model = obj,
+                key = key,
+                displayName = obj.Name
+            })
         end
     end
     return list
 end
-
 -- ============================================================
 -- UI - LAYOUT NGANG (2 cột)
 -- ============================================================
@@ -357,7 +358,20 @@ local function rebuildCheckboxes()
         return
     end
 
-    local newCache = getAllTowers(base)
+    for _, info in ipairs(newCache) do
+        local exists = false
+
+        for _, old in ipairs(towerCache) do
+            if old.key == info.key then
+                exists = true
+                break
+            end
+        end
+
+        if not exists then
+            table.insert(towerCache, info)
+        end
+    end
 
     -- Chỉ rebuild nếu số tháp thay đổi (tránh flicker)
     if #newCache == #towerCache then
