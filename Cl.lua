@@ -23,55 +23,36 @@ local Remotes       = RS:WaitForChild("Remotes")
 local BuildRemote   = Remotes:WaitForChild("Hotbar")
 local UpgradeRemote = Remotes:WaitForChild("Upgrade")
 
--- ============================================================
--- MAP tên hiển thị ↔ ID gửi server
--- Thêm vào đây nếu có tháp mới
--- ============================================================
-local DISPLAY_TO_ID = {
-    ["Crossbow"]    = "Turret1",
-    ["Carrot Farm"] = "Farm1",
-    ["Farm"]        = "Farm1",
-}
-
--- Quét Hud lấy danh sách tháp từ UI thật của game
+-- Quét hotbar vạn năng: parent của Buy button = Frame tên TowerID
+-- sibling TextLabel "Title" = tên hiển thị đẹp
 local function scanHotbarTowers()
-    local hud = game.Players.LocalPlayer.PlayerGui:FindFirstChild("Hud")
+    local hud = LP.PlayerGui:FindFirstChild("Hud")
     local result = {}
     local seen = {}
-
     if hud then
         for _, v in ipairs(hud:GetDescendants()) do
-            if (v:IsA("TextLabel") or v:IsA("TextButton")) then
-                local txt = v.Text or ""
-                local id = DISPLAY_TO_ID[txt]
-                if id and not seen[id] then
-                    seen[id] = true
-                    -- Lấy giá: tìm TextLabel anh em có dấu $
-                    local cost = 0
-                    if v.Parent then
-                        for _, sib in ipairs(v.Parent:GetDescendants()) do
-                            if sib ~= v and (sib:IsA("TextLabel") or sib:IsA("TextButton")) then
-                                local t = sib.Text or ""
-                                if t:find("%$") then
-                                    local num = t:match("%d+")
-                                    if num then cost = tonumber(num) or 0 end
-                                    break
-                                end
-                            end
-                        end
+            if v:IsA("ImageButton") and v.Name == "Buy" then
+                local slotFrame = v.Parent
+                if not slotFrame then continue end
+                local towerId = slotFrame.Name
+                local titleLbl = slotFrame:FindFirstChild("Title")
+                if not titleLbl or not titleLbl:IsA("TextLabel") then continue end
+                local displayName = titleLbl.Text
+                if displayName == "" or seen[towerId] then continue end
+                seen[towerId] = true
+                -- Giá nằm ở Buy.Amount trong slot
+                local cost = 0
+                local buyFrame = slotFrame:FindFirstChild("Buy")
+                if buyFrame then
+                    local amountLbl = buyFrame:FindFirstChild("Amount")
+                    if amountLbl then
+                        local num = (amountLbl.Text or ""):gsub(",",""):match("%d+")
+                        if num then cost = tonumber(num) or 0 end
                     end
-                    table.insert(result, { name = txt, id = id, cost = cost })
                 end
+                table.insert(result, { name = displayName, id = towerId, cost = cost })
             end
         end
-    end
-
-    -- Fallback
-    if #result == 0 then
-        result = {
-            { name = "Crossbow",    id = "Turret1", cost = 50 },
-            { name = "Carrot Farm", id = "Farm1",   cost = 90 },
-        }
     end
     return result
 end
@@ -126,12 +107,19 @@ local function getMyBase()
     if not char or not char:FindFirstChild("HumanoidRootPart") then return nil end
     local bases = workspace:FindFirstChild("Bases")
     if not bases then return nil end
+    local myId = tostring(LP.UserId)
+    -- Dùng ownerId attribute trên tile (đã xác nhận hoạt động)
     for _, b in ipairs(bases:GetChildren()) do
-        local owner = b:FindFirstChild("Owner")
-        if owner and owner.Value == LP then return b end
+        local tiles = b:FindFirstChild("Tiles")
+        if tiles then
+            local first = tiles:GetChildren()[1]
+            if first and tostring(first:GetAttribute("ownerId") or "") == myId then
+                return b
+            end
+        end
     end
-    -- fallback: base gần nhất
-    local nearest, dist = nil, 300
+    -- Fallback: base gần nhất
+    local nearest, dist = nil, 80
     for _, b in ipairs(bases:GetChildren()) do
         local bp = b:FindFirstChild("Base") or b:FindFirstChildWhichIsA("BasePart")
         if bp then
@@ -140,6 +128,28 @@ local function getMyBase()
         end
     end
     return nearest
+end
+
+-- Lấy tên đẹp từ Upgrade UI Info.Title khi hover/đứng gần tháp
+local DISPLAY_NAMES = {}  -- [modelName] = displayName
+
+task.spawn(function()
+    while true do
+        task.wait(0.3)
+        local activeObj = LP:GetAttribute("upgradeActiveObject")
+        if activeObj and activeObj ~= "" then
+            local ok, titleLbl = pcall(function()
+                return LP.PlayerGui.Hud.Hud.Upgrade.Holder.Info.Title
+            end)
+            if ok and titleLbl and titleLbl.Text ~= "" then
+                DISPLAY_NAMES[tostring(activeObj)] = titleLbl.Text
+            end
+        end
+    end
+end)
+
+local function getTowerDisplayName(model)
+    return DISPLAY_NAMES[model.Name] or model.Name
 end
 
 -- Trả về list {model, key} của tất cả tháp trên base
@@ -160,10 +170,13 @@ local function getAllTowers(base)
 
                 local key = obj:GetDebugId()
 
+                local lv = obj:GetAttribute("level") or 1
+                local maxLv = getMaxLevel(obj)
+                local dname = getTowerDisplayName(obj)
                 table.insert(list, {
                     model = obj,
                     key = key,
-                    displayName = obj.Name
+                    displayName = dname .. " lv" .. lv .. "/" .. maxLv
                 })
             end
         end
@@ -206,6 +219,64 @@ hTitle.BackgroundTransparency = 1; hTitle.Text = "AUTO TOWER V10"
 hTitle.TextColor3 = Color3.fromRGB(255,255,255); hTitle.TextSize = 12
 hTitle.Font = Enum.Font.GothamBold; hTitle.TextXAlignment = Enum.TextXAlignment.Left
 hTitle.Parent = header
+
+-- Nút thu nhỏ
+local minBtn = Instance.new("TextButton")
+minBtn.Size = UDim2.new(0,22,0,20); minBtn.Position = UDim2.new(1,-26,0,3)
+minBtn.BackgroundColor3 = Color3.fromRGB(60,60,90); minBtn.BorderSizePixel = 0
+minBtn.Text = "—"; minBtn.TextColor3 = Color3.fromRGB(255,255,255)
+minBtn.TextSize = 12; minBtn.Font = Enum.Font.GothamBold
+minBtn.AutoButtonColor = false; minBtn.Parent = header
+Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0,5)
+
+-- Icon nhỏ (hiện khi thu nhỏ)
+local miniIcon = Instance.new("TextButton")
+miniIcon.Size = UDim2.new(0,44,0,44)
+miniIcon.Position = UDim2.new(0,10,0.5,-22)
+miniIcon.BackgroundColor3 = Color3.fromRGB(99,102,241)
+miniIcon.BorderSizePixel = 0; miniIcon.Text = "🏰"
+miniIcon.TextSize = 22; miniIcon.Font = Enum.Font.GothamBold
+miniIcon.AutoButtonColor = false; miniIcon.Visible = false; miniIcon.Parent = sg
+Instance.new("UICorner", miniIcon).CornerRadius = UDim.new(0,12)
+local miStroke = Instance.new("UIStroke", miniIcon)
+miStroke.Color = Color3.fromRGB(255,255,255); miStroke.Thickness = 1.5; miStroke.Transparency = 0.5
+
+-- Drag cho miniIcon
+local miDragging, miDragStart, miStartPos = false, nil, nil
+miniIcon.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        miDragging = true
+        miDragStart = Vector2.new(inp.Position.X, inp.Position.Y)
+        miStartPos = miniIcon.Position
+    end
+end)
+UIS.InputChanged:Connect(function(inp)
+    if miDragging and (inp.UserInputType == Enum.UserInputType.MouseMovement
+    or inp.UserInputType == Enum.UserInputType.Touch) then
+        local d = Vector2.new(inp.Position.X, inp.Position.Y) - miDragStart
+        miniIcon.Position = UDim2.new(miStartPos.X.Scale, miStartPos.X.Offset + d.X,
+                                      miStartPos.Y.Scale, miStartPos.Y.Offset + d.Y)
+    end
+end)
+UIS.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        miDragging = false
+    end
+end)
+
+-- Toggle thu nhỏ / mở rộng
+minBtn.MouseButton1Click:Connect(function()
+    panel.Visible = false
+    miniIcon.Visible = true
+end)
+miniIcon.MouseButton1Click:Connect(function()
+    if not miDragging then
+        miniIcon.Visible = false
+        panel.Visible = true
+    end
+end)
 
 -- Tiền ở header bên phải
 local moneyLbl = Instance.new("TextLabel")
@@ -507,27 +578,60 @@ local function getSelectedTowers()
     return filtered
 end
 
--- Lấy cost từ BillboardGui "Upgrade" trên tháp (nếu có)
-local function getUpgradeCost(model)
-    for _, v in ipairs(model:GetDescendants()) do
-        if v:IsA("BillboardGui") and v.Name == "Upgrade" then
-            -- Tìm TextLabel có số tiền
-            for _, lbl in ipairs(v:GetDescendants()) do
-                if lbl:IsA("TextLabel") then
-                    local num = lbl.Text:gsub("[^%d]", "")
-                    local n = tonumber(num)
-                    if n and n > 0 then return n end
+-- Đọc giá từ Hud.Upgrade.Holder.Stats.Cost.AmountHolder.Amount
+-- Game tự set upgradeActiveObject khi đứng gần tháp (không cần click)
+local COST_CACHE = {}  -- ["TenModel_lvX"] = cost
+
+local function getUpgradeCostFromHud()
+    local ok, amount = pcall(function()
+        return LP.PlayerGui.Hud.Hud.Upgrade.Holder.Stats.Cost.AmountHolder.Amount
+    end)
+    if not ok or not amount then return nil end
+    local num = (amount.Text or ""):match("%d+")
+    return tonumber(num)
+end
+
+-- Background: cập nhật cache liên tục
+task.spawn(function()
+    while true do
+        task.wait(0.2)
+        local activeObj = LP:GetAttribute("upgradeActiveObject")
+        local visible   = LP:GetAttribute("upgradeVisible")
+        if visible and activeObj and activeObj ~= "" then
+            local cost = getUpgradeCostFromHud()
+            if cost and cost > 0 then
+                -- Tìm model đang active để lấy level
+                local myBase = getMyBase()
+                if myBase then
+                    for _, obj in ipairs(myBase:GetDescendants()) do
+                        if obj:IsA("Model") and obj.Name == tostring(activeObj) then
+                            local key = obj.Name .. "_lv" .. (getTowerLevel(obj))
+                            COST_CACHE[key] = cost
+                            break
+                        end
+                    end
                 end
             end
         end
     end
-    return 0  -- 0 = không biết cost, cứ thử
+end)
+
+local LAST_FIRE = {}
+local function canAfford(model)
+    local id = model:GetDebugId()
+    -- Tối thiểu 0.4s giữa 2 lần fire cùng tháp
+    if (os.clock() - (LAST_FIRE[id] or 0)) < 0.4 then return false end
+    local key = model.Name .. "_lv" .. getTowerLevel(model)
+    local cost = COST_CACHE[key]
+    if cost then
+        return getMoney() >= cost
+    end
+    -- Chưa cache: thử 2s/lần (tránh spam)
+    return (os.clock() - (LAST_FIRE[id] or 0)) >= 2
 end
 
-local function canAfford(model)
-    local cost = getUpgradeCost(model)
-    if cost == 0 then return true end  -- không đọc được cost thì cứ thử
-    return getMoney() >= cost
+local function recordFire(model)
+    LAST_FIRE[model:GetDebugId()] = os.clock()
 end
 
 local function doUpgradeBalanced(towers)
@@ -541,6 +645,7 @@ local function doUpgradeBalanced(towers)
         end
         if canAfford(tw) then
             UpgradeRemote:FireServer("upgrade", tw)
+            recordFire(tw)
             upgraded += 1
         else
             statusLbl.Text = "Thieu tien: " .. tw.Name .. " (lv" .. getTowerLevel(tw) .. ")"
@@ -552,6 +657,23 @@ local function doUpgradeBalanced(towers)
         AUTO_UPGRADE = false
         autoBtn.Text = "▶ AUTO UPGRADE: OFF"
         autoBtn.BackgroundColor3 = Color3.fromRGB(150,50,50)
+    elseif upgraded > 0 then
+        statusLbl.Text = "✓ Nang " .. upgraded .. " thap"
+    else
+        -- Tìm cost nhỏ nhất cần
+        local minCost = nil
+        for _, tw in ipairs(towers) do
+            if tw and tw.Parent and not isMaxLevel(tw) then
+                local key = tw.Name .. "_lv" .. getTowerLevel(tw)
+                local c = COST_CACHE[key]
+                if c and (not minCost or c < minCost) then minCost = c end
+            end
+        end
+        if minCost then
+            statusLbl.Text = "💰 Can $" .. minCost .. " | co $" .. getMoney()
+        else
+            statusLbl.Text = "⏳ Dang doc gia... ($" .. getMoney() .. ")"
+        end
     end
 end
 
@@ -580,6 +702,7 @@ local function doUpgradeFocus(towers)
             end
 
             UpgradeRemote:FireServer("upgrade", tw)
+            recordFire(tw)
             statusLbl.Text = "Focus: " .. tw.Name .. " lv" .. curLv .. " → " .. maxLv
             task.wait(0.35)
         end
