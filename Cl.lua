@@ -282,8 +282,8 @@ miStroke.Color = Color3.fromRGB(255,255,255); miStroke.Thickness = 1.5; miStroke
 -- Drag cho miniIcon
 local miDragging = false
 local miDragInput = nil
-local miDragStart = nil
-local miStartPos = nil
+local miDragStart = Vector2.zero
+local miStartPos = UDim2.new()
 
 miniIcon.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch
@@ -293,11 +293,18 @@ miniIcon.InputBegan:Connect(function(input)
 		miDragInput = input
 		miDragStart = input.Position
 		miStartPos = miniIcon.Position
+		
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				miDragging = false
+			end
+		end)
 	end
 end)
 
 UIS.InputChanged:Connect(function(input)
-	if miDragging and input == miDragInput then
+	if miDragging and input == miDragInput and input.UserInputState == Enum.UserInputState.Change then
+		
 		local delta = input.Position - miDragStart
 		
 		local newX = miStartPos.X.Offset + delta.X
@@ -310,23 +317,6 @@ UIS.InputChanged:Connect(function(input)
 		
 		miniIcon.Position = UDim2.new(0, newX, 0, newY)
 	end
-end)
-
-UIS.InputEnded:Connect(function(input)
-	if input == miDragInput then
-		miDragging = false
-		miDragInput = nil
-	end
-end)
--- Toggle thu nhỏ / mở rộng
-minBtn.MouseButton1Click:Connect(function()
-    panel.Visible = false
-    miniIcon.Visible = true
-end)
-
-miniIcon.MouseButton1Click:Connect(function()
-    miniIcon.Visible = false
-    panel.Visible = true
 end)
 -- Tiền ở header bên phải
 local moneyLbl = Instance.new("TextLabel")
@@ -346,8 +336,8 @@ end)
 -- Drag
 local dragging = false
 local dragInput = nil
-local dragStart = nil
-local startPos = nil
+local dragStart = Vector2.zero
+local startPos = UDim2.new()
 
 header.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch 
@@ -357,30 +347,29 @@ header.InputBegan:Connect(function(input)
 		dragInput = input
 		dragStart = input.Position
 		startPos = panel.Position
+		
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
 	end
 end)
 
 UIS.InputChanged:Connect(function(input)
-	if dragging and input == dragInput then
+	if dragging and input == dragInput and input.UserInputState == Enum.UserInputState.Change then
+		
 		local delta = input.Position - dragStart
 		
 		local newX = startPos.X.Offset + delta.X
 		local newY = startPos.Y.Offset + delta.Y
 		
-		-- CHẶN bay khỏi màn hình
 		local screenSize = workspace.CurrentCamera.ViewportSize
 		
 		newX = math.clamp(newX, -panel.AbsoluteSize.X + 40, screenSize.X - 40)
 		newY = math.clamp(newY, 0, screenSize.Y - 40)
 		
 		panel.Position = UDim2.new(0, newX, 0, newY)
-	end
-end)
-
-UIS.InputEnded:Connect(function(input)
-	if input == dragInput then
-		dragging = false
-		dragInput = nil
 	end
 end)
 -- Helper button
