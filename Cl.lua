@@ -147,16 +147,28 @@ local function getAllTowers(base)
     local list = {}
 
     for _, obj in ipairs(base:GetDescendants()) do
-        if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") then
-            local key = obj:GetDebugId()
+        if obj:IsA("Model") then
 
-            table.insert(list, {
-                model = obj,
-                key = key,
-                displayName = obj.Name
-            })
+            -- Bỏ qua model con không phải tower
+            if obj.Parent and obj.Parent.Name == "Tiles" then
+                continue
+            end
+
+            -- Loại mấy model linh tinh không có level
+            if obj:GetAttribute("level") ~= nil 
+            or obj:GetAttribute("Level") ~= nil then
+
+                local key = obj:GetDebugId()
+
+                table.insert(list, {
+                    model = obj,
+                    key = key,
+                    displayName = obj.Name
+                })
+            end
         end
     end
+
     return list
 end
 -- ============================================================
