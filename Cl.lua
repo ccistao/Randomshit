@@ -136,22 +136,39 @@ local DISPLAY_NAMES = {}  -- [modelName] = displayName
 task.spawn(function()
     while true do
         task.wait(0.3)
+
         local activeObj = LP:GetAttribute("upgradeActiveObject")
+
         if activeObj and activeObj ~= "" then
+
             local ok, titleLbl = pcall(function()
                 return LP.PlayerGui.Hud.Hud.Upgrade.Holder.Info.Title
             end)
+
             if ok and titleLbl and titleLbl.Text ~= "" then
-                DISPLAY_NAMES[tostring(activeObj)] = titleLbl.Text
+
+                local myBase = getMyBase()
+                if myBase then
+
+                    for _, obj in ipairs(myBase:GetDescendants()) do
+                        if obj:IsA("Model") and obj.Name == tostring(activeObj) then
+                            
+                            -- 🔥 Lưu theo DebugId (không trùng)
+                            DISPLAY_NAMES[obj:GetDebugId()] = titleLbl.Text
+                            
+                            break
+                        end
+                    end
+
+                end
             end
         end
     end
 end)
 
 local function getTowerDisplayName(model)
-    return DISPLAY_NAMES[model.Name] or model.Name
+    return DISPLAY_NAMES[model:GetDebugId()] or model.Name
 end
-
 -- Trả về list {model, key} của tất cả tháp trên base
 local function getAllTowers(base)
     local list = {}
