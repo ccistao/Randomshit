@@ -166,12 +166,22 @@ task.spawn(function()
     end
 end)
 local function getTowerDisplayName(model)
+
+    if not model or not model.Name then
+        return "Unknown"
+    end
+
+    -- Farm3 đổi cứng
     if model.Name == "Farm3" then
         return "Money Printer"
-	end
-    if ID_TO_NAME[model.Name] then
+    end
+
+    -- Nếu tồn tại trong hotbar
+    if ID_TO_NAME and ID_TO_NAME[model.Name] then
         return ID_TO_NAME[model.Name]
-	end
+    end
+
+    -- Các object có sẵn như Door
     return model.Name
 end
 -- Trả về list {model, key} của tất cả tháp trên base
