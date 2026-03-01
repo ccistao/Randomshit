@@ -344,9 +344,14 @@ local statusLbl = makeLbl(panel, "San sang", 312, 234, 100, 20, Color3.fromRGB(1
 -- LOGIC TÍCH CHỌN
 -- ============================================================
 local function rebuildCheckboxes()
-    -- Xoá cũ nhưng GIỮ NGUYÊN trạng thái SELECTED
+
+    towerCache = towerCache or {}
+
+    -- Xoá UI cũ
     for _, c in ipairs(scrollFrame:GetChildren()) do
-        if c:IsA("Frame") then c:Destroy() end
+        if c:IsA("Frame") then
+            c:Destroy()
+        end
     end
     checkboxBtns = {}
 
@@ -356,6 +361,10 @@ local function rebuildCheckboxes()
         return
     end
 
+    -- 🔥 QUAN TRỌNG: tạo newCache ở đây
+    local newCache = getAllTowers(base) or {}
+
+    -- Thêm tower mới vào cache (không reset cái cũ)
     for _, info in ipairs(newCache) do
         local exists = false
 
@@ -371,20 +380,6 @@ local function rebuildCheckboxes()
         end
     end
 
-    -- Chỉ rebuild nếu số tháp thay đổi (tránh flicker)
-    if #newCache == #towerCache then
-        -- Kiểm tra có tháp mới không
-        local same = true
-        for i, info in ipairs(newCache) do
-            if not towerCache[i] or towerCache[i].key ~= info.key then
-                same = false; break
-            end
-        end
-        if same then return end
-    end
-
-    towerCache = newCache
-
     if #towerCache == 0 then
         statusLbl.Text = "Base chua co thap nao"
         return
@@ -392,6 +387,7 @@ local function rebuildCheckboxes()
 
     statusLbl.Text = #towerCache .. " thap"
 
+    -- Build UI
     for _, info in ipairs(towerCache) do
         local row = Instance.new("Frame")
         row.Size = UDim2.new(1,-4,0,28)
@@ -399,30 +395,32 @@ local function rebuildCheckboxes()
         row.BorderSizePixel = 0
         row.Parent = scrollFrame
 
-        -- Checkbox button
         local cb = Instance.new("TextButton")
         cb.Size = UDim2.new(0,20,0,20)
         cb.Position = UDim2.new(0,4,0.5,-10)
         cb.BackgroundColor3 = SELECTED[info.key] and Color3.fromRGB(22,163,74) or Color3.fromRGB(50,50,70)
         cb.Text = SELECTED[info.key] and "✔" or ""
         cb.TextColor3 = Color3.fromRGB(255,255,255)
-        cb.TextSize = 12; cb.Font = Enum.Font.GothamBold
-        cb.BorderSizePixel = 0; cb.AutoButtonColor = false
+        cb.TextSize = 12
+        cb.Font = Enum.Font.GothamBold
+        cb.BorderSizePixel = 0
+        cb.AutoButtonColor = false
         cb.Parent = row
         Instance.new("UICorner", cb).CornerRadius = UDim.new(0,5)
 
-        -- Label tên tháp
         local lbl = Instance.new("TextLabel")
         lbl.Size = UDim2.new(1,-30,1,0)
         lbl.Position = UDim2.new(0,28,0,0)
         lbl.BackgroundTransparency = 1
         lbl.Text = info.displayName
         lbl.TextColor3 = Color3.fromRGB(210,210,210)
-        lbl.TextSize = 11; lbl.Font = Enum.Font.Gotham
+        lbl.TextSize = 11
+        lbl.Font = Enum.Font.Gotham
         lbl.TextXAlignment = Enum.TextXAlignment.Left
         lbl.Parent = row
 
         local key = info.key
+
         cb.MouseButton1Click:Connect(function()
             SELECTED[key] = not SELECTED[key]
             cb.Text = SELECTED[key] and "✔" or ""
