@@ -280,52 +280,45 @@ local miStroke = Instance.new("UIStroke", miniIcon)
 miStroke.Color = Color3.fromRGB(255,255,255); miStroke.Thickness = 1.5; miStroke.Transparency = 0.5
 
 -- Drag cho miniIcon
-local miDragging = false
-local miDragInput
-local miDragStart
-local miStartPos
-local DRAG_THRESHOLD = 5
+local draggingMini = false
+local miniStartPos
+local miniDragStart
 
 miniIcon.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch
 	or input.UserInputType == Enum.UserInputType.MouseButton1 then
 		
-		miDragInput = input
-		miDragStart = input.Position
-		miStartPos = miniIcon.Position
-		miDragging = false
-		
-		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then
-				miDragInput = nil
-				miDragging = false
-			end
-		end)
+		miniDragStart = input.Position
+		miniStartPos = miniIcon.Position
+		draggingMini = false
 	end
 end)
 
+miniIcon.InputEnded:Connect(function()
+	draggingMini = false
+end)
+
 UIS.InputChanged:Connect(function(input)
-	if input == miDragInput 
-	and miDragInput 
-	and input.UserInputState == Enum.UserInputState.Change then
+	if miniDragStart and miniStartPos then
 		
-		local delta = input.Position - miDragStart
+		local delta = input.Position - miniDragStart
 		
-		if not miDragging then
+		if not draggingMini then
 			if delta.Magnitude > DRAG_THRESHOLD then
-				miDragging = true
+				draggingMini = true
 			else
 				return
 			end
 		end
 		
-		local newX = miStartPos.X.Offset + delta.X
-		local newY = miStartPos.Y.Offset + delta.Y
+		local screen = workspace.CurrentCamera.ViewportSize
+		local size = miniIcon.AbsoluteSize
 		
-		local screenSize = workspace.CurrentCamera.ViewportSize
+		local newX = miniStartPos.X.Offset + delta.X
+		local newY = miniStartPos.Y.Offset + delta.Y
 		
-		newX = math.clamp(newX, 0, screenSize.X - miniIcon.AbsoluteSize.X)
-		newY = math.clamp(newY, 0, screenSize.Y - miniIcon.AbsoluteSize.Y)
+		newX = math.clamp(newX, 0, screen.X - size.X)
+		newY = math.clamp(newY, 0, screen.Y - size.Y)
 		
 		miniIcon.Position = UDim2.new(0, newX, 0, newY)
 	end
@@ -346,52 +339,48 @@ task.spawn(function()
 end)
 
 -- Drag
-local dragging = false
-local dragInput = nil
-local dragStart
-local startPos
-local DRAG_THRESHOLD = 5
+local UIS = game:GetService("UserInputService")
+
+local draggingPanel = false
+local panelStartPos
+local dragStartPos
+local DRAG_THRESHOLD = 6
 
 header.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch
 	or input.UserInputType == Enum.UserInputType.MouseButton1 then
 		
-		dragInput = input
-		dragStart = input.Position
-		startPos = panel.Position
-		dragging = false
-		
-		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then
-				dragInput = nil
-				dragging = false
-			end
-		end)
+		dragStartPos = input.Position
+		panelStartPos = panel.Position
+		draggingPanel = false
 	end
 end)
 
+header.InputEnded:Connect(function()
+	draggingPanel = false
+end)
+
 UIS.InputChanged:Connect(function(input)
-	if input == dragInput 
-	and dragInput 
-	and input.UserInputState == Enum.UserInputState.Change then
+	if dragStartPos and panelStartPos then
 		
-		local delta = input.Position - dragStart
+		local delta = input.Position - dragStartPos
 		
-		if not dragging then
+		if not draggingPanel then
 			if delta.Magnitude > DRAG_THRESHOLD then
-				dragging = true
+				draggingPanel = true
 			else
 				return
 			end
 		end
 		
-		local newX = startPos.X.Offset + delta.X
-		local newY = startPos.Y.Offset + delta.Y
+		local screen = workspace.CurrentCamera.ViewportSize
+		local size = panel.AbsoluteSize
 		
-		local screenSize = workspace.CurrentCamera.ViewportSize
+		local newX = panelStartPos.X.Offset + delta.X
+		local newY = panelStartPos.Y.Offset + delta.Y
 		
-		newX = math.clamp(newX, -panel.AbsoluteSize.X + 40, screenSize.X - 40)
-		newY = math.clamp(newY, 0, screenSize.Y - 40)
+		newX = math.clamp(newX, 0, screen.X - size.X)
+		newY = math.clamp(newY, 0, screen.Y - size.Y)
 		
 		panel.Position = UDim2.new(0, newX, 0, newY)
 	end
