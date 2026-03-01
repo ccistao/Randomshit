@@ -281,21 +281,23 @@ miStroke.Color = Color3.fromRGB(255,255,255); miStroke.Thickness = 1.5; miStroke
 
 -- Drag cho miniIcon
 local miDragging = false
-local miDragInput = nil
-local miDragStart = Vector2.zero
-local miStartPos = UDim2.new()
+local miDragInput
+local miDragStart
+local miStartPos
+local DRAG_THRESHOLD = 5
 
 miniIcon.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch
 	or input.UserInputType == Enum.UserInputType.MouseButton1 then
 		
-		miDragging = true
 		miDragInput = input
 		miDragStart = input.Position
 		miStartPos = miniIcon.Position
+		miDragging = false
 		
 		input.Changed:Connect(function()
 			if input.UserInputState == Enum.UserInputState.End then
+				miDragInput = nil
 				miDragging = false
 			end
 		end)
@@ -303,9 +305,17 @@ miniIcon.InputBegan:Connect(function(input)
 end)
 
 UIS.InputChanged:Connect(function(input)
-	if miDragging and input == miDragInput and input.UserInputState == Enum.UserInputState.Change then
+	if input == miDragInput and miDragInput then
 		
 		local delta = input.Position - miDragStart
+		
+		if not miDragging then
+			if delta.Magnitude > DRAG_THRESHOLD then
+				miDragging = true
+			else
+				return
+			end
+		end
 		
 		local newX = miStartPos.X.Offset + delta.X
 		local newY = miStartPos.Y.Offset + delta.Y
@@ -336,20 +346,22 @@ end)
 -- Drag
 local dragging = false
 local dragInput = nil
-local dragStart = Vector2.zero
-local startPos = UDim2.new()
+local dragStart
+local startPos
+local DRAG_THRESHOLD = 5
 
 header.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.Touch 
+	if input.UserInputType == Enum.UserInputType.Touch
 	or input.UserInputType == Enum.UserInputType.MouseButton1 then
 		
-		dragging = true
 		dragInput = input
 		dragStart = input.Position
 		startPos = panel.Position
+		dragging = false
 		
 		input.Changed:Connect(function()
 			if input.UserInputState == Enum.UserInputState.End then
+				dragInput = nil
 				dragging = false
 			end
 		end)
@@ -357,9 +369,17 @@ header.InputBegan:Connect(function(input)
 end)
 
 UIS.InputChanged:Connect(function(input)
-	if dragging and input == dragInput and input.UserInputState == Enum.UserInputState.Change then
+	if input == dragInput and dragInput then
 		
 		local delta = input.Position - dragStart
+		
+		if not dragging then
+			if delta.Magnitude > DRAG_THRESHOLD then
+				dragging = true
+			else
+				return
+			end
+		end
 		
 		local newX = startPos.X.Offset + delta.X
 		local newY = startPos.Y.Offset + delta.Y
