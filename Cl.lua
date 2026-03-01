@@ -165,9 +165,9 @@ task.spawn(function()
         end
     end
 end)
-
 local function getTowerDisplayName(model)
-    return DISPLAY_NAMES[model:GetDebugId()] or model.Name
+    local cleanId = model.Name:gsub("%d+$", "")
+    return ID_TO_NAME[cleanId] or cleanId
 end
 -- Trả về list {model, key} của tất cả tháp trên base
 local function getAllTowers(base)
