@@ -172,23 +172,22 @@ task.spawn(function()
     end
 end)
 local function getTowerDisplayName(model)
-
-    if not model or not model.Name then
+    if not model then
         return "Unknown"
     end
 
-    -- Farm3 đổi cứng
-    if model.Name == "Farm3" then
-        return "Money Printer"
+    local attrName = model:GetAttribute("DisplayName")
+    if attrName and attrName ~= "" then
+        return attrName
     end
 
-    -- Nếu tồn tại trong hotbar
-    if ID_TO_NAME and ID_TO_NAME[model.Name] then
-        return ID_TO_NAME[model.Name]
+    local cleanName = model.Name:match("^[^_]+") or model.Name
+
+    if ID_TO_NAME and ID_TO_NAME[cleanName] then
+        return ID_TO_NAME[cleanName]
     end
 
-    -- Các object có sẵn như Door
-    return model.Name
+    return cleanName
 end
 -- Trả về list {model, key} của tất cả tháp trên base
 local function getAllTowers(base)
