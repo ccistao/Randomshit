@@ -176,6 +176,10 @@ local function getTowerDisplayName(model)
         return "Unknown"
     end
 
+    if model.Name == "Farm3" then
+        return "Money Printer"
+    end
+
     local attrName = model:GetAttribute("DisplayName")
     if attrName and attrName ~= "" then
         return attrName
