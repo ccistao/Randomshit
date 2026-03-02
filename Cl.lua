@@ -279,7 +279,7 @@ local miStroke = Instance.new("UIStroke", miniIcon)
 miStroke.Color = Color3.fromRGB(255,255,255); miStroke.Thickness = 1.5; miStroke.Transparency = 0.5
 
 -- Drag cho miniIcon
-llocal miDragging, miDragStart, miStartPos = false, nil, nil
+local miDragging, miDragStart, miStartPos = false, nil, nil
 miniIcon.InputBegan:Connect(function(inp)
     if inp.UserInputType == Enum.UserInputType.MouseButton1
     or inp.UserInputType == Enum.UserInputType.Touch then
