@@ -103,7 +103,6 @@ end
 local BUY_TOWERS = scanHotbarTowers()
 
 local AUTO_UPGRADE  = false
-local MODE          = "Balanced"   -- "Balanced" or "Focus" 
 local SELECTED      = {}           -- [modelName_tileIndex] = true
 local UPGRADE_DELAY = 0.8
 local checkboxBtns  = {}           -- ref để update UI
@@ -293,20 +292,21 @@ Instance.new("UICorner", miniIcon).CornerRadius = UDim.new(0,12)
 local miStroke = Instance.new("UIStroke", miniIcon)
 miStroke.Color = Color3.fromRGB(255,255,255); miStroke.Thickness = 1.5; miStroke.Transparency = 0.5
 
-local miActiveInput = nil
+local miDragging = false
 local miDragStart, miStartPos, miMoved = nil, nil, false
 
 miniIcon.InputBegan:Connect(function(inp)
-    if miActiveInput then return end
     if inp.UserInputType ~= Enum.UserInputType.MouseButton1
     and inp.UserInputType ~= Enum.UserInputType.Touch then return end
-    miActiveInput = inp
+    miDragging = true
     miDragStart = Vector2.new(inp.Position.X, inp.Position.Y)
     miStartPos = miniIcon.Position
     miMoved = false
 end)
 UIS.InputChanged:Connect(function(inp)
-    if inp ~= miActiveInput then return end
+    if not miDragging then return end
+    if inp.UserInputType ~= Enum.UserInputType.MouseMovement
+    and inp.UserInputType ~= Enum.UserInputType.Touch then return end
     local d = Vector2.new(inp.Position.X, inp.Position.Y) - miDragStart
     if d.Magnitude >= 5 then
         miMoved = true
@@ -315,12 +315,13 @@ UIS.InputChanged:Connect(function(inp)
     end
 end)
 UIS.InputEnded:Connect(function(inp)
-    if inp ~= miActiveInput then return end
-    if not miMoved then
+    if inp.UserInputType ~= Enum.UserInputType.MouseButton1
+    and inp.UserInputType ~= Enum.UserInputType.Touch then return end
+    if miDragging and not miMoved then
         panel.Visible = true
         miniIcon.Visible = false
     end
-    miActiveInput = nil
+    miDragging = false
 end)
 
 minBtn.MouseButton1Click:Connect(function()
@@ -472,7 +473,6 @@ Instance.new("UIPadding", scrollFrame).PaddingTop = UDim.new(0,3)
 local scanBtn    = makeBtn(panel, "Auto Repair: ON", Color3.fromRGB(22,163,74),  214, 170, 94, 26)
 local selAllBtn  = makeBtn(panel, "Select all",  Color3.fromRGB(55,65,81),   312, 170, 98, 26)
 
-local modeBtn = makeBtn(panel, "Balanced", Color3.fromRGB(14,116,144), 214, 200, 94, 26)
 local autoBtn = makeBtn(panel, "AUTO: OFF", Color3.fromRGB(150,50,50),  312, 200, 98, 26)
 
 local manualBtn = makeBtn(panel, "Upgrade x1", Color3.fromRGB(79,70,229), 214, 230, 94, 26)
@@ -630,16 +630,6 @@ selAllBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-modeBtn.MouseButton1Click:Connect(function()
-    MODE = MODE == "Balanced" and "Focus" or "Balanced"
-    if MODE == "Balanced" then
-        modeBtn.Text = "BALANCED"
-        modeBtn.BackgroundColor3 = Color3.fromRGB(14,116,144)
-    else
-        modeBtn.Text = "FOCUS"
-        modeBtn.BackgroundColor3 = Color3.fromRGB(124,58,237)
-    end
-end)
 
 autoBtn.MouseButton1Click:Connect(function()
     AUTO_UPGRADE = not AUTO_UPGRADE
@@ -757,31 +747,6 @@ local function doUpgradeBalanced(towers)
     end
 end
 
-local function doUpgradeFocus(towers)
-    for _, tw in ipairs(towers) do
-        if tw and tw.Parent then
-        local maxLv = getMaxLevel(tw)
-
-        while AUTO_UPGRADE do
-            if not tw or not tw.Parent then break end
-
-            local curLv = getTowerLevel(tw)
-            if curLv >= maxLv then
-                statusLbl.Text = tw.Name .. " MAX (lv" .. curLv .. ") -> next"
-                task.wait(0.3)
-                break
-            end
-
-            if not canAfford(tw) then
-                statusLbl.Text = "Waiting $: " .. tw.Name .. " lv" .. curLv .. "/" .. maxLv
-                task.wait(0.5)
-            else
-                UpgradeRemote:FireServer("upgrade", tw)
-                recordFire(tw)
-                statusLbl.Text = "Focus: " .. tw.Name .. " lv" .. curLv .. " -> " .. maxLv
-                task.wait(0.35)
-            end
-        end
         end
     end
 
@@ -807,12 +772,8 @@ task.spawn(function()
             local towers = getSelectedTowers()
             if #towers == 0 then
                 statusLbl.Text = "No towers scanned"
-            elseif MODE == "Balanced" then
-                doUpgradeBalanced(towers)
-                statusLbl.Text = "Balanced: " .. #towers .. " towers"
             else
-                doUpgradeFocus(towers)
-                statusLbl.Text = "Focus: " .. #towers .. " towers"
+                doUpgradeBalanced(towers)
             end
         end
     end
@@ -820,4 +781,3 @@ end)
 
 task.delay(1, rebuildCheckboxes)
 print("[TowerV10] Running!")
-print("da update")
