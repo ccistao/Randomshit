@@ -293,28 +293,34 @@ Instance.new("UICorner", miniIcon).CornerRadius = UDim.new(0,12)
 local miStroke = Instance.new("UIStroke", miniIcon)
 miStroke.Color = Color3.fromRGB(255,255,255); miStroke.Thickness = 1.5; miStroke.Transparency = 0.5
 
-local miDragging, miDragStart, miStartPos = false, nil, nil
+local miActiveInput = nil
+local miDragStart, miStartPos, miMoved = nil, nil, false
+
 miniIcon.InputBegan:Connect(function(inp)
-    if inp.UserInputType == Enum.UserInputType.MouseButton1
-    or inp.UserInputType == Enum.UserInputType.Touch then
-        miDragging = true
-        miDragStart = Vector2.new(inp.Position.X, inp.Position.Y)
-        miStartPos = miniIcon.Position
-    end
+    if miActiveInput then return end
+    if inp.UserInputType ~= Enum.UserInputType.MouseButton1
+    and inp.UserInputType ~= Enum.UserInputType.Touch then return end
+    miActiveInput = inp
+    miDragStart = Vector2.new(inp.Position.X, inp.Position.Y)
+    miStartPos = miniIcon.Position
+    miMoved = false
 end)
 UIS.InputChanged:Connect(function(inp)
-    if miDragging and (inp.UserInputType == Enum.UserInputType.MouseMovement
-    or inp.UserInputType == Enum.UserInputType.Touch) then
-        local d = Vector2.new(inp.Position.X, inp.Position.Y) - miDragStart
+    if inp ~= miActiveInput then return end
+    local d = Vector2.new(inp.Position.X, inp.Position.Y) - miDragStart
+    if d.Magnitude >= 5 then
+        miMoved = true
         miniIcon.Position = UDim2.new(miStartPos.X.Scale, miStartPos.X.Offset + d.X,
                                       miStartPos.Y.Scale, miStartPos.Y.Offset + d.Y)
     end
 end)
 UIS.InputEnded:Connect(function(inp)
-    if inp.UserInputType == Enum.UserInputType.MouseButton1
-    or inp.UserInputType == Enum.UserInputType.Touch then
-        miDragging = false
+    if inp ~= miActiveInput then return end
+    if not miMoved then
+        panel.Visible = true
+        miniIcon.Visible = false
     end
+    miActiveInput = nil
 end)
 
 minBtn.MouseButton1Click:Connect(function()
@@ -322,12 +328,20 @@ minBtn.MouseButton1Click:Connect(function()
     miniIcon.Visible = true
 end)
 
-miniIcon.MouseButton1Click:Connect(function()
-    panel.Visible = true
-    miniIcon.Visible = false
+UIS.InputBegan:Connect(function(inp, gp)
+    if gp then return end
+    if inp.KeyCode == Enum.KeyCode.T then
+        if panel.Visible then
+            panel.Visible = false
+            miniIcon.Visible = true
+        else
+            panel.Visible = true
+            miniIcon.Visible = false
+        end
+    end
 end)
 local moneyLbl = Instance.new("TextLabel")
-moneyLbl.Size = UDim2.new(0,140,1,0); moneyLbl.Position = UDim2.new(1,-148,0,0)
+moneyLbl.Size = UDim2.new(0,140,1,0); moneyLbl.Position = UDim2.new(1,-174,0,0)
 moneyLbl.BackgroundTransparency = 1; moneyLbl.Text = "$ ---"
 moneyLbl.TextColor3 = Color3.fromRGB(250,204,21); moneyLbl.TextSize = 12
 moneyLbl.Font = Enum.Font.GothamBold; moneyLbl.TextXAlignment = Enum.TextXAlignment.Right
@@ -566,41 +580,40 @@ task.spawn(function()
 end)
 
 task.spawn(function()
+    local wasLow2 = false
+    local repairCount = 0
+    local lastFire = 0
     while panel.Parent do
         task.wait(0.1)
+        local hp = getDoorHp()
         if hp then
             local pct = math.floor(hp * 100)
-            local col = hp > HP_THRESHOLD and Color3.fromRGB(134,239,172) or Color3.fromRGB(239,68,68)
             doorHpLbl.Text = "Door: " .. pct .. "%"
-            doorHpLbl.TextColor3 = col
+            doorHpLbl.TextColor3 = hp > HP_THRESHOLD and Color3.fromRGB(134,239,172) or Color3.fromRGB(239,68,68)
+            if hp >= HP_RESET and wasLow2 then
+                wasLow2 = false
+                repairCount = 0
+            end
+            if AUTO_REPAIR and hp <= HP_THRESHOLD then
+                wasLow2 = true
+                local now = tick()
+                local cooldownOk = (now - lastFire) >= 0.8
+                if repairCount >= MAX_REPAIRS and isRepairReady() and cooldownOk then
+                    repairCount = 0
+                end
+                if repairCount < MAX_REPAIRS and isRepairReady() and cooldownOk then
+                    local remote = RepairRemote or Remotes:FindFirstChild("Base")
+                    if remote then
+                        remote:FireServer("repair")
+                        lastFire = now
+                        repairCount += 1
+                        statusLbl.Text = "Repaired! HP:" .. pct .. "% (" .. repairCount .. "/" .. MAX_REPAIRS .. ")"
+                    end
+                end
+            end
         else
             doorHpLbl.Text = "Door: ---"
         end
-        repeat
-        if not AUTO_REPAIR then break end
-        if hp == nil then break end
-        if hp >= HP_RESET and wasLow then
-            wasLow = false
-            repairThisRound = 0
-        end
-        if hp > HP_THRESHOLD then break end
-        wasLow = true
-        local now = tick()
-        local hardReady = (now - lastFireTime) >= 0.8
-        if repairThisRound >= MAX_REPAIRS and isRepairReady() and hardReady then
-            repairThisRound = 0
-        end
-        if repairThisRound >= MAX_REPAIRS then break end
-        if not isRepairReady() then break end
-        if not hardReady then break end
-        local remote = RepairRemote or Remotes:FindFirstChild("Base")
-        if remote then
-            remote:FireServer("repair")
-            lastFireTime = now
-            repairThisRound += 1
-            statusLbl.Text = "Repaired! HP:" .. math.floor(hp*100) .. "% (" .. repairThisRound .. "/" .. MAX_REPAIRS .. ")"
-        end
-        until true
     end
 end)
 
@@ -807,3 +820,4 @@ end)
 
 task.delay(1, rebuildCheckboxes)
 print("[TowerV10] Running!")
+print("da update")
