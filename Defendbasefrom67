@@ -109,7 +109,7 @@ local UPGRADE_DELAY = 0.8
 local checkboxBtns  = {}           -- ref để update UI
 local towerCache = {}
 local function getMoney()
-    return LP:GetAttribute("money") or 0
+    return LP:GetAttribute("currency") or 0
 end
 
 local function getTowerLevel(model)
@@ -335,7 +335,7 @@ moneyLbl.Parent = header
 
 task.spawn(function()
     while panel.Parent do
-        moneyLbl.Text = "$ " .. tostring(getMoney())
+        moneyLbl.Text = "$ " .. tostring(LP:GetAttribute("currency") or 0)
         task.wait(0.3)
     end
 end)
@@ -407,20 +407,13 @@ local function makeStatRow(y, icon, label, ic)
     return v
 end
 
-local moneyV = makeStatRow(78,  "$", "Money",   Color3.fromRGB(79,70,229))
-local hpV    = makeStatRow(108, "H", "Door HP", Color3.fromRGB(220,50,50))
-local towerV = makeStatRow(138, "T", "Towers",  Color3.fromRGB(124,58,237))
+local towerV = makeStatRow(48,  "T", "Towers",  Color3.fromRGB(124,58,237))
 
 task.spawn(function()
     while panel.Parent do
         task.wait(0.5)
-        moneyV.Text = "$"..tostring(LP:GetAttribute("money") or 0)
-        local hp = getDoorHp()
         if hp then
-            hpV.Text = math.floor(hp*100).."%"
-            hpV.TextColor3 = hp > 0.82 and Color3.fromRGB(134,239,172) or Color3.fromRGB(239,68,68)
         else
-            hpV.Text = "-"
         end
         local base = getMyBase()
         if base then
@@ -575,7 +568,6 @@ end)
 task.spawn(function()
     while panel.Parent do
         task.wait(0.1)
-        local hp = getDoorHp()
         if hp then
             local pct = math.floor(hp * 100)
             local col = hp > HP_THRESHOLD and Color3.fromRGB(134,239,172) or Color3.fromRGB(239,68,68)
