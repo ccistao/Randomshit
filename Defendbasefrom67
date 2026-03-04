@@ -292,36 +292,38 @@ Instance.new("UICorner", miniIcon).CornerRadius = UDim.new(0,12)
 local miStroke = Instance.new("UIStroke", miniIcon)
 miStroke.Color = Color3.fromRGB(255,255,255); miStroke.Thickness = 1.5; miStroke.Transparency = 0.5
 
-local miDragging = false
-local miDragStart, miStartPos, miMoved = nil, nil, false
+local miTracked = nil
+local miDragStart, miStartPos, miMoved, miPressTime = nil, nil, false, 0
 
 miniIcon.InputBegan:Connect(function(inp)
+    if miTracked then return end
     if inp.UserInputType ~= Enum.UserInputType.MouseButton1
     and inp.UserInputType ~= Enum.UserInputType.Touch then return end
-    miDragging = true
+    miTracked = inp
     miDragStart = Vector2.new(inp.Position.X, inp.Position.Y)
     miStartPos = miniIcon.Position
     miMoved = false
+    miPressTime = tick()
 end)
 UIS.InputChanged:Connect(function(inp)
-    if not miDragging then return end
-    if inp.UserInputType ~= Enum.UserInputType.MouseMovement
-    and inp.UserInputType ~= Enum.UserInputType.Touch then return end
+    if inp ~= miTracked then return end
     local d = Vector2.new(inp.Position.X, inp.Position.Y) - miDragStart
-    if d.Magnitude >= 5 then
+    if d.Magnitude >= 12 then
         miMoved = true
         miniIcon.Position = UDim2.new(miStartPos.X.Scale, miStartPos.X.Offset + d.X,
                                       miStartPos.Y.Scale, miStartPos.Y.Offset + d.Y)
     end
 end)
 UIS.InputEnded:Connect(function(inp)
-    if inp.UserInputType ~= Enum.UserInputType.MouseButton1
-    and inp.UserInputType ~= Enum.UserInputType.Touch then return end
-    if miDragging and not miMoved then
+    if inp ~= miTracked then return end
+    local holdTime = tick() - miPressTime
+    local finalPos = Vector2.new(inp.Position.X, inp.Position.Y)
+    local dist = (finalPos - miDragStart).Magnitude
+    if not miMoved and dist < 12 and holdTime < 0.4 then
         panel.Visible = true
         miniIcon.Visible = false
     end
-    miDragging = false
+    miTracked = nil
 end)
 
 minBtn.MouseButton1Click:Connect(function()
@@ -355,26 +357,26 @@ task.spawn(function()
     end
 end)
 
-local dragging, dragStart, startPos = false, nil, nil
+local panelTracked = nil
+local dragStart, startPos = nil, nil
+
 header.InputBegan:Connect(function(inp)
-    if inp.UserInputType == Enum.UserInputType.MouseButton1
-    or inp.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = Vector2.new(inp.Position.X, inp.Position.Y)
-        startPos = panel.Position
-    end
+    if panelTracked then return end
+    if inp.UserInputType ~= Enum.UserInputType.MouseButton1
+    and inp.UserInputType ~= Enum.UserInputType.Touch then return end
+    panelTracked = inp
+    dragStart = Vector2.new(inp.Position.X, inp.Position.Y)
+    startPos = panel.Position
 end)
 UIS.InputChanged:Connect(function(inp)
-    if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement
-    or inp.UserInputType == Enum.UserInputType.Touch) then
-        local d = Vector2.new(inp.Position.X, inp.Position.Y) - dragStart
-        panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X,
-                                    startPos.Y.Scale, startPos.Y.Offset + d.Y)
-    end
+    if inp ~= panelTracked then return end
+    local d = Vector2.new(inp.Position.X, inp.Position.Y) - dragStart
+    panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X,
+                                startPos.Y.Scale, startPos.Y.Offset + d.Y)
 end)
 UIS.InputEnded:Connect(function(inp)
-    if inp.UserInputType == Enum.UserInputType.MouseButton1
-    or inp.UserInputType == Enum.UserInputType.Touch then dragging = false end
+    if inp ~= panelTracked then return end
+    panelTracked = nil
 end)
 local function makeBtn(parent, text, color, x, y, w, h)
     h = h or 30; w = w or 120
@@ -744,17 +746,6 @@ local function doUpgradeBalanced(towers)
         else
             statusLbl.Text = "Reading cost... ($" .. getMoney() .. ")"
         end
-    end
-end
-
-        end
-    end
-
-    if AUTO_UPGRADE then
-        statusLbl.Text = "All MAX! Auto off"
-        AUTO_UPGRADE = false
-        autoBtn.Text = "AUTO: OFF"
-        autoBtn.BackgroundColor3 = Color3.fromRGB(150,50,50)
     end
 end
 
