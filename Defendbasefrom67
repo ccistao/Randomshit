@@ -40,7 +40,7 @@ hpatch.BackgroundColor3 = Color3.fromRGB(99,102,241); hpatch.BorderSizePixel = 0
 local hTitle = Instance.new("TextLabel")
 hTitle.Size = UDim2.new(0,200,1,0); hTitle.Position = UDim2.new(0,8,0,0)
 hTitle.BackgroundTransparency = 1
-hTitle.Text = IS_LOBBY and "AUTO SPIN V10" or "AUTO TOWER V10"
+hTitle.Text = IS_LOBBY and "AUTO SPIN V1" or "AUTO TOWER V1"
 hTitle.TextColor3 = Color3.fromRGB(255,255,255); hTitle.TextSize = 12
 hTitle.Font = Enum.Font.GothamBold; hTitle.TextXAlignment = Enum.TextXAlignment.Left
 hTitle.Parent = header
@@ -162,15 +162,64 @@ end
 
 -- ==================== LOBBY MODE ====================
 if IS_LOBBY then
+    panel.Size = UDim2.new(0, 420, 0, 280)
+
     local Spin = RS:WaitForChild("Remotes", 10)
     Spin = Spin and Spin:FindFirstChild("Spin")
 
-    local AUTO_SPIN = false
-    local spinStatusLbl = makeLbl(panel, "Spins: ---", 8, 50, 200, 20, Color3.fromRGB(250,204,21), 13)
-    local timerLbl      = makeLbl(panel, "Next spin: ---", 8, 76, 300, 16, Color3.fromRGB(148,163,184), 11)
-    local logLbl        = makeLbl(panel, "Status: idle", 8, 100, 400, 16, Color3.fromRGB(134,239,172), 11)
+    -- ---- LEFT: controls ----
+    makeLbl(panel, "AUTO SPIN", 8, 30, 190, 14, Color3.fromRGB(148,163,184), 10)
+    local spinStatusLbl = makeLbl(panel, "Spins: ---",    8,  50, 190, 18, Color3.fromRGB(250,204,21), 13)
+    local timerLbl      = makeLbl(panel, "Next: ---",     8,  72, 190, 14, Color3.fromRGB(148,163,184), 10)
+    local statusLbl     = makeLbl(panel, "Idle",          8,  90, 190, 14, Color3.fromRGB(134,239,172), 10)
+    local spinBtn       = makeBtn(panel, "AUTO SPIN: OFF", Color3.fromRGB(150,50,50), 8, 112, 190, 34)
+    local totalMoneyLbl = makeLbl(panel, "Money:  +0",    8, 156, 190, 14, Color3.fromRGB(250,204,21), 10)
+    local totalGemsLbl  = makeLbl(panel, "Gems:   +0",    8, 174, 190, 14, Color3.fromRGB(134,239,172), 10)
+    local totalSpinsLbl = makeLbl(panel, "Spins won: 0",  8, 192, 190, 14, Color3.fromRGB(99,102,241),  10)
+    local spinCountLbl  = makeLbl(panel, "Total spins: 0", 8, 210, 190, 14, Color3.fromRGB(148,163,184), 10)
 
-    local spinBtn = makeBtn(panel, "AUTO SPIN: OFF", Color3.fromRGB(150,50,50), 8, 130, 200, 36)
+    -- separator
+    local sep = Instance.new("Frame", panel)
+    sep.Size = UDim2.new(0,1,1,-30); sep.Position = UDim2.new(0,208,0,28)
+    sep.BackgroundColor3 = Color3.fromRGB(60,60,80); sep.BorderSizePixel = 0
+
+    -- ---- RIGHT: reward log ----
+    makeLbl(panel, "REWARD LOG", 214, 30, 200, 14, Color3.fromRGB(148,163,184), 10)
+    local logScroll = Instance.new("ScrollingFrame", panel)
+    logScroll.Size = UDim2.new(0,200,0,220)
+    logScroll.Position = UDim2.new(0,212,0,46)
+    logScroll.BackgroundColor3 = Color3.fromRGB(6,6,16)
+    logScroll.BackgroundTransparency = 0.3
+    logScroll.BorderSizePixel = 0
+    logScroll.ScrollBarThickness = 3
+    logScroll.ScrollBarImageColor3 = Color3.fromRGB(99,102,241)
+    logScroll.CanvasSize = UDim2.new(0,0,0,0)
+    logScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    Instance.new("UICorner", logScroll).CornerRadius = UDim.new(0,6)
+    local logLayout = Instance.new("UIListLayout", logScroll)
+    logLayout.Padding = UDim.new(0,2)
+    logLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    Instance.new("UIPadding", logScroll).PaddingTop = UDim.new(0,4)
+
+    local logIndex = 0
+    local function addLog(text, color)
+        logIndex += 1
+        local row = Instance.new("TextLabel", logScroll)
+        row.Size = UDim2.new(1,-8,0,16)
+        row.BackgroundTransparency = 1
+        row.Text = text
+        row.TextColor3 = color or Color3.fromRGB(210,210,210)
+        row.TextSize = 10; row.Font = Enum.Font.Gotham
+        row.TextXAlignment = Enum.TextXAlignment.Left
+        row.TextWrapped = true; row.LayoutOrder = logIndex
+        task.defer(function()
+            logScroll.CanvasPosition = Vector2.new(0, logScroll.AbsoluteCanvasSize.Y)
+        end)
+    end
+
+    -- state
+    local AUTO_SPIN = false
+    local totalMoney, totalGems, totalSpinsWon, totalSpins = 0, 0, 0, 0
 
     spinBtn.MouseButton1Click:Connect(function()
         AUTO_SPIN = not AUTO_SPIN
@@ -178,50 +227,115 @@ if IS_LOBBY then
         spinBtn.BackgroundColor3 = AUTO_SPIN and Color3.fromRGB(22,163,74) or Color3.fromRGB(150,50,50)
     end)
 
-    -- update spins & timer label
+    -- update spins & timer
     task.spawn(function()
         while panel.Parent do
-            local spins = LP:GetAttribute("spins") or 0
-            local nextSpin = LP:GetAttribute("nextSpin") or 0
-            spinStatusLbl.Text = "Spins: " .. spins
-
-            local remaining = nextSpin - os.time()
+            spinStatusLbl.Text = "Spins: " .. (LP:GetAttribute("spins") or 0)
+            local remaining = (LP:GetAttribute("nextSpin") or 0) - os.time()
             if remaining > 0 then
-                local m = math.floor(remaining / 60)
-                local s = remaining % 60
-                timerLbl.Text = string.format("Next spin: %dm %ds", m, s)
+                timerLbl.Text = string.format("Next: %dm %ds", math.floor(remaining/60), remaining%60)
             else
-                timerLbl.Text = "Next spin: Ready!"
+                timerLbl.Text = "Next: Ready!"
             end
             task.wait(1)
+        end
+    end)
+
+    -- hook attribute để bắt reward ngay khi thay đổi
+    local function trackReward(bMoney, bGems, bSpins)
+        local aMoney = LP:GetAttribute("money") or 0
+        local aGems  = LP:GetAttribute("gems")  or 0
+        local aSpins = LP:GetAttribute("spins") or 0
+
+        local dm = aMoney - bMoney
+        local dg = aGems  - bGems
+        local ds = aSpins - (bSpins - 1)
+
+        local rewards = {}
+        local logColor = Color3.fromRGB(210,210,210)
+
+        if dm > 0 then
+            totalMoney += dm
+            table.insert(rewards, "+" .. dm .. " coins")
+            logColor = Color3.fromRGB(250,204,21)
+            totalMoneyLbl.Text = "Money:  +" .. totalMoney
+        end
+        if dg > 0 then
+            totalGems += dg
+            table.insert(rewards, "+" .. dg .. " gems")
+            logColor = Color3.fromRGB(134,239,172)
+            totalGemsLbl.Text = "Gems:   +" .. totalGems
+        end
+        if ds > 0 then
+            totalSpinsWon += ds
+            table.insert(rewards, "+" .. ds .. " spin")
+            logColor = Color3.fromRGB(99,102,241)
+            totalSpinsLbl.Text = "Spins won: " .. totalSpinsWon
+        end
+
+        if #rewards > 0 then
+            addLog("#" .. totalSpins .. "  " .. table.concat(rewards, " | "), logColor)
+            statusLbl.Text = table.concat(rewards, " | ")
+        else
+            addLog("#" .. totalSpins .. "  item / tower", Color3.fromRGB(239,68,68))
+            statusLbl.Text = "Got item/tower"
+        end
+    end
+
+    -- listen spinning attribute thay đổi để bắt reward ngay
+    LP.AttributeChanged:Connect(function(attr)
+        if attr == "spinning" and LP:GetAttribute("spinning") == true then
+            -- lấy snapshot ngay trước thời điểm spinning=true
+            -- dùng giá trị đã lưu từ lần fire gần nhất
         end
     end)
 
     -- auto spin loop
     task.spawn(function()
         while panel.Parent do
-            task.wait(0.5)
-            if AUTO_SPIN and Spin then
-                local spins = LP:GetAttribute("spins") or 0
-                if spins > 0 then
-                    Spin:FireServer("spin")
-                    logLbl.Text = "Spun! Spins left: " .. (spins - 1)
+            task.wait(0.02)
+            if not AUTO_SPIN or not Spin then continue end
+
+            -- nếu đang spinning thì chờ xong
+            if LP:GetAttribute("spinning") then
+                statusLbl.Text = "Spinning..."
+                repeat task.wait(0.02) until not LP:GetAttribute("spinning")
+            end
+
+            local spins = LP:GetAttribute("spins") or 0
+            if spins > 0 then
+                local bMoney = LP:GetAttribute("money") or 0
+                local bGems  = LP:GetAttribute("gems")  or 0
+                local bSpins = LP:GetAttribute("spins") or 0
+
+                Spin:FireServer("spin")
+                totalSpins += 1
+                spinCountLbl.Text = "Total spins: " .. totalSpins
+                statusLbl.Text = "Spinning..."
+
+                -- đợi spinning=true để bắt reward (timeout 3s)
+                local t = tick()
+                repeat task.wait(0.02) until LP:GetAttribute("spinning") == true or tick()-t > 3
+
+                trackReward(bMoney, bGems, bSpins)
+
+                -- đợi spinning=false trước khi spin tiếp (timeout 10s)
+                t = tick()
+                repeat task.wait(0.02) until not LP:GetAttribute("spinning") or tick()-t > 10
+
+            else
+                local remaining = (LP:GetAttribute("nextSpin") or 0) - os.time()
+                if remaining > 0 then
+                    statusLbl.Text = string.format("Waiting %dm %ds...", math.floor(remaining/60), remaining%60)
                     task.wait(1)
                 else
-                    local nextSpin = LP:GetAttribute("nextSpin") or 0
-                    local remaining = nextSpin - os.time()
-                    if remaining > 0 then
-                        logLbl.Text = "Waiting " .. math.floor(remaining/60) .. "m " .. (remaining%60) .. "s..."
-                        task.wait(math.max(remaining, 1))
-                    else
-                        logLbl.Text = "Cooldown done, spinning..."
-                    end
+                    statusLbl.Text = "Ready!"
                 end
             end
         end
     end)
 
-    print("[TowerV10] Lobby mode - Auto Spin ready!")
+    print("[TowerV1] Lobby mode - Auto Spin ready!")
     return
 end
 
@@ -230,7 +344,7 @@ local Remotes       = RS:WaitForChild("Remotes", 30)
 local BuildRemote   = Remotes and Remotes:WaitForChild("Build", 30)
 local UpgradeRemote = Remotes and Remotes:WaitForChild("Upgrade", 30)
 if not BuildRemote or not UpgradeRemote then
-    warn("[TowerV10] Remotes not found - run in-game not lobby!")
+    warn("[TowerV1] Remotes not found - run in-game not lobby!")
     return
 end
 local RepairRemote = Remotes:FindFirstChild("Base")
@@ -607,7 +721,7 @@ task.spawn(function()
     local repairCount = 0
     local lastFire = 0
     while panel.Parent do
-        task.wait(0.1)
+        task.wait(0.02)
         local hp = getDoorHp()
         if hp then
             local pct = math.floor(hp * 100)
@@ -783,13 +897,10 @@ task.delay(1, rebuildCheckboxes)
 
 -- ==================== ANTI-AFK ====================
 task.spawn(function()
-    local VU = game:GetService("VirtualUser")
-
     while true do
-        task.wait(300) -- 300s = 5 phút
-        VU:CaptureController()
-        VU:ClickButton2(Vector2.new())
+        LP.Idled:Wait()
+        LP:Move(Vector3.new(0,0,0))
     end
 end)
 
-print("[TowerV10] Game mode - Running!")
+print("[TowerV1] Game mode - Running!")
