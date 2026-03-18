@@ -1656,6 +1656,10 @@ local function autoSaveLoop()
                         -- (hackPC loop đã thoát khi isSaving = true)
                         isHacking = false
                         currentTrigger = nil
+                        -- Xóa skipped để retry PC bị skip do beast
+                        skippedPCs = {}
+                        -- Refresh allPCs để check lại progress thực tế
+                        allPCs = findAllPCs()
                         if returnTrigger and currentPC and isGameActive() and not gameOver then
                             -- Đứng yên 0.5s để server ổn định sau khi cứu
                             task.wait(0.5)
@@ -1868,15 +1872,19 @@ local function mainLoop()
                 if isBeastNearby(23) then
                     escapeBeast()
                     skipCurrentPC = true
-                    -- Chờ beast đi xa rồi mới tiếp tục
                     updateStatus("Waiting for beast to leave...")
                     local beastLeft = false
+                    local gameEndedDuringWait = false
                     while scriptEnabled do
                         if isSaving then
                             while isSaving do task.wait(0.2) end
                             skippedPCs = {}
                         end
-                        if not isGameActive() or gameOver then break end
+                        if not isGameActive() or gameOver then
+                            gameEndedDuringWait = true
+                            break
+                        end
+                        if isFindExitPhase() then break end
                         if not isBeastNearby(30) then
                             beastLeft = true
                             break
@@ -1884,7 +1892,11 @@ local function mainLoop()
                         task.wait(0.5)
                     end
                     if beastLeft then
-                        skippedPCs = {} -- clear khi beast đã đi
+                        skippedPCs = {}
+                    end
+                    if gameEndedDuringWait then
+                        allCompleted = true -- thoát hack loop, xuống Find Exit
+                        break
                     end
                     allCompleted = false
                     break -- restart for loop từ đầu
@@ -1955,7 +1967,12 @@ local function mainLoop()
         -- Wait for Find Exit
         updateStatus("Waiting for Find Exit...")
         local waitStart = tick()
-        repeat task.wait(0.5) until isFindExitPhase() or (tick() - waitStart > 30) or not scriptEnabled
+        repeat
+            task.wait(0.3)
+        until isFindExitPhase()
+            or not isGameActive()
+            or (tick() - waitStart > 60)
+            or not scriptEnabled
 
         if not scriptEnabled then continue end
 
@@ -1964,9 +1981,14 @@ local function mainLoop()
             updateStatus("Auto Exit started!")
             autoExitUnified()
             log("=== ROUND " .. roundsPlayed .. " COMPLETE ===")
-            task.wait(3)
         else
+            log("Find Exit timeout or game ended, waiting for new round...")
         end
+
+        -- Chờ trận kết thúc hoàn toàn
+        local waitEnd = tick()
+        repeat task.wait(0.5) until not isGameActive() or (tick() - waitEnd > 30) or not scriptEnabled
+        task.wait(2)
     end
 end
 
