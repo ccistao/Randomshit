@@ -24,7 +24,7 @@ local jumpTimer = 0
 local statusLabel = nil
 
 local jumpInterval = 4
-local tweenSpeed = 35 -- studs/s cho tween movement
+local tweenSpeed = 35
 
 local roundsPlayed = 0
 local firstMoveOfRound = true
@@ -37,11 +37,48 @@ local allPCs = {}
 local isSaving = false
 
 -- ==================== ALT MODE ====================
-local playerMode = "main"       -- "main" hoặc "alt"
-local followTargetName = ""     -- Tên player main mà alt sẽ follow
-local altCageDelay = 60         -- Giây chờ trước khi alt-beast bắt đầu nhốt
-local altRoundStartTick = 0     -- tick() khi round bắt đầu
-local altWasRescued = false     -- Flag: alt vừa được cứu khỏi cage
+local playerMode = "main"
+local followTargetName = ""
+local altCageDelay = 60
+local altRoundStartTick = 0
+local altWasRescued = false
+
+-- ==================== CONFIG SAVE/LOAD ====================
+local CONFIG_FILE = "ftf_config.json"
+
+local function saveConfig()
+    pcall(function()
+        local HttpService = game:GetService("HttpService")
+        local cfg = HttpService:JSONEncode({
+            tweenSpeed    = tweenSpeed,
+            webhookUrl    = _G.ftfWebhookUrl or "",
+            webhookInterval = _G.ftfWebhookInterval or 5,
+            hackExtraPC   = _G.ftfHackExtraPC or false,
+            altCageDelay  = altCageDelay,
+        })
+        writefile(CONFIG_FILE, cfg)
+    end)
+end
+
+local function loadConfig()
+    pcall(function()
+        if not isfile(CONFIG_FILE) then return end
+        local HttpService = game:GetService("HttpService")
+        local ok, cfg = pcall(function()
+            return HttpService:JSONDecode(readfile(CONFIG_FILE))
+        end)
+        if not ok or not cfg then return end
+        if cfg.tweenSpeed then tweenSpeed = math.clamp(cfg.tweenSpeed, 1, 60) end
+        if cfg.altCageDelay then altCageDelay = math.clamp(cfg.altCageDelay, 10, 300) end
+        _G.ftfWebhookUrl = cfg.webhookUrl or ""
+        _G.ftfWebhookInterval = cfg.webhookInterval or 5
+        _G.ftfHackExtraPC = cfg.hackExtraPC or false
+        log("✅ Config loaded! Speed=" .. tweenSpeed .. " CageDelay=" .. altCageDelay)
+    end)
+end
+
+-- Load config ngay khi script chạy
+loadConfig()
 
 
 -- ==================== LOG ====================
@@ -299,6 +336,7 @@ local function waitForGameActive()
     -- Chờ cho tới khi bị TP vào map (thoát khỏi lobby box)
     local timeout = 300
     local elapsed = 0
+    local lastLoggedSec = -1
     while elapsed < timeout do
         task.wait(0.5)
         elapsed = elapsed + 0.5
@@ -309,10 +347,12 @@ local function waitForGameActive()
             return true
         end
 
-        if math.floor(elapsed) % 15 == 0 and elapsed > 0 then
+        local logSec = math.floor(elapsed)
+        if logSec % 15 == 0 and elapsed > 0 and logSec ~= lastLoggedSec then
+            lastLoggedSec = logSec
             local mapV = ReplicatedStorage:FindFirstChild("CurrentMap")
             local mapN = mapV and mapV.Value and mapV.Value.Name or "nil"
-            log("waitForGame: still waiting... map='" .. mapN .. "' (" .. math.floor(elapsed) .. "s)")
+            log("waitForGame: still waiting... map='" .. mapN .. "' (" .. logSec .. "s)")
         end
     end
 
@@ -817,7 +857,7 @@ local function hackPC(pcData)
 
         -- ALT MODE: dừng hack nếu bị nhốt vào cage
         if playerMode == "alt" and isSelfCaged() then
-            log("PC" .. pcId .. ": ALT bị nhốt cage, dừng hack")
+            log("PC" .. pcId .. ": ALT caged, stopping hack")
             isHacking = false
             currentPC = nil
             canAutoJump = false
@@ -1543,7 +1583,7 @@ local function beastLoop()
         if playerMode == "alt" then
             local elapsed = tick() - altRoundStartTick
             if elapsed < altCageDelay then
-                updateStatus("Beast ALT: Chờ " .. math.ceil(altCageDelay - elapsed) .. "s...")
+                updateStatus("Beast ALT: Waiting " .. math.ceil(altCageDelay - elapsed) .. "s...")
                 task.wait(0.5)
                 continue
             end
@@ -1710,36 +1750,19 @@ local function autoSaveLoop()
                         currentTrigger = nil
                         skippedPCs = {}
                         allPCs = findAllPCs()
-                        if currentPC and currentPC.id then
-                            skippedPCs[currentPC.id] = nil
-                        end
 
                         if not isGameActive() or gameOver then break end
 
-                        if returnTrigger and returnPC then
-                            log("🔄 Save done! TP back to PC" .. tostring(returnPC.id) .. " immediately...")
+                        if returnPC then
+                            log("🔄 Save done! Hacking PC" .. tostring(returnPC.id) .. " immediately...")
                             updateStatus("🔄 Returning to PC " .. tostring(returnPC.id) .. "...")
-
-                            -- TP thẳng về trigger ngay, không chờ
-                            local noclipBack = true
-                            local noclipBackConn = RunService.Stepped:Connect(function()
-                                if not noclipBack then return end
-                                local c = player.Character
-                                if not c then return end
-                                for _, part in pairs(c:GetDescendants()) do
-                                    if part:IsA("BasePart") then part.CanCollide = false end
-                                end
+                            -- Set currentPC về đúng PC cần hack
+                            -- để mainLoop không nhảy sang PC khác
+                            currentPC = returnPC
+                            -- Gọi thẳng hackPC luôn, không để mainLoop tự quyết
+                            task.spawn(function()
+                                hackPC(returnPC)
                             end)
-                            root.CFrame = returnTrigger.CFrame + Vector3.new(0, 0.5, 0)
-                            root.AssemblyLinearVelocity = Vector3.zero
-                            task.wait(0.1)
-                            noclipBack = false
-                            noclipBackConn:Disconnect()
-                            if hum then
-                                hum.PlatformStand = false
-                                hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-                            end
-                            -- mainLoop sẽ tự gọi hackPC vì isHacking = false
                         end
                     end
                 end
@@ -1785,7 +1808,7 @@ local function mainLoop()
         if playerMode == "alt" then
             local main = getFollowTarget()
             if not main then
-                updateStatus("ALT: Chưa chọn main player!")
+                updateStatus("ALT: No main player selected!")
                 -- Chờ cho đến khi có follow target
                 repeat task.wait(0.5) until followTargetName ~= "" or not scriptEnabled
                 if not scriptEnabled then continue end
@@ -1793,7 +1816,7 @@ local function mainLoop()
                 if not main then task.wait(2) continue end
             end
 
-            updateStatus("ALT: Đang follow " .. main.Name)
+            updateStatus("ALT: Following " .. main.Name)
             altWasRescued = false
             allPCs = findAllPCs()
 
@@ -1812,7 +1835,7 @@ local function mainLoop()
 
                 -- Check nếu đang bị nhốt trong cage
                 if isSelfCaged() then
-                    updateStatus("ALT: Bị nhốt! Chờ " .. main.Name .. " cứu...")
+                    updateStatus("ALT: Caged! Waiting for " .. main.Name .. " to rescue...")
                     altWasRescued = false
                     -- Đợi cho đến khi được thả
                     while isSelfCaged() and scriptEnabled and isGameActive() do
@@ -1830,7 +1853,7 @@ local function mainLoop()
                     local mainChar = main.Character
                     local mainRoot = mainChar and mainChar:FindFirstChild("HumanoidRootPart")
                     if mainRoot and rootPart then
-                        updateStatus("ALT: Được cứu! TP về main " .. main.Name .. "...")
+                        updateStatus("ALT: Rescued! Returning to " .. main.Name .. "...")
                         rootPart.CFrame = mainRoot.CFrame + Vector3.new(2, 0, 0)
                     end
                     task.wait(0.5)
@@ -1838,7 +1861,7 @@ local function mainLoop()
 
                 -- Giai đoạn Find Exit -> tự exit
                 if isFindExitPhase() then
-                    updateStatus("ALT: Find Exit! Tự thoát...")
+                    updateStatus("ALT: Find Exit! Auto-escaping...")
                     autoExitUnified()
                     break
                 end
@@ -1846,7 +1869,7 @@ local function mainLoop()
                 -- Tìm PC main đang hack và vào hack cùng
                 local mainPC = getPCNearPlayer(main)
                 if mainPC and not hackedPCs[mainPC.id] then
-                    updateStatus("ALT: Hack cùng main tại PC " .. mainPC.id)
+                    updateStatus("ALT: Co-hacking with main at PC " .. mainPC.id)
                     hackPC(mainPC)
                 else
                     -- Main không ở gần PC nào hoặc PC đã done -> follow vị trí main
@@ -1855,10 +1878,10 @@ local function mainLoop()
                     if mainRoot and rootPart then
                         local dist = (rootPart.Position - mainRoot.Position).Magnitude
                         if dist > 18 then
-                            updateStatus("ALT: Theo main " .. main.Name .. "...")
+                            updateStatus("ALT: Following " .. main.Name .. "...")
                             rootPart.CFrame = mainRoot.CFrame + Vector3.new(2, 0, 0)
                         else
-                            updateStatus("ALT: Chờ main " .. main.Name .. " di chuyển...")
+                            updateStatus("ALT: Waiting for " .. main.Name .. " to move...")
                         end
                     end
                 end
@@ -1955,6 +1978,12 @@ local function mainLoop()
                 elseif skippedPCs[pcId] then
                     hasSkippedPC = true
                 else
+                    -- Nếu autoSaveLoop đang xử lý hackPC thì chờ
+                    if isSaving or isHacking then
+                        while (isSaving or isHacking) and isGameActive() and scriptEnabled do
+                            task.wait(0.2)
+                        end
+                    end
                     local progress = getPCProgress(pcData)
                     if progress >= 1 then
                         hackedPCs[pcId] = true
@@ -2053,8 +2082,8 @@ local function createGUI()
 
 
     local scriptStartTime = tick()
-    local webhookUrl = ""
-    local webhookInterval = 5
+    local webhookUrl = _G.ftfWebhookUrl or ""
+    local webhookInterval = _G.ftfWebhookInterval or 5
     local creditsAtStart = nil
     local autoSendEnabled = false
     local settingsOpen = false
@@ -2316,7 +2345,11 @@ local function createGUI()
     webhookInput.ClearTextOnFocus = false
     webhookInput.LayoutOrder = 8
     Instance.new("UICorner", webhookInput).CornerRadius = UDim.new(0,5)
-    webhookInput:GetPropertyChangedSignal("Text"):Connect(function() webhookUrl = webhookInput.Text end)
+    webhookInput:GetPropertyChangedSignal("Text"):Connect(function()
+        webhookUrl = webhookInput.Text
+        _G.ftfWebhookUrl = webhookUrl
+        saveConfig()
+    end)
 
     local btnRow = Instance.new("Frame", rightPanel)
     btnRow.Size = UDim2.new(1, 0, 0, 26)
@@ -2482,10 +2515,10 @@ local function createGUI()
     plPad.PaddingLeft = UDim.new(0,4)
     plPad.PaddingRight = UDim.new(0,4)
 
-    local lblFollowing = rLabel("→ Chưa chọn", Color3.fromRGB(100,255,150), 19)
+    local lblFollowing = rLabel("→ Not selected", Color3.fromRGB(100,255,150), 19)
     lblFollowing.Font = Enum.Font.GothamBold
 
-    local lblDelay = rLabel("Beast nhốt sau: " .. altCageDelay .. "s", Color3.fromRGB(255,180,100), 20)
+    local lblDelay = rLabel("Cage delay: " .. altCageDelay .. "s", Color3.fromRGB(255,180,100), 20)
     lblDelay.Font = Enum.Font.GothamBold
 
     local cageTrack = Instance.new("Frame", rightPanel)
@@ -2534,6 +2567,7 @@ local function createGUI()
         speedFill.Size = UDim2.new(pct, 0, 1, 0)
         speedKnob.Position = UDim2.new(pct, 0, 0.5, 0)
         speedInput.Text = tostring(val)
+        saveConfig()
     end
     speedInput.FocusLost:Connect(function()
         local n = tonumber(speedInput.Text)
@@ -2546,7 +2580,8 @@ local function createGUI()
         local pct = (val-10)/290
         cageFill.Size = UDim2.new(pct, 0, 1, 0)
         cageKnob.Position = UDim2.new(pct, 0, 0.5, 0)
-        lblDelay.Text = "Beast nhốt sau: " .. val .. "s"
+        lblDelay.Text = "Cage delay: " .. val .. "s"
+        saveConfig()
     end
 
     -- ===== PLAYER LIST =====
@@ -2714,6 +2749,9 @@ local function createGUI()
 
     -- Set consoleLogFn và flush buffer
     consoleLogFn = consoleLog
+    -- Apply loaded config to sliders
+    setSpeed(tweenSpeed)
+    setInterval(webhookInterval)
     -- Hiện hết log đã buffer trước đó
     for _, entry in ipairs(logBuffer) do
         consoleLog(entry.msg, entry.logType)
@@ -2954,12 +2992,27 @@ local function createGUI()
         toggleButton.Text = scriptEnabled and "ON" or "OFF"
         if scriptEnabled then hasEscaped = false end
     end)
+
+    -- Apply loaded config to UI
+    if _G.ftfHackExtraPC then
+        hackExtraPC = true
+        checkmark.Visible = true
+        checkbox.BackgroundColor3 = Color3.fromRGB(75,35,35)
+        checkbox.BorderColor3 = Color3.fromRGB(255,80,80)
+        checkLabel.TextColor3 = Color3.fromRGB(255,110,110)
+    end
+    if webhookUrl ~= "" then
+        webhookInput.Text = webhookUrl
+    end
+
     checkButton.MouseButton1Click:Connect(function()
         hackExtraPC = not hackExtraPC
         checkmark.Visible = hackExtraPC
         checkbox.BackgroundColor3 = hackExtraPC and Color3.fromRGB(75,35,35) or Color3.fromRGB(55,55,70)
         checkbox.BorderColor3 = hackExtraPC and Color3.fromRGB(255,80,80) or Color3.fromRGB(110,110,140)
         checkLabel.TextColor3 = hackExtraPC and Color3.fromRGB(255,110,110) or Color3.fromRGB(170,170,190)
+        _G.ftfHackExtraPC = hackExtraPC
+        saveConfig()
     end)
 
     -- ===== STATS UPDATE LOOP =====
