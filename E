@@ -244,8 +244,8 @@ local function escapeBeast()
 end
 
 -- ==================== LOBBY DETECTION (position-based) ====================
-local LOBBY_MIN = Vector3.new(-69, -25, -634)
-local LOBBY_MAX = Vector3.new(368, 116, -208)
+local LOBBY_MIN = Vector3.new(-21, 40, -512)
+local LOBBY_MAX = Vector3.new(413, 80, -253)
 
 local function isInLobby()
     local char = player.Character
@@ -281,7 +281,9 @@ end
 local function waitForGameActive()
     local curStatus = ReplicatedStorage:FindFirstChild("GameStatus")
     curStatus = curStatus and tostring(curStatus.Value):upper() or ""
-    log("waitForGame: pos=" .. (isInLobby() and "LOBBY" or "IN-GAME") .. " status='" .. curStatus .. "'")
+    local mapVal = ReplicatedStorage:FindFirstChild("CurrentMap")
+    local mapStatus = mapVal and mapVal.Value and mapVal.Value.Name or "nil"
+    log("waitForGame: lobby=" .. tostring(isInLobby()) .. " map='" .. mapStatus .. "' status='" .. curStatus .. "'")
 
     -- Nếu đang trong map rồi -> active ngay
     if isInGame() then
@@ -305,9 +307,9 @@ local function waitForGameActive()
         end
 
         if math.floor(elapsed) % 15 == 0 and elapsed > 0 then
-            local pos = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-            local posStr = pos and (math.floor(pos.Position.X) .. "," .. math.floor(pos.Position.Y) .. "," .. math.floor(pos.Position.Z)) or "?"
-            log("waitForGame: still in lobby... pos=(" .. posStr .. ") (" .. math.floor(elapsed) .. "s)")
+            local mapV = ReplicatedStorage:FindFirstChild("CurrentMap")
+            local mapN = mapV and mapV.Value and mapV.Value.Name or "nil"
+            log("waitForGame: still waiting... map='" .. mapN .. "' (" .. math.floor(elapsed) .. "s)")
         end
     end
 
