@@ -243,76 +243,71 @@ local function escapeBeast()
     currentTrigger = nil
 end
 
+-- ==================== LOBBY DETECTION (position-based) ====================
+local LOBBY_MIN = Vector3.new(-69, -25, -634)
+local LOBBY_MAX = Vector3.new(368, 116, -208)
+
+local function isInLobby()
+    local char = player.Character
+    if not char then return true end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return true end
+    local pos = root.Position
+    return pos.X >= LOBBY_MIN.X and pos.X <= LOBBY_MAX.X
+       and pos.Y >= LOBBY_MIN.Y and pos.Y <= LOBBY_MAX.Y
+       and pos.Z >= LOBBY_MIN.Z and pos.Z <= LOBBY_MAX.Z
+end
+
+local function isInGame()
+    return not isInLobby()
+end
+
+-- ==================== GAME ACTIVE CHECK ====================
+local function isGameActive()
+    if isInLobby() then return false end
+    local gs = ReplicatedStorage:FindFirstChild("GameStatus")
+    if gs then
+        local txt = tostring(gs.Value):upper()
+        if txt:find("GAME OVER") or txt:find("BEAST LEFT")
+        or txt:find("BEF LAI") or txt:find("KET THUC")
+        or txt:find("TRO CHOI KET THUC") then
+            return false
+        end
+    end
+    return true
+end
+
 -- ==================== WAIT FOR GAME ====================
 local function waitForGameActive()
+    local curStatus = ReplicatedStorage:FindFirstChild("GameStatus")
+    curStatus = curStatus and tostring(curStatus.Value):upper() or ""
+    log("waitForGame: pos=" .. (isInLobby() and "LOBBY" or "IN-GAME") .. " status='" .. curStatus .. "'")
 
-    -- Check ngay GameStatus hiện tại
-    local function getCurrentStatus()
-        local gs = ReplicatedStorage:FindFirstChild("GameStatus")
-        return gs and tostring(gs.Value):upper() or ""
-    end
-
-    local curStatus = getCurrentStatus()
-    log("waitForGame: current status = '" .. curStatus .. "'")
-
-    -- Nếu đang HACK phase -> bắt đầu ngay
-    -- Chỉ skip nếu roundsPlayed == 0 (lần đầu) HOẶC vừa reset xong
-    if curStatus:find("HACK") or curStatus:find("HEAD START") then
-        log("waitForGame: game already active, starting now")
+    -- Nếu đang trong map rồi -> active ngay
+    if isInGame() then
+        log("waitForGame: already in-game, starting now")
         return true
-    end
-
-    -- Nếu đang Find Exit -> chờ round mới
-    if curStatus:find("FIND") and curStatus:find("EXIT") then
-        log("waitForGame: Find Exit phase, waiting for new round...")
     end
 
     updateStatus("Waiting for game...")
 
+    -- Chờ cho tới khi bị TP vào map (thoát khỏi lobby box)
     local timeout = 300
     local elapsed = 0
-
     while elapsed < timeout do
         task.wait(0.5)
         elapsed = elapsed + 0.5
 
-        local txt = getCurrentStatus()
-
-        -- HEAD START = round mới bắt đầu
-        if txt:find("HEAD START") then
-            log("waitForGame: HEAD START detected!")
-            task.wait(2)
+        if isInGame() then
+            log("waitForGame: TP'd into map! Starting...")
+            task.wait(1)
             return true
         end
 
-        -- HACK phase (có thể miss HEAD START)
-        if txt:find("HACK") then
-            log("waitForGame: HACK phase detected!")
-            return true
-        end
-
-        -- GameStatusBox fallback
-        local ok, result = pcall(function()
-            local pg = player:FindFirstChild("PlayerGui")
-            if not pg then return nil end
-            local sg = pg:FindFirstChild("ScreenGui")
-            if not sg then return nil end
-            local gif = sg:FindFirstChild("GameInfoFrame")
-            if not gif then return nil end
-            return gif:FindFirstChild("GameStatusBox")
-        end)
-        if ok and result and result.Text then
-            local t = result.Text:upper()
-            if t:find("HEAD START") or t:find("GIAY") or t:find("BAT DAU") then
-                log("waitForGame: HEAD START via GameStatusBox!")
-                task.wait(2)
-                return true
-            end
-        end
-
-        -- Log mỗi 10s để biết đang chờ gì
-        if math.floor(elapsed) % 10 == 0 then
-            log("waitForGame: still waiting... status='" .. txt .. "' (" .. math.floor(elapsed) .. "s)")
+        if math.floor(elapsed) % 15 == 0 and elapsed > 0 then
+            local pos = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+            local posStr = pos and (math.floor(pos.Position.X) .. "," .. math.floor(pos.Position.Y) .. "," .. math.floor(pos.Position.Z)) or "?"
+            log("waitForGame: still in lobby... pos=(" .. posStr .. ") (" .. math.floor(elapsed) .. "s)")
         end
     end
 
@@ -465,15 +460,7 @@ task.spawn(function()
     local remoteEvent = ReplicatedStorage:WaitForChild("RemoteEvent", 10)
     if not remoteEvent then log("❌ NeverFail: RemoteEvent not found!") return end
 
-    -- Only run from lobby/start of round, not mid-game
-    local function isInLobby()
-        local gs = ReplicatedStorage:FindFirstChild("GameStatus")
-        if not gs then return true end
-        local txt = tostring(gs.Value):upper()
-        return not (txt:find("HACK") or txt:find("HEAD START") or txt:find("FIND"))
-    end
-
-    -- Wait for lobby first
+    -- Wait for lobby first (position-based)
     while not isInLobby() do task.wait(1) end
     while isInLobby() do task.wait(1) end
 
@@ -553,24 +540,6 @@ RunService.Heartbeat:Connect(function(dt)
         end
     end
 end)
-
--- ==================== GAME ACTIVE CHECK ====================
-local function isGameActive()
-    local gs = ReplicatedStorage:FindFirstChild("GameStatus")
-    if not gs then return false end
-    local val = gs.Value
-    if val == nil then return false end
-    local txt = tostring(val):upper()
-    -- Empty string = lobby/intermission
-    if txt == "" then return false end
-    -- Explicit game over states
-    if txt:find("GAME OVER") or txt:find("BEAST LEFT")
-    or txt:find("BEF LAI") or txt:find("KET THUC")
-    or txt:find("TRO CHOI KET THUC") then
-        return false
-    end
-    return true
-end
 
 -- ==================== HACK PC ====================
 local function hackPC(pcData)
@@ -931,6 +900,18 @@ end
 -- ==================== AUTO EXIT ====================
 local function autoExitUnified()
     local lastExitUsed = nil
+
+    -- Jump để server hủy hack PC (rời trigger), dừng spam fire
+    local char = player.Character
+    local hum = char and char:FindFirstChild("Humanoid")
+    if hum then
+        log("🚪 Jump to cancel PC hack...")
+        isHacking = false
+        canAutoJump = false
+        currentTrigger = nil
+        hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        task.wait(0.2)
+    end
 
     local function findExit()
         local exits = {}
