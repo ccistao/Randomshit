@@ -1660,7 +1660,11 @@ local function autoSaveLoop()
                         if currentPC and currentPC.id then
                             skippedPCs[currentPC.id] = nil
                         end
-                        if returnTrigger and isHacking and isGameActive() and not gameOver then
+                        -- Reset isHacking để mainLoop biết gọi lại hackPC
+                        -- (hackPC loop đã thoát khi isSaving = true)
+                        isHacking = false
+                        currentTrigger = nil
+                        if returnTrigger and currentPC and isGameActive() and not gameOver then
                             -- Đứng yên 0.5s để server ổn định sau khi cứu
                             task.wait(0.5)
                             if not isGameActive() or gameOver then break end
@@ -1673,7 +1677,7 @@ local function autoSaveLoop()
                             root.AssemblyLinearVelocity = Vector3.zero
                             task.wait(0.3)
 
-                            -- Bước 2: TP vào lại trigger (server nhận fresh touch)
+                            -- TP vào lại trigger (server nhận fresh touch)
                             local noclipBack = true
                             local noclipBackConn = RunService.Stepped:Connect(function()
                                 if not noclipBack then return end
@@ -1689,22 +1693,20 @@ local function autoSaveLoop()
                             noclipBack = false
                             noclipBackConn:Disconnect()
 
-                            -- Bước 3: fire touch + spam interact như lần đầu
+                            -- Restore noclip collision
+                            if hum then
+                                hum.PlatformStand = false
+                                hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                            end
+
+                            -- Fire interact để server nhận trigger
                             pcall(function()
                                 firetouchinterest(root, returnTrigger, 0)
                                 task.wait(0.05)
                                 firetouchinterest(root, returnTrigger, 1)
                             end)
-                            local spamT = 0
-                            while spamT < 1.5 and isHacking and isGameActive() and not gameOver do
-                                task.wait(0.1)
-                                spamT = spamT + 0.1
-                                pcall(function()
-                                    local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
-                                    if r then r:FireServer("Input", "Action", true) end
-                                end)
-                            end
-                            updateStatus("Hacking PC " .. tostring(currentPC and currentPC.id or "?"))
+                            -- mainLoop sẽ tự gọi lại hackPC(currentPC) vì isHacking = false
+                            updateStatus("Returned to PC " .. tostring(currentPC and currentPC.id or "?") .. ", resuming...")
                         end
                     end
                 end
