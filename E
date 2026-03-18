@@ -244,36 +244,21 @@ end
 
 -- ==================== WAIT FOR GAME ====================
 local function waitForGameActive()
-    updateStatus("Waiting for game...")
 
-    -- Nếu đang giữa trận (HACK phase) -> bắt đầu ngay
-    local function isAlreadyActive()
-        local gs = ReplicatedStorage:FindFirstChild("GameStatus")
-        if gs then
-            local txt = tostring(gs.Value):upper()
-            if txt:find("HACK") or txt:find("HEAD START") then
+    -- Nếu đang HACK phase giữa trận -> bắt đầu ngay (script bật giữa game)
+    -- Nhưng chỉ khi roundsPlayed == 0 (lần đầu bật script)
+    if roundsPlayed == 0 then
+        local gs0 = ReplicatedStorage:FindFirstChild("GameStatus")
+        if gs0 then
+            local txt = tostring(gs0.Value):upper()
+            if txt:find("HACK") then
                 return true
             end
         end
-        return false
     end
 
-    -- Nếu đang Find Exit phase -> chờ trận mới, không nhảy vào
-    local function isFindExitNow()
-        local gs = ReplicatedStorage:FindFirstChild("GameStatus")
-        if gs then
-            local txt = tostring(gs.Value):upper()
-            if txt:find("FIND") and txt:find("EXIT") then return true end
-        end
-        return false
-    end
+    updateStatus("Waiting for game...")
 
-    -- Nếu đang giữa hack phase -> OK
-    if isAlreadyActive() then
-        return true
-    end
-
-    -- Nếu đang Find Exit hoặc không rõ -> chờ round mới có HEAD START
     local timeout = 300
     local elapsed = 0
 
@@ -307,10 +292,6 @@ local function waitForGameActive()
             local txt = tostring(gs.Value):upper()
             if txt:find("HEAD START") then
                 task.wait(1)
-                return true
-            end
-            -- Mid-game hack phase (script bật giữa trận)
-            if txt:find("HACK") then
                 return true
             end
         end
