@@ -2487,7 +2487,7 @@ local function createGUI()
     speedKnob.ZIndex = 2
     Instance.new("UICorner", speedKnob).CornerRadius = UDim.new(1,0)
 
-    local speedWarn = rLabel("⚠ Speed ≥45 có thể bị kick!", Color3.fromRGB(255,160,40), 16)
+    local speedWarn = rLabel("⚠ Speed ≥45 may get you kicked!", Color3.fromRGB(255,160,40), 16)
     speedWarn.Visible = false
     rDiv(17)
 
