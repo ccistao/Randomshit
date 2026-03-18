@@ -2219,16 +2219,58 @@ local function createGUI()
     Instance.new("UICorner", autoBtn).CornerRadius = UDim.new(0,6)
 
     local lblWhStatus = rLabel("", Color3.fromRGB(140,255,140), 10)
-    rDiv(11)
+
+    -- ---- WEBHOOK INTERVAL SLIDER ----
+    local lblInterval = rLabel("Send every: " .. webhookInterval .. " min", Color3.fromRGB(180,180,255), 11)
+    lblInterval.Font = Enum.Font.GothamBold
+
+    local intervalTrack = Instance.new("Frame", rightPanel)
+    intervalTrack.Size = UDim2.new(1, 0, 0, 18)
+    intervalTrack.BackgroundTransparency = 1
+    intervalTrack.LayoutOrder = 12
+
+    local intervalBg = Instance.new("Frame", intervalTrack)
+    intervalBg.Size = UDim2.new(1, 0, 0, 6)
+    intervalBg.Position = UDim2.new(0, 0, 0.5, -3)
+    intervalBg.BackgroundColor3 = Color3.fromRGB(40, 40, 70)
+    intervalBg.BorderSizePixel = 0
+    Instance.new("UICorner", intervalBg).CornerRadius = UDim.new(1,0)
+
+    local intervalFill = Instance.new("Frame", intervalBg)
+    intervalFill.Size = UDim2.new((webhookInterval-1)/59, 0, 1, 0)
+    intervalFill.BackgroundColor3 = Color3.fromRGB(80, 80, 200)
+    intervalFill.BorderSizePixel = 0
+    Instance.new("UICorner", intervalFill).CornerRadius = UDim.new(1,0)
+
+    local intervalKnob = Instance.new("Frame", intervalBg)
+    intervalKnob.Size = UDim2.new(0,18,0,18)
+    intervalKnob.AnchorPoint = Vector2.new(0.5,0.5)
+    intervalKnob.Position = UDim2.new((webhookInterval-1)/59, 0, 0.5, 0)
+    intervalKnob.BackgroundColor3 = Color3.fromRGB(140,140,255)
+    intervalKnob.BorderSizePixel = 0
+    intervalKnob.ZIndex = 2
+    Instance.new("UICorner", intervalKnob).CornerRadius = UDim.new(1,0)
+
+    local function setInterval(val)
+        val = math.clamp(math.round(val), 1, 60)
+        webhookInterval = val
+        local pct = (val-1)/59
+        intervalFill.Size = UDim2.new(pct, 0, 1, 0)
+        intervalKnob.Position = UDim2.new(pct, 0, 0.5, 0)
+        lblInterval.Text = "Send every: " .. val .. " min"
+        lblWhStatus.Text = autoSendEnabled and ("Every "..val.."m") or ""
+    end
+
+    rDiv(13)
 
     -- ---- SPEED SLIDER ----
-    local lblSpeed = rLabel("Speed: " .. tweenSpeed .. " st/s", Color3.fromRGB(160,255,160), 12)
+    local lblSpeed = rLabel("Speed: " .. tweenSpeed .. " st/s", Color3.fromRGB(160,255,160), 14)
     lblSpeed.Font = Enum.Font.GothamBold
 
     local speedTrack = Instance.new("Frame", rightPanel)
     speedTrack.Size = UDim2.new(1, 0, 0, 18)
     speedTrack.BackgroundTransparency = 1
-    speedTrack.LayoutOrder = 13
+    speedTrack.LayoutOrder = 15
 
     local speedBg = Instance.new("Frame", speedTrack)
     speedBg.Size = UDim2.new(1, 0, 0, 6)
@@ -2252,9 +2294,9 @@ local function createGUI()
     speedKnob.ZIndex = 2
     Instance.new("UICorner", speedKnob).CornerRadius = UDim.new(1,0)
 
-    local speedWarn = rLabel("⚠ High speed may kick!", Color3.fromRGB(255,160,40), 14)
+    local speedWarn = rLabel("⚠ High speed may kick!", Color3.fromRGB(255,160,40), 16)
     speedWarn.Visible = false
-    rDiv(15)
+    rDiv(17)
 
     -- ---- ALT CONFIG ----
     local lblAltTitle = rLabel("🔧 ALT MODE CONFIG", Color3.fromRGB(255,160,60), 16)
@@ -2589,13 +2631,23 @@ local function createGUI()
     end)
     UIS.InputEnded:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            speedDrag = false; cageDrag = false
+            speedDrag = false; cageDrag = false; intervalDrag = false
         end
     end)
+    local intervalDrag = false
+    intervalBg.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            intervalDrag = true
+            local pct = math.clamp((i.Position.X - intervalBg.AbsolutePosition.X)/intervalBg.AbsoluteSize.X, 0, 1)
+            setInterval(1 + pct*59)
+        end
+    end)
+
     UIS.InputChanged:Connect(function(i)
         if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
         if speedDrag then setSpeed(10 + math.clamp((i.Position.X-speedBg.AbsolutePosition.X)/speedBg.AbsoluteSize.X,0,1)*90) end
         if cageDrag then setCageDelay(10 + math.clamp((i.Position.X-cageBg.AbsolutePosition.X)/cageBg.AbsoluteSize.X,0,1)*290) end
+        if intervalDrag then setInterval(1 + math.clamp((i.Position.X-intervalBg.AbsolutePosition.X)/intervalBg.AbsoluteSize.X,0,1)*59) end
         if conDragging then
             local d = i.Position - conDragStart
             consolePanel.Position = UDim2.new(conStartPos.X.Scale, conStartPos.X.Offset+d.X, conStartPos.Y.Scale, conStartPos.Y.Offset+d.Y)
