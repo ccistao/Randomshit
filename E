@@ -1697,36 +1697,25 @@ local function autoSaveLoop()
                             hum:ChangeState(Enum.HumanoidStateType.GettingUp)
                         end
 
-                        -- TP thẳng về lại trigger PC cũ
+                        -- Reset state
                         canAutoJump = savedCanJump
                         isSaving = false
                         isMoving = false
-                        -- Xóa PC hiện tại khỏi skippedPCs để hack lại bình thường
+                        isHacking = false
+                        currentTrigger = nil
+                        skippedPCs = {}
+                        allPCs = findAllPCs()
                         if currentPC and currentPC.id then
                             skippedPCs[currentPC.id] = nil
                         end
-                        -- Reset isHacking để mainLoop biết gọi lại hackPC
-                        -- (hackPC loop đã thoát khi isSaving = true)
-                        isHacking = false
-                        currentTrigger = nil
-                        -- Xóa skipped để retry PC bị skip do beast
-                        skippedPCs = {}
-                        -- Refresh allPCs để check lại progress thực tế
-                        allPCs = findAllPCs()
-                        if returnTrigger and returnPC and isGameActive() and not gameOver then
-                            -- Đứng yên 0.5s để server ổn định sau khi cứu
-                            task.wait(0.5)
-                            if not isGameActive() or gameOver then break end
-                            local awayPos = Vector3.new(
-                                returnTrigger.Position.X,
-                                returnTrigger.Position.Y - 60,
-                                returnTrigger.Position.Z
-                            )
-                            root.CFrame = CFrame.new(awayPos)
-                            root.AssemblyLinearVelocity = Vector3.zero
-                            task.wait(0.3)
 
-                            -- TP vào lại trigger (server nhận fresh touch)
+                        if not isGameActive() or gameOver then break end
+
+                        if returnTrigger and returnPC then
+                            log("🔄 Save done! TP back to PC" .. tostring(returnPC.id) .. " immediately...")
+                            updateStatus("🔄 Returning to PC " .. tostring(returnPC.id) .. "...")
+
+                            -- TP thẳng về trigger ngay, không chờ
                             local noclipBack = true
                             local noclipBackConn = RunService.Stepped:Connect(function()
                                 if not noclipBack then return end
@@ -1738,24 +1727,14 @@ local function autoSaveLoop()
                             end)
                             root.CFrame = returnTrigger.CFrame + Vector3.new(0, 0.5, 0)
                             root.AssemblyLinearVelocity = Vector3.zero
-                            task.wait(0.15)
+                            task.wait(0.1)
                             noclipBack = false
                             noclipBackConn:Disconnect()
-
-                            -- Restore noclip collision
                             if hum then
                                 hum.PlatformStand = false
                                 hum:ChangeState(Enum.HumanoidStateType.GettingUp)
                             end
-
-                            -- Fire interact để server nhận trigger
-                            pcall(function()
-                                firetouchinterest(root, returnTrigger, 0)
-                                task.wait(0.05)
-                                firetouchinterest(root, returnTrigger, 1)
-                            end)
-                            -- mainLoop sẽ tự gọi lại hackPC(currentPC) vì isHacking = false
-                            updateStatus("🔄 Returned to PC " .. tostring(currentPC and currentPC.id or "?") .. " after save, resuming...")
+                            -- mainLoop sẽ tự gọi hackPC vì isHacking = false
                         end
                     end
                 end
@@ -2011,6 +1990,17 @@ local function mainLoop()
         end
 
         if hackExtraPC then task.wait(2) end
+
+        -- Nếu đang save thì chờ save xong rồi mới tiếp
+        if isSaving then
+            log("⏳ Waiting for save to finish before Find Exit check...")
+            while isSaving do task.wait(0.2) end
+            -- Sau save xong, nếu game vẫn active thì quay lại hack tiếp
+            if isGameActive() and not isFindExitPhase() then
+                log("🔄 Save done, resuming hack loop...")
+                continue
+            end
+        end
 
         -- Tắt hacking state trước khi wait
         isHacking = false
