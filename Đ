@@ -1,0 +1,2529 @@
+local player = game.Players.LocalPlayer
+local Players = game:GetService("Players")
+local Replicated = game:GetService("ReplicatedStorage")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CurrentMap = ReplicatedStorage:WaitForChild("CurrentMap")
+local RunService = game:GetService("RunService")
+
+local scriptEnabled = false
+local hackExtraPC = false
+local gameOver = false
+
+local currentTrigger = nil
+local currentPC = nil
+local skippedPCs = {}
+local isHacking = false
+local hackedPCs = {}
+local beast = nil
+local foundBeast = false
+local skipCurrentPC = false
+local hasEscaped = false
+local canAutoJump = false
+local jumpTimer = 0
+
+local statusLabel = nil
+
+local jumpInterval = 4
+local tweenSpeed = 35 -- studs/s cho tween movement
+
+local roundsPlayed = 0
+local firstMoveOfRound = true
+
+local character = nil
+local humanoid = nil
+local rootPart = nil
+
+local allPCs = {}
+local isSaving = false
+
+-- ==================== ALT MODE ====================
+local playerMode = "main"       -- "main" hoặc "alt"
+local followTargetName = ""     -- Tên player main mà alt sẽ follow
+local altCageDelay = 60         -- Giây chờ trước khi alt-beast bắt đầu nhốt
+local altRoundStartTick = 0     -- tick() khi round bắt đầu
+local altWasRescued = false     -- Flag: alt vừa được cứu khỏi cage
+
+
+-- ==================== LOG ====================
+local function log(msg)
+    print("[FTF] " .. tostring(msg))
+end
+
+local function updateStatus(status)
+    if statusLabel then
+        statusLabel.Text = "Status: " .. tostring(status)
+    end
+    log(tostring(status))
+end
+
+-- ==================== CHAR REFS ====================
+local function updateCharacterReferences()
+    character = player.Character or player.CharacterAdded:Wait()
+    humanoid = character:WaitForChild("Humanoid")
+    rootPart = character:WaitForChild("HumanoidRootPart")
+end
+
+
+
+-- ==================== RESET ====================
+local function resetGameState()
+    log("Reset state (round=" .. roundsPlayed .. ")")
+    isHacking = false
+    currentPC = nil
+    currentTrigger = nil
+    canAutoJump = false
+    skipCurrentPC = false
+    jumpTimer = 0
+    hackedPCs = {}
+    skippedPCs = {}
+    hasEscaped = false
+    gameOver = false
+    beast = nil
+    foundBeast = false
+    firstMoveOfRound = true
+    isMoving = false
+
+    updateCharacterReferences()
+    updateStatus("Waiting for new game")
+end
+
+-- ==================== BEAST ====================
+local function isBeast(plr)
+    if not plr then return false end
+    local stats = plr:FindFirstChild("TempPlayerStatsModule")
+    if not stats then return false end
+    local flag = stats:FindFirstChild("IsBeast")
+    if not flag then return false end
+    return flag.Value == true
+end
+
+local function hasPlayerEscaped()
+    if not player then return false end
+    local stats = player:FindFirstChild("TempPlayerStatsModule")
+    if not stats then return false end
+    local escapedFlag = stats:FindFirstChild("Escaped")
+    if not escapedFlag then return false end
+    return escapedFlag.Value == true
+end
+
+local beastTrackerRunning = false
+local function findBeast()
+    if beastTrackerRunning then return end
+    beastTrackerRunning = true
+
+    task.spawn(function()
+        while true do
+            task.wait(0.3)
+
+            if not scriptEnabled then continue end
+
+            if foundBeast then
+                if not beast or not Players:FindFirstChild(beast.Name) or not isBeast(beast) then
+                    log("Beast lost")
+                    beast = nil
+                    foundBeast = false
+                    isHacking = false
+                    currentPC = nil
+                    canAutoJump = false
+                    hasEscaped = false
+                    gameOver = true
+
+                    -- Stop hack ngay lập tức
+                    isHacking = false
+                    canAutoJump = false
+                    isMoving = false
+                    currentTrigger = nil
+
+                    -- Check GameStatus sau 1s
+                    task.wait(1)
+                    local statusText = ""
+                    pcall(function()
+                        local pg = player:FindFirstChild("PlayerGui")
+                        local sg = pg and pg:FindFirstChild("ScreenGui")
+                        local gif = sg and sg:FindFirstChild("GameInfoFrame")
+                        local gsb = gif and gif:FindFirstChild("GameStatusBox")
+                        if gsb then statusText = gsb.Text:upper() end
+                    end)
+                    if statusText == "" then
+                        local gs = ReplicatedStorage:FindFirstChild("GameStatus")
+                        if gs then statusText = tostring(gs.Value):upper() end
+                    end
+
+                    local gameStillActive = statusText:find("HACK") or statusText:find("HEAD START") or statusText:find("FIND")
+                    if gameStillActive and not statusText:find("BEAST") and not statusText:find("BEF") then
+                        log("Beast changed, game still active -> reset")
+                        gameOver = false
+                        resetGameState()
+                    else
+                        log("Game over -> waiting for new round")
+                        -- gameOver giữ = true, mainLoop sẽ tự reset khi vào round mới
+                    end
+                end
+            else
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if isBeast(p) then
+                        beast = p
+                        foundBeast = true
+                        log("Beast found: " .. p.Name)
+                        break
+                    end
+                end
+
+                if not foundBeast then
+                    task.wait(5)
+                    local stillNoBeast = true
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if isBeast(p) then stillNoBeast = false break end
+                    end
+                    if stillNoBeast then
+                        -- Không có beast = chờ trận mới
+                        gameOver = false
+                    end
+                end
+            end
+        end
+    end)
+end
+
+local function isBeastNearby(distance)
+    distance = distance or 30
+    if not foundBeast or not beast or not beast.Character then return false end
+    local br = beast.Character:FindFirstChild("HumanoidRootPart")
+        or beast.Character:FindFirstChild("UpperTorso")
+        or beast.Character:FindFirstChild("Torso")
+    local myRoot = rootPart
+        or (player.Character and (
+            player.Character:FindFirstChild("HumanoidRootPart")
+            or player.Character:FindFirstChild("UpperTorso")
+            or player.Character:FindFirstChild("Torso")))
+    if not br or not myRoot then return false end
+    local dist = (myRoot.Position - br.Position).Magnitude
+    if dist <= distance then
+    end
+    return dist <= distance
+end
+
+local function escapeBeast()
+    updateStatus("Beast nearby! Moving to next PC...")
+    skipCurrentPC = true
+    if currentPC and currentPC.id then
+        skippedPCs[currentPC.id] = true
+    end
+    isHacking = false
+    canAutoJump = false
+    currentPC = nil
+    currentTrigger = nil
+end
+
+-- ==================== WAIT FOR GAME ====================
+local function waitForGameActive()
+    updateStatus("Waiting for game...")
+    local timeout = 300
+    local elapsed = 0
+
+    while elapsed < timeout do
+        task.wait(0.5)
+        elapsed = elapsed + 0.5
+
+        -- Check GameStatusBox
+        local ok, result = pcall(function()
+            local pg = player:FindFirstChild("PlayerGui")
+            if not pg then return nil end
+            local sg = pg:FindFirstChild("ScreenGui")
+            if not sg then return nil end
+            local gif = sg:FindFirstChild("GameInfoFrame")
+            if not gif then return nil end
+            return gif:FindFirstChild("GameStatusBox")
+        end)
+
+        if ok and result and result.Text then
+            local txt = result.Text:upper()
+            if txt:find("15 SEC HEAD START") or txt:find("HEAD START")
+            or txt:find("GIAY") or txt:find("BAT DAU") then
+                task.wait(2)
+                return true
+            end
+        end
+
+        -- Fallback: GameStatus
+        local gs = ReplicatedStorage:FindFirstChild("GameStatus")
+        if gs then
+            local txt = tostring(gs.Value):upper()
+            if txt:find("HEAD START") then
+                task.wait(1)
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- ==================== ACTION BOX HOOK ====================
+spawn(function()
+    local playerGui = player:WaitForChild("PlayerGui")
+    local function onActionBoxVisible(ab)
+        ab:GetPropertyChangedSignal("Visible"):Connect(function()
+            if ab.Visible then
+                -- Only fire when hacking PC and script is ON
+                if scriptEnabled and isHacking and currentPC then
+                    local remote = ReplicatedStorage:FindFirstChild("RemoteEvent")
+                    if remote and remote.FireServer then
+                        pcall(function() remote:FireServer("Input", "Action", true) end)
+                    end
+                end
+            end
+        end)
+    end
+
+    local function bindToScreenGui(screenGui)
+        if not screenGui then return end
+        local actionBox = screenGui:FindFirstChild("ActionBox")
+        if actionBox then
+            onActionBoxVisible(actionBox)
+        else
+            screenGui.ChildAdded:Connect(function(child)
+                if child.Name == "ActionBox" then
+                    onActionBoxVisible(child)
+                end
+            end)
+        end
+    end
+
+    local screenGui = playerGui:WaitForChild("ScreenGui")
+    bindToScreenGui(screenGui)
+end)
+
+-- ==================== PC UTILITIES ====================
+local function getPCProgress(pcData)
+    if not pcData or not pcData.computer then return 0 end
+    local pc = pcData.computer
+    if not pc or not pc.Parent then return 0 end
+    local screen = pc:FindFirstChild("Screen")
+    if screen and screen:IsA("BasePart") then
+        local c = screen.Color
+        if c.G > c.R + 0.2 and c.G > c.B + 0.2 then return 1 end
+    end
+    local maxValue = 0
+    for _, v in ipairs(pc:GetDescendants()) do
+        if v and (v:IsA("IntValue") or v:IsA("NumberValue")) then
+            local val = tonumber(v.Value) or 0
+            if (v.Name == "ActionProgress" or v.Name == "Value") and val > maxValue then
+                maxValue = val
+            end
+        end
+    end
+    return maxValue
+end
+
+local function getPlayerActionProgress()
+    local stats = player:FindFirstChild("TempPlayerStatsModule")
+    if not stats then return 0 end
+    local p = stats:FindFirstChild("ActionProgress")
+    if p and (p:IsA("IntValue") or p:IsA("NumberValue")) then return p.Value end
+    return 0
+end
+
+local function getAvailableTrigger(pcData)
+    if not pcData or not pcData.triggers then return nil end
+
+    for _, trigger in ipairs(pcData.triggers) do
+        local occupied = false
+        for _, other in ipairs(Players:GetPlayers()) do
+            if other ~= player and other.Character then
+                local root = other.Character:FindFirstChild("HumanoidRootPart")
+                if root and (root.Position - trigger.Position).Magnitude <= 5 then
+                    occupied = true
+                    break
+                end
+            end
+        end
+        if not occupied then return trigger end
+    end
+
+    return nil -- all 3 triggers occupied -> skip PC
+end
+
+local function findAllPCs()
+    local found = {}
+    local map = CurrentMap.Value
+    if not map then
+        return found
+    end
+    for _, obj in ipairs(map:GetDescendants()) do
+        if obj:IsA("Model") or obj:IsA("Folder") then
+            local nameLower = obj.Name:lower()
+            if nameLower:find("computer") and not nameLower:find("prefab") then
+                local triggers = {}
+                for _, t in ipairs(obj:GetDescendants()) do
+                    if t:IsA("BasePart") then
+                        if t.Name == "ComputerTrigger1"
+                        or t.Name == "ComputerTrigger2"
+                        or t.Name == "ComputerTrigger3" then
+                            table.insert(triggers, t)
+                        end
+                    end
+                end
+                if #triggers == 3 then
+                    table.insert(found, { computer = obj, triggers = triggers })
+                end
+            end
+        end
+    end
+    for i, pc in ipairs(found) do pc.id = i end
+    return found
+end
+
+local function isFindExitPhase()
+    local gameStatus = ReplicatedStorage:FindFirstChild("GameStatus")
+    if gameStatus then
+        local statusText = tostring(gameStatus.Value):upper()
+        if statusText:find("FIND AN EXIT") or (statusText:find("FIND") and statusText:find("EXIT")) then
+            return true
+        end
+    end
+    -- Check GameStatusBox
+    pcall(function()
+        local pg = player:FindFirstChild("PlayerGui")
+        local sg = pg and pg:FindFirstChild("ScreenGui")
+        local gif = sg and sg:FindFirstChild("GameInfoFrame")
+        local gsb = gif and gif:FindFirstChild("GameStatusBox")
+        if gsb then
+            local t = gsb.Text:upper()
+            if t:find("FIND") and t:find("EXIT") then
+                return true
+            end
+        end
+    end)
+    return false
+end
+
+-- ==================== NEVER FAIL HOOK ====================
+-- ==================== NEVER FAIL ====================
+task.spawn(function()
+    local remoteEvent = ReplicatedStorage:WaitForChild("RemoteEvent", 10)
+    if not remoteEvent then log("NeverFail: RemoteEvent not found") return end
+
+    -- Only run from lobby/start of round, not mid-game
+    local function isInLobby()
+        local gs = ReplicatedStorage:FindFirstChild("GameStatus")
+        if not gs then return true end
+        local txt = tostring(gs.Value):upper()
+        return not (txt:find("HACK") or txt:find("HEAD START") or txt:find("FIND"))
+    end
+
+    -- Wait for lobby first
+    while not isInLobby() do task.wait(1) end
+    while isInLobby() do task.wait(1) end
+
+    while true do
+        task.wait(0.1)
+        if not scriptEnabled then continue end
+        pcall(function()
+            remoteEvent:FireServer("SetPlayerMinigameResult", true)
+        end)
+    end
+end)
+
+-- ==================== HEARTBEAT ====================
+local coHackProgressCache = {} -- {[playerName] = lastProgress}
+
+local function isCoHacking()
+    if not currentPC then return false end
+    for _, other in ipairs(Players:GetPlayers()) do
+        if other ~= player and other.Character then
+            local root = other.Character:FindFirstChild("HumanoidRootPart")
+            if not root then continue end
+            -- Check gần bất kỳ trigger nào của PC hiện tại
+            local nearAnyTrigger = false
+            for _, trigger in ipairs(currentPC.triggers) do
+                if (root.Position - trigger.Position).Magnitude <= 8 then
+                    nearAnyTrigger = true
+                    break
+                end
+            end
+            if not nearAnyTrigger then
+                coHackProgressCache[other.Name] = nil
+                continue
+            end
+            -- Check ActionProgress có đang tăng không
+            local tps = other:FindFirstChild("TempPlayerStatsModule")
+            local ap = tps and tps:FindFirstChild("ActionProgress")
+            if not ap then continue end
+            local current = ap.Value
+            local last = coHackProgressCache[other.Name]
+            coHackProgressCache[other.Name] = current
+            -- Tăng so với lần check trước AND > 0 = đang hack thật
+            if last and current > last and current > 0.01 then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+RunService.Heartbeat:Connect(function(dt)
+    local char = player.Character
+    if not char then return end
+    humanoid = char:FindFirstChild("Humanoid")
+    rootPart = char:FindFirstChild("HumanoidRootPart")
+
+    if gameOver then
+        canAutoJump = false
+        jumpTimer = 0
+        return
+    end
+
+    if canAutoJump and humanoid and rootPart and currentTrigger then
+        if isCoHacking() then
+            jumpTimer = 0
+            return
+        end
+        jumpTimer += dt
+        if jumpTimer >= jumpInterval then
+            pcall(function()
+                rootPart.CFrame = CFrame.new(rootPart.CFrame.Position + Vector3.new(0, 7, 0))
+            end)
+            task.wait(0.07)
+            pcall(function()
+                rootPart.CFrame = currentTrigger.CFrame + Vector3.new(0, 0.5, 0)
+            end)
+            jumpTimer = 0
+        end
+    end
+end)
+
+-- ==================== GAME ACTIVE CHECK ====================
+local function isGameActive()
+    local gs = ReplicatedStorage:FindFirstChild("GameStatus")
+    if not gs then return false end
+    local txt = tostring(gs.Value):upper()
+    if txt == "" then return false end
+    if txt:find("GAME OVER") or txt:find("BEAST LEFT")
+    or txt:find("BEF LAI") or txt:find("KET THUC")
+    or txt:find("TRO CHOI KET THUC") then
+        return false
+    end
+    return true
+end
+
+-- ==================== HACK PC ====================
+local function hackPC(pcData)
+    if not pcData or not pcData.computer or not pcData.triggers or #pcData.triggers == 0 then
+        log("hackPC: invalid pcData")
+        return false
+    end
+
+    local pcId = tostring(pcData.id)
+    local pcName = pcData.computer.Name or "Unknown"
+
+    -- ===== HELPER: move tới 1 trigger =====
+    local function moveTo(trigger)
+        if not rootPart then return end
+        local char = player.Character
+        if not char then return end
+        local hum = char:FindFirstChild("Humanoid")
+
+        if firstMoveOfRound then
+            firstMoveOfRound = false
+            rootPart.CFrame = trigger.CFrame + Vector3.new(0, 0.5, 0)
+            task.wait(0.1)
+        else
+            while isMoving do task.wait(0.1) end
+            isMoving = true
+            if hum then
+                hum.PlatformStand = true
+                hum:ChangeState(Enum.HumanoidStateType.Physics)
+            end
+            local noclipActive = true
+            local noclipConn = RunService.Stepped:Connect(function()
+                if not noclipActive then return end
+                local c = player.Character
+                if not c then return end
+                for _, part in pairs(c:GetDescendants()) do
+                    if part:IsA("BasePart") then part.CanCollide = false end
+                end
+            end)
+            local function moveToPos(targetPos, spd)
+                local STOP_DIST = math.max(0.5, spd * 0.05 * 0.8)
+                while true do
+                    task.wait(0.05)
+                    if isSaving then break end
+                    if gameOver or not isGameActive() then break end
+                    if not rootPart or not rootPart.Parent then break end
+                    local diff = targetPos - rootPart.Position
+                    if diff.Magnitude <= STOP_DIST then
+                        rootPart.CFrame = CFrame.new(targetPos)
+                        rootPart.AssemblyLinearVelocity = Vector3.zero
+                        rootPart.AssemblyAngularVelocity = Vector3.zero
+                        break
+                    end
+                    rootPart.AssemblyLinearVelocity = diff.Unit * spd
+                    rootPart.AssemblyAngularVelocity = Vector3.zero
+                end
+            end
+            local myPos    = rootPart.Position
+            local posDown  = Vector3.new(myPos.X, myPos.Y - 50, myPos.Z)
+            local posAcross= Vector3.new(trigger.Position.X, myPos.Y - 50, trigger.Position.Z)
+            local posUp    = Vector3.new(trigger.Position.X, trigger.Position.Y + 0.5, trigger.Position.Z)
+            moveToPos(posDown, tweenSpeed)
+            task.wait(0.05)
+            moveToPos(posAcross, math.max(10, tweenSpeed * 0.7))
+            task.wait(0.05)
+            moveToPos(posUp, tweenSpeed)
+            noclipActive = false
+            noclipConn:Disconnect()
+            if hum then
+                hum.PlatformStand = false
+                hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+            end
+            isMoving = false
+        end
+    end
+
+    -- ===== TWEEN THẲNG tới trigger (dùng khi thử trigger khác trong cùng PC) =====
+    local function moveStraightTo(trigger)
+        if not rootPart then return end
+        local char = player.Character
+        if not char then return end
+        local hum = char:FindFirstChild("Humanoid")
+        while isMoving do task.wait(0.1) end
+        isMoving = true
+        if hum then
+            hum.PlatformStand = true
+            hum:ChangeState(Enum.HumanoidStateType.Physics)
+        end
+        local noclipActive = true
+        local noclipConn = RunService.Stepped:Connect(function()
+            if not noclipActive then return end
+            local c = player.Character
+            if not c then return end
+            for _, part in pairs(c:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide = false end
+            end
+        end)
+        local targetPos = Vector3.new(trigger.Position.X, trigger.Position.Y + 0.5, trigger.Position.Z)
+        local STOP_DIST = math.max(0.5, tweenSpeed * 0.05 * 0.8)
+        while true do
+            task.wait(0.05)
+            if isSaving then break end
+            if gameOver or not isGameActive() then break end
+            if not rootPart or not rootPart.Parent then break end
+            local diff = targetPos - rootPart.Position
+            if diff.Magnitude <= STOP_DIST then
+                rootPart.CFrame = CFrame.new(targetPos)
+                rootPart.AssemblyLinearVelocity = Vector3.zero
+                rootPart.AssemblyAngularVelocity = Vector3.zero
+                break
+            end
+            rootPart.AssemblyLinearVelocity = diff.Unit * tweenSpeed
+            rootPart.AssemblyAngularVelocity = Vector3.zero
+        end
+        noclipActive = false
+        noclipConn:Disconnect()
+        if hum then
+            hum.PlatformStand = false
+            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        end
+        isMoving = false
+    end
+
+    -- ===== HELPER: fire interact tại trigger =====
+    local function fireInteract(trigger)
+        pcall(function()
+            if trigger and rootPart then
+                firetouchinterest(rootPart, trigger, 0)
+                task.wait(0.1)
+                firetouchinterest(rootPart, trigger, 1)
+            end
+        end)
+        task.wait(0.2)
+        pcall(function()
+            local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
+            if r then
+                r:FireServer("Input", "Action", true)
+                task.wait(0.1)
+                r:FireServer("Input", "Action", true)
+            end
+        end)
+    end
+
+    -- ===== SKIP NGAY NẾU PC ĐÃ DONE (check trước khi move, không tốn thời gian di chuyển) =====
+    local screen = pcData.computer:FindFirstChild("Screen")
+    if screen and screen:IsA("BasePart") then
+        local c = screen.Color
+        if c.G > c.R + 0.2 and c.G > c.B + 0.2 then
+            log("PC" .. pcId .. ": screen green, already done, skip")
+            hackedPCs[pcData.id] = true
+            return true
+        end
+    end
+    local pcProgressNow = getPCProgress(pcData)
+    if pcProgressNow >= 1 then
+        log("PC" .. pcId .. ": already done, skip")
+        hackedPCs[pcData.id] = true
+        return true
+    end
+
+    -- ===== SKIP NẾU FIND EXIT VÀ KHÔNG HACK EXTRA =====
+    if isFindExitPhase() and not hackExtraPC then
+        log("PC" .. pcId .. ": Find Exit phase, skip")
+        return false
+    end
+
+    -- ===== THỬ TỪNG TRIGGER, SKIP PC NẾU KHÔNG CÓ TRIGGER NÀO WORK =====
+    local chosenTrigger = nil
+
+    local isFirstTrigger = true
+    for _, trigger in ipairs(pcData.triggers) do
+        if isSaving then return false end
+        if isFirstTrigger then
+            isFirstTrigger = false
+            moveTo(trigger)       -- U-shape khi tới PC từ xa
+        else
+            moveStraightTo(trigger) -- Tween thẳng khi thử trigger khác trong cùng PC
+        end
+        if isSaving then
+            isMoving = false
+            return false
+        end
+        currentTrigger = trigger
+        canAutoJump = true
+        -- Snapshot trước khi fire
+        local progressBefore = getPlayerActionProgress()
+        -- Spam fire mỗi 0.1s trong 1.6s để chắc server nhận
+        pcall(function()
+            if trigger and rootPart then
+                firetouchinterest(rootPart, trigger, 0)
+                task.wait(0.1)
+                firetouchinterest(rootPart, trigger, 1)
+            end
+        end)
+        local spamTime = 0
+        while spamTime < 1 do
+            task.wait(0.1)
+            spamTime = spamTime + 0.1
+            pcall(function()
+                local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
+                if r then r:FireServer("Input", "Action", true) end
+            end)
+        end
+        -- Check progress tăng thêm so với trước khi fire
+        local progressAfter = getPlayerActionProgress()
+        if progressAfter > progressBefore + 0.001 then
+            chosenTrigger = trigger
+            log("PC" .. pcId .. ": trigger work -> progress=" .. math.floor(progressAfter*100) .. "%")
+            break
+        else
+            log("PC" .. pcId .. ": trigger no response, trying next...")
+            canAutoJump = false
+            currentTrigger = nil
+        end
+    end
+
+    if not chosenTrigger then
+        log("PC" .. pcId .. ": all triggers failed, skipping")
+        isMoving = false
+        canAutoJump = false
+        currentTrigger = nil
+        return false
+    end
+
+    isHacking = true
+    currentPC = pcData
+    updateStatus("Hacking PC " .. pcId)
+
+    local lastProgress = 0
+    local stuckCount = 0
+    local lastLoggedPct = -1
+
+    while isHacking and scriptEnabled and not gameOver do
+        task.wait(0.15)
+
+        -- Check game còn active không
+        if not isGameActive() then
+            log("Game ended mid-hack, stopping")
+            isHacking = false
+            currentPC = nil
+            canAutoJump = false
+            currentTrigger = nil
+            isMoving = false
+            break
+        end
+
+        -- Beast check (bỏ qua nếu đang save)
+        if isBeastNearby(30) and not isSaving then
+            isHacking = false
+            currentPC = nil
+            canAutoJump = false
+            skipCurrentPC = true
+            if pcData.id then
+                skippedPCs[pcData.id] = true
+                log("PC" .. pcId .. ": skip (beast nearby)")
+            end
+            escapeBeast()
+            return false
+        end
+
+        -- ALT MODE: dừng hack nếu bị nhốt vào cage
+        if playerMode == "alt" and isSelfCaged() then
+            log("PC" .. pcId .. ": ALT bị nhốt cage, dừng hack")
+            isHacking = false
+            currentPC = nil
+            canAutoJump = false
+            currentTrigger = nil
+            return false
+        end
+
+        if not pcData.computer or not pcData.computer.Parent then
+            log("PC" .. pcId .. ": disappeared!")
+            break
+        end
+
+        -- Fire action
+        pcall(function()
+            local remote = ReplicatedStorage:FindFirstChild("RemoteEvent")
+            if remote then remote:FireServer("Input", "Action", true) end
+        end)
+
+        local prog = getPlayerActionProgress()
+
+        -- Log every 10%
+        local pct = math.floor(prog * 100)
+        if pct ~= lastLoggedPct and pct % 10 == 0 and pct > 0 then
+            lastLoggedPct = pct
+        end
+
+        -- Stuck detection
+        if prog == lastProgress then
+            stuckCount = stuckCount + 1
+            if stuckCount > 10 then
+                log("PC" .. pcId .. ": stuck at " .. math.floor(prog*100) .. "%, retry")
+                pcall(function()
+                    local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
+                    if r then r:FireServer("Input", "Action", true) end
+                end)
+                stuckCount = 0
+            end
+        else
+            stuckCount = 0
+        end
+
+        -- Skill check
+        if pcData.computer:FindFirstChild("SkillCheckActive")
+            and pcData.computer.SkillCheckActive.Value then
+            log("PC" .. pcId .. ": SkillCheck active, firing")
+            pcall(function()
+                local hr = ReplicatedStorage:FindFirstChild("RemoteEvent")
+                if hr then hr:FireServer("SkillCheck", true) end
+            end)
+        end
+
+        -- Done check
+        local screen = pcData.computer:FindFirstChild("Screen")
+        local doneByColor = false
+        if screen and screen:IsA("BasePart") then
+            local c = screen.Color
+            if c.G > c.R + 0.2 and c.G > c.B + 0.2 then doneByColor = true end
+        end
+
+        if doneByColor or prog >= 0.999 then
+            log("PC" .. pcId .. ": DONE!")
+            updateStatus("Done PC " .. pcId)
+            hackedPCs[pcData.id] = true
+
+            -- Tắt ngay canAutoJump để tránh loop jump giữ nhân vật ở trigger
+            canAutoJump = false
+            currentTrigger = nil
+            isHacking = false
+            currentPC = nil
+
+            allPCs = findAllPCs()
+            return true
+        end
+
+        lastProgress = prog
+    end
+
+    isHacking = false
+    currentPC = nil
+    canAutoJump = false
+    currentTrigger = nil
+    return false
+end
+
+-- ==================== AUTO EXIT ====================
+local function autoExitUnified()
+    local lastExitUsed = nil
+
+    local function findExit()
+        local exits = {}
+        local mapFolder = ReplicatedStorage:FindFirstChild("CurrentMap")
+        local map = mapFolder and mapFolder.Value
+        if not map then return exits end
+        for _, obj in ipairs(map:GetDescendants()) do
+            if obj:IsA("Model") and obj.Name == "ExitDoor" then
+                local trig = obj:FindFirstChild("ExitDoorTrigger", true)
+                local area = obj:FindFirstChild("ExitArea", true)
+                if trig then
+                    table.insert(exits, { model = obj, trigger = trig, area = area or trig })
+                end
+            end
+        end
+        return exits
+    end
+
+    local function canGoExit()
+        local gameStatus = ReplicatedStorage:FindFirstChild("GameStatus")
+        if gameStatus then
+            local statusText = tostring(gameStatus.Value):upper()
+            if statusText:find("FIND") and (statusText:find("EXIT") or statusText:find("ESCAPE")) then
+                return true
+            end
+        end
+        return false
+    end
+
+    local function tpFront(trigger)
+        local char = player.Character
+        if not char then return end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+        root.CanCollide = false
+        root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        root.CFrame = CFrame.new(trigger.Position.X, trigger.Position.Y + 2.5, trigger.Position.Z)
+        task.delay(0.5, function() if root then root.CanCollide = true end end)
+    end
+
+    local function isExitOpened(exitData)
+        -- Method 1: transparency
+        local door = exitData.model:FindFirstChild("Door")
+        if door and door:IsA("BasePart") then
+            if door.Transparency > 0.5 then return true end
+        end
+        -- Method 2: CanCollide off
+        if door and door:IsA("BasePart") then
+            if not door.CanCollide then return true end
+        end
+        return false
+    end
+
+    -- Lấy ActionProgress của player bất kỳ
+    local function getActionProgress(plr)
+        local tps = plr:FindFirstChild("TempPlayerStatsModule")
+        local ap = tps and tps:FindFirstChild("ActionProgress")
+        return ap and ap.Value or 0
+    end
+
+    -- Tìm player khác đang đứng gần trigger (đang mở cửa)
+    local function getPlayerOpeningDoor(trigger)
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= player and p.Character then
+                local root = p.Character:FindFirstChild("HumanoidRootPart")
+                if root and (root.Position - trigger.Position).Magnitude <= 8 then
+                    return p
+                end
+            end
+        end
+        return nil
+    end
+
+    -- Detect door open via ActionProgress
+    local function waitForDoorOpen(exitData, timeoutSecs)
+        timeoutSecs = timeoutSecs or 20
+        local waited = 0
+        local beastInterrupted = false
+
+        while waited < timeoutSecs do
+            task.wait(0.2)
+            waited = waited + 0.2
+
+            if isBeastNearby(35) then
+                log("Beast near door -> try other exit")
+                beastInterrupted = true
+                break
+            end
+
+            -- Check visual trước (cửa đã mở bởi ai đó)
+            if isExitOpened(exitData) then
+                log("Door opened! (visual)")
+                return true, false
+            end
+
+            -- Xác định ai đang mở: ưu tiên người khác nếu họ đứng gần trigger
+            local otherOpener = getPlayerOpeningDoor(exitData.trigger)
+            local prog = 0
+            if otherOpener then
+                -- Người khác đang mở -> đọc progress của họ, đứng đợi
+                prog = getActionProgress(otherOpener)
+            else
+                -- Mình đang mở -> đọc progress của mình
+                prog = getActionProgress(player)
+                local pct = math.floor(prog * 100)
+                if pct > 0 and pct % 10 == 0 then
+                end
+            end
+
+            if prog >= 0.999 then
+                log("Door opened! (progress=100%)")
+                task.wait(0.3)
+                return true, false
+            end
+        end
+
+        return false, beastInterrupted
+    end
+
+    local function escape(exitData)
+        local char = player.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if not root or not exitData.area then
+            return
+        end
+
+        local hum = char:FindFirstChild("Humanoid")
+
+        -- TP xuống -80 rồi freeze 2s rồi vào exit area
+        local myPos = root.Position
+        root.CFrame = CFrame.new(myPos.X, myPos.Y - 80, myPos.Z)
+
+        -- Freeze + zero velocity liên tục để không bị gravity kéo
+        if hum then
+            hum.PlatformStand = true
+            hum:ChangeState(Enum.HumanoidStateType.Physics)
+        end
+        local freezeActive = true
+        local freezeConn = RunService.Heartbeat:Connect(function()
+            if not freezeActive then return end
+            pcall(function()
+                root.AssemblyLinearVelocity = Vector3.zero
+                root.AssemblyAngularVelocity = Vector3.zero
+            end)
+        end)
+        task.wait(1.5)
+        freezeActive = false
+        freezeConn:Disconnect()
+
+        -- TP vào exit area
+        root.CFrame = exitData.area.CFrame + Vector3.new(0, 2, 0)
+        task.wait(0.3)
+
+        -- Unfreeze
+        if hum then
+            hum.PlatformStand = false
+            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        end
+
+        local waitTime = 0
+        while waitTime < 10 do
+            task.wait(0.2)
+            waitTime = waitTime + 0.2
+            if hasPlayerEscaped() then
+                log("Escaped!")
+                hasEscaped = true
+                return
+            end
+        end
+        hasEscaped = true
+    end
+
+    local function startOpening(trigger)
+        local char = player.Character
+        if not char then return false end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then return false end
+        tpFront(trigger)
+        task.wait(0.5)
+        pcall(function()
+            local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
+            if r then
+                r:FireServer("Input", "Action", true)
+            end
+        end)
+        return true
+    end
+
+    while scriptEnabled and not hasEscaped do
+        task.wait(0.2)
+
+        if hasPlayerEscaped() then
+            hasEscaped = true
+            log("Escaped!")
+            break
+        end
+
+        if not canGoExit() then
+            task.wait(0.3)
+            continue
+        end
+
+        local exits = findExit()
+        if #exits == 0 then
+            task.wait(0.5)
+            continue
+        end
+
+        for _, exitData in ipairs(exits) do
+            if not scriptEnabled or hasEscaped then break end
+
+            if lastExitUsed and exitData.model == lastExitUsed then
+                continue
+            end
+
+            if isExitOpened(exitData) then
+                log("Exit already open, going in")
+                escape(exitData)
+                lastExitUsed = exitData.model
+                break
+            else
+                if isBeastNearby(35) then
+                    log("Beast near exit, try next")
+                    task.wait(0.5)
+                else
+                    -- Check xem có người khác đang mở cửa này chưa
+                    local otherOpener = getPlayerOpeningDoor(exitData.trigger)
+                    if otherOpener then
+                        -- Người khác đang mở -> đứng gần đợi, không spam remote
+                        log("Other player opening door: " .. otherOpener.Name .. ", waiting...")
+                        tpFront(exitData.trigger)
+                        local opened, beastInterrupted = waitForDoorOpen(exitData, 20)
+                        if beastInterrupted then
+                            log("Beast interrupted while waiting")
+                        elseif opened then
+                            escape(exitData)
+                            lastExitUsed = exitData.model
+                            break
+                        else
+                            log("Door timeout waiting for other player")
+                        end
+                    else
+                        -- Mình mở
+                        tpFront(exitData.trigger)
+                        task.wait(0.2)
+                        local success = startOpening(exitData.trigger)
+                        if success then
+                            local firing = true
+                            task.spawn(function()
+                                while firing do
+                                    task.wait(0.15)
+                                    pcall(function()
+                                        local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
+                                        if r then r:FireServer("Input", "Action", true) end
+                                    end)
+                                end
+                            end)
+                            local opened, beastInterrupted = waitForDoorOpen(exitData, 20)
+                            firing = false
+                            if beastInterrupted then
+                                log("Beast interrupted")
+                            elseif opened then
+                                escape(exitData)
+                                lastExitUsed = exitData.model
+                                break
+                            else
+                                log("Door timeout, try next")
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+end
+
+
+-- ==================== SELF BEAST CHECK ====================
+local function isSelfBeast()
+    local stats = player:FindFirstChild("TempPlayerStatsModule")
+    if not stats then return false end
+    local flag = stats:FindFirstChild("IsBeast")
+    return flag and flag.Value == true
+end
+
+-- ==================== ALT MODE HELPERS ====================
+local function getFollowTarget()
+    if followTargetName == "" then return nil end
+    return Players:FindFirstChild(followTargetName)
+end
+
+local function hasMainEscaped()
+    local main = getFollowTarget()
+    if not main then return false end
+    local stats = main:FindFirstChild("TempPlayerStatsModule")
+    if not stats then return false end
+    local esc = stats:FindFirstChild("Escaped")
+    return esc and esc.Value == true
+end
+
+-- Tìm PC mà targetPlayer đang đứng gần (trong vòng 15 studs)
+local function getPCNearPlayer(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character then return nil end
+    local targetRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not targetRoot then return nil end
+    local nearest, nearestDist = nil, math.huge
+    for _, pcData in ipairs(allPCs) do
+        for _, trigger in ipairs(pcData.triggers) do
+            local dist = (targetRoot.Position - trigger.Position).Magnitude
+            if dist < nearestDist then
+                nearest = pcData
+                nearestDist = dist
+            end
+        end
+    end
+    return (nearestDist < 15) and nearest or nil
+end
+
+-- Check xem mình có đang bị nhốt trong cage không
+local function isSelfCaged()
+    local char = player.Character
+    if not char then return false end
+    local selfTorso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+    if not selfTorso then return false end
+    local mapVal = ReplicatedStorage:FindFirstChild("CurrentMap")
+    mapVal = mapVal and mapVal.Value
+    if not mapVal then return false end
+    for _, v in ipairs(mapVal:GetChildren()) do
+        if v.Name == "FreezePod" then
+            local ct = v:FindFirstChild("CapturedTorso", true)
+            if ct and ct.Value == selfTorso then return true end
+        end
+    end
+    return false
+end
+
+-- Tìm survivor gần nhất KHÔNG PHẢI main (dùng cho alt-beast mode)
+local function getBeastNearestAltSurvivor()
+    local char = player.Character
+    if not char then return nil end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+    local nearest, nearestDist = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player and p.Name ~= followTargetName and p.Character then
+            local hum = p.Character:FindFirstChild("Humanoid")
+            local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
+            if hum and torso then
+                local captured = false
+                local mapV = ReplicatedStorage:FindFirstChild("CurrentMap")
+                mapV = mapV and mapV.Value
+                if mapV then
+                    for _, v in ipairs(mapV:GetChildren()) do
+                        if v.Name == "FreezePod" then
+                            local ct = v:FindFirstChild("CapturedTorso", true)
+                            if ct and ct.Value == torso then captured = true break end
+                        end
+                    end
+                end
+                if not captured then
+                    local dist = (root.Position - torso.Position).Magnitude
+                    if dist < nearestDist then
+                        nearest = p
+                        nearestDist = dist
+                    end
+                end
+            end
+        end
+    end
+    return nearest
+end
+
+-- ==================== BEAST AUTO ====================
+local function getHammerEvent()
+    local char = player.Character
+    local hammer = char and char:FindFirstChild("Hammer")
+    return hammer and hammer:FindFirstChild("HammerEvent")
+end
+
+local function getBeastNearestSurvivor()
+    local char = player.Character
+    if not char then return nil end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+    local nearest, nearestDist = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player and p.Character then
+            local hum = p.Character:FindFirstChild("Humanoid")
+            local torso = p.Character:FindFirstChild("UpperTorso")
+                or p.Character:FindFirstChild("Torso")
+            if hum and torso then
+                -- Skip nếu đã bị nhốt
+                local captured = false
+                local map = ReplicatedStorage:FindFirstChild("CurrentMap")
+                map = map and map.Value
+                if map then
+                    for _, v in ipairs(map:GetChildren()) do
+                        if v.Name == "FreezePod" then
+                            local ct = v:FindFirstChild("CapturedTorso", true)
+                            if ct and ct.Value == torso then captured = true break end
+                        end
+                    end
+                end
+                if not captured then
+                    local dist = (root.Position - torso.Position).Magnitude
+                    if dist < nearestDist then
+                        nearest = p
+                        nearestDist = dist
+                    end
+                end
+            end
+        end
+    end
+    return nearest
+end
+
+local function getBeastNearestRagdoll()
+    local char = player.Character
+    if not char then return nil end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+    local nearest, nearestDist = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player and p.Character then
+            local hum = p.Character:FindFirstChild("Humanoid")
+            local torso = p.Character:FindFirstChild("UpperTorso")
+                or p.Character:FindFirstChild("Torso")
+            if hum and torso and hum.PlatformStand then
+                local dist = (root.Position - torso.Position).Magnitude
+                if dist < nearestDist then
+                    nearest = p
+                    nearestDist = dist
+                end
+            end
+        end
+    end
+    return nearest
+end
+
+local function getBeastNearestEmptyCage()
+    local char = player.Character
+    if not char then return nil end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+    local map = ReplicatedStorage:FindFirstChild("CurrentMap")
+    map = map and map.Value
+    if not map then return nil end
+    local nearest, nearestDist = nil, math.huge
+    for _, v in ipairs(map:GetChildren()) do
+        if v.Name == "FreezePod" then
+            local ct = v:FindFirstChild("CapturedTorso", true)
+            if ct and ct.Value == nil then
+                local trigger = v:FindFirstChild("PodTrigger", true)
+                if trigger then
+                    local dist = (root.Position - trigger.Position).Magnitude
+                    if dist < nearestDist then
+                        nearest = v
+                        nearestDist = dist
+                    end
+                end
+            end
+        end
+    end
+    return nearest
+end
+
+local function beastLoop()
+    while true do
+        task.wait(0.1)
+        if not scriptEnabled or not isSelfBeast() then continue end
+        -- Trận kết thúc -> dừng
+        if not isGameActive() then
+            updateStatus("Beast: waiting for round...")
+            task.wait(1)
+            continue
+        end
+
+        local remote = getHammerEvent()
+        if not remote then continue end
+
+        local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        if not root then continue end
+
+        -- Đang có rope -> cage ngay
+        local ropeCheck = player.Character:FindFirstChild("RopeConstraint", true)
+        if ropeCheck then
+            local cage = getBeastNearestEmptyCage()
+            if not cage then updateStatus("Beast: No empty cage!") continue end
+            local trigger = cage:FindFirstChild("PodTrigger", true)
+            if not trigger then continue end
+            updateStatus("Beast: Caging...")
+            local cageCenter = cage:GetModelCFrame().Position
+            local dirIn = (cageCenter - trigger.Position)
+            if dirIn.Magnitude > 0 then dirIn = dirIn.Unit * 3 else dirIn = Vector3.zero end
+            local cagePos = Vector3.new(trigger.Position.X + dirIn.X, trigger.Position.Y, trigger.Position.Z + dirIn.Z)
+
+            -- Noclip + freeze khi TP vào cage
+            local char = player.Character
+            local hum = char and char:FindFirstChild("Humanoid")
+            if hum then
+                hum.PlatformStand = true
+                hum:ChangeState(Enum.HumanoidStateType.Physics)
+            end
+            local noclipActive = true
+            local noclipConn = RunService.Stepped:Connect(function()
+                if not noclipActive then return end
+                local c = player.Character
+                if not c then return end
+                for _, part in pairs(c:GetDescendants()) do
+                    if part:IsA("BasePart") then part.CanCollide = false end
+                end
+            end)
+
+            root.CFrame = CFrame.new(cagePos)
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+            task.wait(0.15)
+
+            -- Heartbeat pin position để chống gravity
+            local freezeActive = true
+            local freezeConn = RunService.Heartbeat:Connect(function()
+                if not freezeActive then return end
+                pcall(function()
+                    root.CFrame = CFrame.new(cagePos)
+                    root.AssemblyLinearVelocity = Vector3.zero
+                    root.AssemblyAngularVelocity = Vector3.zero
+                end)
+            end)
+
+            local t = 0
+            while t < 3 do
+                pcall(function() firetouchinterest(root, trigger, 0) task.wait(0.03) firetouchinterest(root, trigger, 1) end)
+                pcall(function() local r = ReplicatedStorage:FindFirstChild("RemoteEvent") if r then r:FireServer("Input", "Action", true) end end)
+                local ct = cage:FindFirstChild("CapturedTorso", true)
+                if ct and ct.Value ~= nil then break end
+                task.wait(0.15)
+                t = t + 0.18
+            end
+
+            freezeActive = false
+            freezeConn:Disconnect()
+
+            -- Tắt noclip
+            noclipActive = false
+            noclipConn:Disconnect()
+            if hum then
+                hum.PlatformStand = false
+                hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+            end
+            continue
+        end
+
+        -- Tìm ragdoll -> rope
+        local ragdollTarget = getBeastNearestRagdoll()
+        if ragdollTarget and ragdollTarget.Character then
+            local torso = ragdollTarget.Character:FindFirstChild("UpperTorso") or ragdollTarget.Character:FindFirstChild("Torso")
+            if torso then
+                updateStatus("Beast: Roping " .. ragdollTarget.Name)
+                local dir = (root.Position - torso.Position)
+                dir = dir.Magnitude > 0 and dir.Unit or Vector3.new(0,0,1)
+                root.CFrame = CFrame.new(torso.Position + dir * 1)
+                task.wait(0.03)
+                -- Spam rope tới khi có RopeConstraint hoặc timeout
+                local ropeTimer = 0
+                while ropeTimer < 2 do
+                    remote:FireServer("HammerTieUp", torso, torso.Position)
+                    local rope = player.Character and player.Character:FindFirstChild("RopeConstraint", true)
+                    if rope then break end
+                    task.wait(0.15)
+                    ropeTimer = ropeTimer + 0.15
+                end
+                task.wait(0.05)
+                continue
+            end
+        end
+
+        -- Tìm survivor -> hit
+        -- ALT BEAST MODE: chờ altCageDelay trước khi bắt đầu, và không hit main
+        local target
+        if playerMode == "alt" then
+            local elapsed = tick() - altRoundStartTick
+            if elapsed < altCageDelay then
+                updateStatus("Beast ALT: Chờ " .. math.ceil(altCageDelay - elapsed) .. "s trước khi nhốt...")
+                task.wait(0.5)
+                continue
+            end
+            -- Sau khi main escape -> giết hết tất cả
+            -- Trước đó -> chỉ nhốt các alt khác (không phải main)
+            if hasMainEscaped() then
+                target = getBeastNearestSurvivor()
+                if target then updateStatus("Beast ALT: Main đã thoát! Giết " .. target.Name) end
+            else
+                target = getBeastNearestAltSurvivor()
+            end
+        else
+            target = getBeastNearestSurvivor()
+        end
+        if not target or not target.Character then
+            updateStatus("Beast: All captured!")
+            task.wait(1)
+            continue
+        end
+        local torso = target.Character:FindFirstChild("UpperTorso") or target.Character:FindFirstChild("Torso")
+        if not torso then continue end
+        local hum = target.Character:FindFirstChild("Humanoid")
+        if hum and hum.PlatformStand then continue end -- đang ragdoll rồi, chờ vòng sau rope
+
+        updateStatus("Beast: Hitting " .. target.Name)
+        local dir = (root.Position - torso.Position)
+        dir = dir.Magnitude > 0 and dir.Unit or Vector3.new(0,0,1)
+        root.CFrame = CFrame.new(torso.Position + dir * 1)
+        task.wait(0.03)
+        -- Spam hit cho tới khi ragdoll hoặc timeout
+        local hitTimer = 0
+        while hitTimer < 2 do
+            if not target.Character then break end
+            local h = target.Character:FindFirstChild("Humanoid")
+            if h and h.PlatformStand then break end -- đã ragdoll
+            remote:FireServer("HammerClick", true)
+            task.wait(0.02)
+            remote:FireServer("HammerHit", torso)
+            task.wait(0.15)
+            hitTimer = hitTimer + 0.17
+        end
+        task.wait(0.1)
+    end
+end
+
+-- ==================== AUTO SAVE (SURVIVOR) ====================
+local savesThisRound = 0
+local maxSaves = 1
+local isMoving = false -- lock: chỉ 1 action move tại 1 thời điểm
+
+local function autoSaveLoop()
+    while true do
+        task.wait(0.3)
+        if not scriptEnabled or isSelfBeast() then continue end
+        if savesThisRound >= maxSaves then continue end
+        if isMoving then continue end
+        if roundsPlayed == 0 or not isGameActive() then continue end
+
+        -- Tìm survivor bị nhốt trong cage
+        local map = ReplicatedStorage:FindFirstChild("CurrentMap")
+        map = map and map.Value
+        if not map then continue end
+
+        local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        if not root then continue end
+
+        for _, v in ipairs(map:GetChildren()) do
+            if v.Name == "FreezePod" then
+                local ct = v:FindFirstChild("CapturedTorso", true)
+                local trigger = v:FindFirstChild("PodTrigger", true)
+                if ct and ct.Value ~= nil and trigger then
+                    -- Có người bị nhốt -> tp tới save
+                    local capturedPlayer = nil
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= player and p.Character then
+                            local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
+                            if torso and ct.Value == torso then
+                                capturedPlayer = p break
+                            end
+                        end
+                    end
+                    if capturedPlayer then
+                        isSaving = true
+                        isMoving = true
+                        local savedCanJump = canAutoJump
+                        canAutoJump = false
+                        updateStatus("Saving: " .. capturedPlayer.Name)
+                        local cageCenter = v:GetModelCFrame().Position
+                        local dirIn = (cageCenter - trigger.Position)
+                        if dirIn.Magnitude > 0 then dirIn = dirIn.Unit * 3 else dirIn = Vector3.zero end
+                        local savePos = Vector3.new(trigger.Position.X + dirIn.X, trigger.Position.Y, trigger.Position.Z + dirIn.Z)
+                        local returnTrigger = currentTrigger
+
+                        -- Noclip trước khi TP vào cage
+                        local char = player.Character
+                        local hum = char and char:FindFirstChild("Humanoid")
+                        if hum then
+                            hum.PlatformStand = true
+                            hum:ChangeState(Enum.HumanoidStateType.Physics)
+                        end
+                        local noclipActive = true
+                        local noclipConn = RunService.Stepped:Connect(function()
+                            if not noclipActive then return end
+                            local c = player.Character
+                            if not c then return end
+                            for _, part in pairs(c:GetDescendants()) do
+                                if part:IsA("BasePart") then part.CanCollide = false end
+                            end
+                        end)
+
+                        -- TP thẳng tới cage + freeze để không bị đẩy ra
+                        root.CFrame = CFrame.new(savePos)
+                        root.AssemblyLinearVelocity = Vector3.zero
+                        root.AssemblyAngularVelocity = Vector3.zero
+                        task.wait(0.15)
+
+                        -- Heartbeat pin position để chống gravity
+                        local freezeActive = true
+                        local freezeConn = RunService.Heartbeat:Connect(function()
+                            if not freezeActive then return end
+                            pcall(function()
+                                root.CFrame = CFrame.new(savePos)
+                                root.AssemblyLinearVelocity = Vector3.zero
+                                root.AssemblyAngularVelocity = Vector3.zero
+                            end)
+                        end)
+
+                        -- Interact save
+                        local t = 0
+                        while t < 3 do
+                            pcall(function() firetouchinterest(root, trigger, 0) task.wait(0.03) firetouchinterest(root, trigger, 1) end)
+                            pcall(function() local r = ReplicatedStorage:FindFirstChild("RemoteEvent") if r then r:FireServer("Input", "Action", true) end end)
+                            ct = v:FindFirstChild("CapturedTorso", true)
+                            if ct and ct.Value == nil then
+                                savesThisRound = savesThisRound + 1
+                                updateStatus("Saved! Returning to PC...")
+                                break
+                            end
+                            task.wait(0.15)
+                            t = t + 0.18
+                        end
+
+                        freezeActive = false
+                        freezeConn:Disconnect()
+
+                        -- Tắt noclip + unfreeze
+                        noclipActive = false
+                        noclipConn:Disconnect()
+                        if hum then
+                            hum.PlatformStand = false
+                            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                        end
+
+                        -- TP thẳng về lại trigger PC cũ
+                        canAutoJump = savedCanJump
+                        isSaving = false
+                        isMoving = false
+                        if returnTrigger and isHacking and isGameActive() and not gameOver then
+                            root.CFrame = returnTrigger.CFrame + Vector3.new(0, 0.5, 0)
+                            task.wait(0.15)
+                            -- Re-fire interact để tiếp tục hack
+                            pcall(function()
+                                firetouchinterest(root, returnTrigger, 0)
+                                task.wait(0.1)
+                                firetouchinterest(root, returnTrigger, 1)
+                            end)
+                            task.wait(0.2)
+                            pcall(function()
+                                local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
+                                if r then r:FireServer("Input", "Action", true) end
+                            end)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- ==================== MAIN LOOP ====================
+local function mainLoop()
+
+    while true do
+        if not scriptEnabled then
+            isHacking = false
+            currentPC = nil
+            canAutoJump = false
+            hasEscaped = false
+            task.wait(0.5)
+            continue
+        end
+
+        if not waitForGameActive() then
+            log("waitForGameActive failed, retry in 10s")
+            task.wait(10)
+            continue
+        end
+
+        roundsPlayed = roundsPlayed + 1
+        resetGameState()
+        altRoundStartTick = tick()
+        savesThisRound = 0
+        firstMoveOfRound = true
+        log("=== ROUND " .. roundsPlayed .. " START | Extra=" .. tostring(hackExtraPC) .. " | Mode=" .. playerMode .. " ===")
+
+        -- Nếu là beast thì skip toàn bộ sur logic
+        if isSelfBeast() then
+            updateStatus("Beast mode - auto running")
+            repeat task.wait(1) until not scriptEnabled or not isSelfBeast()
+            continue
+        end
+
+        -- ==================== ALT SURVIVOR MODE ====================
+        if playerMode == "alt" then
+            local main = getFollowTarget()
+            if not main then
+                updateStatus("ALT: Chưa chọn main player!")
+                -- Chờ cho đến khi có follow target
+                repeat task.wait(0.5) until followTargetName ~= "" or not scriptEnabled
+                if not scriptEnabled then continue end
+                main = getFollowTarget()
+                if not main then task.wait(2) continue end
+            end
+
+            updateStatus("ALT: Đang follow " .. main.Name)
+            altWasRescued = false
+            allPCs = findAllPCs()
+
+            -- ALT survivor loop
+            while scriptEnabled and not gameOver do
+                task.wait(0.2)
+
+                if not isGameActive() then break end
+
+                -- Reload main ref
+                main = getFollowTarget()
+                if not main then
+                    updateStatus("ALT: Mất main player!")
+                    break
+                end
+
+                -- Check nếu đang bị nhốt trong cage
+                if isSelfCaged() then
+                    updateStatus("ALT: Bị nhốt! Chờ " .. main.Name .. " cứu...")
+                    altWasRescued = false
+                    -- Đợi cho đến khi được thả
+                    while isSelfCaged() and scriptEnabled and isGameActive() do
+                        task.wait(0.3)
+                    end
+                    if not isSelfCaged() then
+                        altWasRescued = true
+                        log("ALT: Vừa được cứu khỏi cage!")
+                    end
+                end
+
+                -- Vừa được cứu -> TP về main ngay
+                if altWasRescued then
+                    altWasRescued = false
+                    local mainChar = main.Character
+                    local mainRoot = mainChar and mainChar:FindFirstChild("HumanoidRootPart")
+                    if mainRoot and rootPart then
+                        updateStatus("ALT: Được cứu! TP về main " .. main.Name .. "...")
+                        rootPart.CFrame = mainRoot.CFrame + Vector3.new(2, 0, 0)
+                    end
+                    task.wait(0.5)
+                end
+
+                -- Giai đoạn Find Exit -> tự exit
+                if isFindExitPhase() then
+                    updateStatus("ALT: Find Exit! Tự thoát...")
+                    autoExitUnified()
+                    break
+                end
+
+                -- Tìm PC main đang hack và vào hack cùng
+                local mainPC = getPCNearPlayer(main)
+                if mainPC and not hackedPCs[mainPC.id] then
+                    updateStatus("ALT: Hack cùng main tại PC " .. mainPC.id)
+                    hackPC(mainPC)
+                else
+                    -- Main không ở gần PC nào hoặc PC đã done -> follow vị trí main
+                    local mainChar = main.Character
+                    local mainRoot = mainChar and mainChar:FindFirstChild("HumanoidRootPart")
+                    if mainRoot and rootPart then
+                        local dist = (rootPart.Position - mainRoot.Position).Magnitude
+                        if dist > 18 then
+                            updateStatus("ALT: Theo main " .. main.Name .. "...")
+                            rootPart.CFrame = mainRoot.CFrame + Vector3.new(2, 0, 0)
+                        else
+                            updateStatus("ALT: Chờ main " .. main.Name .. " di chuyển...")
+                        end
+                    end
+                end
+            end
+
+            -- Chờ round kết thúc hẳn
+            repeat task.wait(1) until not isGameActive() or not scriptEnabled
+            continue
+        end
+        -- ==================== END ALT SURVIVOR MODE ====================
+
+        allPCs = findAllPCs()
+
+        if #allPCs == 0 then
+            updateStatus("No PCs found")
+            task.wait(3)
+            continue
+        end
+
+        updateStatus("Found " .. #allPCs .. " PC(s)")
+
+        local totalAttempts = 0
+        local maxAttempts = #allPCs * 3
+
+        while totalAttempts < maxAttempts and scriptEnabled and not (isFindExitPhase() and not hackExtraPC) do
+            -- Check game còn active không trước mỗi vòng
+            local gs2 = ReplicatedStorage:FindFirstChild("GameStatus")
+            local gs2txt = gs2 and tostring(gs2.Value):upper() or ""
+            if not (gs2txt:find("HACK") or gs2txt:find("HEAD START") or gs2txt:find("FIND")) then
+                log("Game ended, stop hacking")
+                break
+            end
+
+            local hasSkippedPC = false
+            local allCompleted = true
+
+            for idx, pcData in ipairs(allPCs) do
+                if not scriptEnabled then break end
+
+                -- Check game còn active không
+                local gsCheck = ReplicatedStorage:FindFirstChild("GameStatus")
+                local gsCheckTxt = gsCheck and tostring(gsCheck.Value):upper() or ""
+                if not isGameActive() then
+                    allCompleted = true
+                    break
+                end
+
+                if isBeastNearby(23) then
+                    escapeBeast()
+                    skipCurrentPC = true
+                    -- Chờ beast đi xa rồi mới tiếp tục
+                    updateStatus("Waiting for beast to leave...")
+                    local beastLeft = false
+                    while scriptEnabled do
+                        if isSaving then
+                            -- Đang save, thoát chờ beast tạm thời
+                            while isSaving do task.wait(0.2) end
+                        end
+                        if not isBeastNearby(30) then
+                            beastLeft = true
+                            break
+                        end
+                        task.wait(0.5)
+                    end
+                    if beastLeft then
+                        skippedPCs = {} -- chỉ clear khi beast thực sự đã đi
+                    end
+                    allCompleted = false -- không thoát while loop
+                    break -- restart for loop từ đầu
+                else
+                    skipCurrentPC = false
+                end
+
+                if isFindExitPhase() and not hackExtraPC then
+                    log("Find Exit phase, stop hacking PCs")
+                    allCompleted = true
+                    break
+                end
+
+                local pcId = pcData.id
+
+                if hackedPCs[pcId] then
+                    -- silent skip
+                elseif skippedPCs[pcId] then
+                    hasSkippedPC = true
+                else
+                    local progress = getPCProgress(pcData)
+                    if progress >= 1 then
+                        hackedPCs[pcId] = true
+                    else
+                        allCompleted = false
+                        hackPC(pcData)
+                    end
+                end
+            end
+            totalAttempts = totalAttempts + 1
+
+            if allCompleted then
+                log("All PCs done!")
+                break
+            end
+
+            if hasSkippedPC then
+                local remainingCount = 0
+                for id, _ in pairs(skippedPCs) do
+                    if not hackedPCs[id] then remainingCount += 1 end
+                end
+                if remainingCount > 0 then
+                    task.wait(3)
+                else
+                    break
+                end
+            end
+        end
+
+        if hackExtraPC then task.wait(2) end
+
+        -- Tắt hacking state trước khi wait
+        isHacking = false
+        canAutoJump = false
+        currentTrigger = nil
+        currentPC = nil
+
+        -- Wait for Find Exit
+        updateStatus("Waiting for Find Exit...")
+        local waitStart = tick()
+        repeat task.wait(0.5) until isFindExitPhase() or (tick() - waitStart > 30) or not scriptEnabled
+
+        if not scriptEnabled then continue end
+
+        if isFindExitPhase() then
+            log("Find Exit detected!")
+            updateStatus("Auto Exit started!")
+            autoExitUnified()
+            log("=== ROUND " .. roundsPlayed .. " COMPLETE ===")
+            task.wait(3)
+        else
+        end
+    end
+end
+
+-- ==================== GUI ====================
+local function createGUI()
+    local TweenService = game:GetService("TweenService")
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "AutoHackGUI"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = player:WaitForChild("PlayerGui")
+
+
+
+    local scriptStartTime = tick()
+    local webhookUrl = ""
+    local webhookInterval = 5
+    local creditsAtStart = nil
+    local autoSendEnabled = false
+    local settingsOpen = false
+
+    local function getCredits()
+        local stats = player:FindFirstChild("SavedPlayerStatsModule")
+        if not stats then return nil end
+        local c = stats:FindFirstChild("Credits")
+        return c and c.Value or nil
+    end
+    local function getServerTime() return os.date("%H:%M:%S") end
+    local function formatUptime(secs)
+        return string.format("%02d:%02d:%02d", math.floor(secs/3600), math.floor((secs%3600)/60), math.floor(secs%60))
+    end
+
+    -- ===== KÍCH THƯỚC =====
+    local CW, CH = 210, 148   -- compact (mặc định)
+    -- Full size = gần full màn hình, dùng Scale
+
+    -- ===== OUTER FRAME (compact mặc định) =====
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, CW, 0, CH)
+    frame.Position = UDim2.new(0.5, -CW/2, 0, 20)
+    frame.BackgroundColor3 = Color3.fromRGB(18, 18, 28)
+    frame.BorderSizePixel = 0
+    frame.ClipsDescendants = true
+    frame.Parent = screenGui
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
+    local stroke = Instance.new("UIStroke", frame)
+    stroke.Color = Color3.fromRGB(70, 70, 100)
+    stroke.Thickness = 1.2
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+    -- ===== LEFT PANEL (luôn hiện, rộng CW) =====
+    local leftPanel = Instance.new("Frame", frame)
+    leftPanel.Size = UDim2.new(0, CW, 1, 0)
+    leftPanel.Position = UDim2.new(0, 0, 0, 0)
+    leftPanel.BackgroundTransparency = 1
+    leftPanel.BorderSizePixel = 0
+
+    -- Title bar
+    local titleBar = Instance.new("Frame", leftPanel)
+    titleBar.Size = UDim2.new(1, 0, 0, 30)
+    titleBar.BackgroundColor3 = Color3.fromRGB(28, 28, 45)
+    titleBar.BorderSizePixel = 0
+    Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 12)
+
+    local titleLabel = Instance.new("TextLabel", titleBar)
+    titleLabel.Size = UDim2.new(1, -38, 1, 0)
+    titleLabel.Position = UDim2.new(0, 10, 0, 0)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Text = "⚡ AUTO FARM FTF"
+    titleLabel.TextColor3 = Color3.fromRGB(220, 220, 255)
+    titleLabel.TextSize = 12
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    local gearBtn = Instance.new("TextButton", titleBar)
+    gearBtn.Size = UDim2.new(0, 26, 0, 26)
+    gearBtn.Position = UDim2.new(1, -29, 0.5, -13)
+    gearBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 65)
+    gearBtn.Text = "⚙"
+    gearBtn.TextColor3 = Color3.fromRGB(180, 180, 220)
+    gearBtn.TextSize = 14
+    gearBtn.Font = Enum.Font.GothamBold
+    gearBtn.BorderSizePixel = 0
+    Instance.new("UICorner", gearBtn).CornerRadius = UDim.new(0, 6)
+
+    -- ON/OFF
+    local toggleButton = Instance.new("TextButton", leftPanel)
+    toggleButton.Size = UDim2.new(1, -16, 0, 34)
+    toggleButton.Position = UDim2.new(0, 8, 0, 34)
+    toggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    toggleButton.Text = "OFF"
+    toggleButton.TextColor3 = Color3.new(1,1,1)
+    toggleButton.TextSize = 15
+    toggleButton.Font = Enum.Font.GothamBold
+    toggleButton.BorderSizePixel = 0
+    Instance.new("UICorner", toggleButton).CornerRadius = UDim.new(0, 8)
+
+    -- Status
+    local status = Instance.new("TextLabel", leftPanel)
+    status.Size = UDim2.new(1, -16, 0, 14)
+    status.Position = UDim2.new(0, 8, 0, 72)
+    status.BackgroundTransparency = 1
+    status.Text = "Status: Waiting..."
+    status.TextColor3 = Color3.fromRGB(140, 230, 140)
+    status.TextSize = 10
+    status.Font = Enum.Font.Gotham
+    status.TextXAlignment = Enum.TextXAlignment.Left
+    status.TextWrapped = true
+    statusLabel = status
+
+    -- Hack Extra PC checkbox
+    local cbFrame = Instance.new("Frame", leftPanel)
+    cbFrame.Size = UDim2.new(1, -16, 0, 18)
+    cbFrame.Position = UDim2.new(0, 8, 0, 89)
+    cbFrame.BackgroundTransparency = 1
+
+    local checkbox = Instance.new("Frame", cbFrame)
+    checkbox.Size = UDim2.new(0, 14, 0, 14)
+    checkbox.Position = UDim2.new(0, 0, 0.5, -7)
+    checkbox.BackgroundColor3 = Color3.fromRGB(55, 55, 70)
+    checkbox.BorderSizePixel = 1
+    checkbox.BorderColor3 = Color3.fromRGB(110, 110, 140)
+    Instance.new("UICorner", checkbox).CornerRadius = UDim.new(0, 3)
+
+    local checkmark = Instance.new("TextLabel", checkbox)
+    checkmark.Size = UDim2.new(1,0,1,0)
+    checkmark.BackgroundTransparency = 1
+    checkmark.Text = "✓"
+    checkmark.TextColor3 = Color3.fromRGB(255, 80, 80)
+    checkmark.TextSize = 12
+    checkmark.Font = Enum.Font.GothamBold
+    checkmark.Visible = false
+
+    local checkLabel = Instance.new("TextLabel", cbFrame)
+    checkLabel.Size = UDim2.new(1, -18, 1, 0)
+    checkLabel.Position = UDim2.new(0, 18, 0, 0)
+    checkLabel.BackgroundTransparency = 1
+    checkLabel.Text = "Hack Extra PC"
+    checkLabel.TextColor3 = Color3.fromRGB(170, 170, 190)
+    checkLabel.TextSize = 10
+    checkLabel.Font = Enum.Font.Gotham
+    checkLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    local checkButton = Instance.new("TextButton", cbFrame)
+    checkButton.Size = UDim2.new(1,0,1,0)
+    checkButton.BackgroundTransparency = 1
+    checkButton.Text = ""
+
+    -- MAIN / ALT toggle
+    local modeFrame = Instance.new("Frame", leftPanel)
+    modeFrame.Size = UDim2.new(1, -16, 0, 26)
+    modeFrame.Position = UDim2.new(0, 8, 0, 112)
+    modeFrame.BackgroundTransparency = 1
+
+    local modeMainBtn = Instance.new("TextButton", modeFrame)
+    modeMainBtn.Size = UDim2.new(0.5, -2, 1, 0)
+    modeMainBtn.BackgroundColor3 = Color3.fromRGB(35, 100, 200)
+    modeMainBtn.Text = "⚡ MAIN"
+    modeMainBtn.TextColor3 = Color3.new(1,1,1)
+    modeMainBtn.TextSize = 11
+    modeMainBtn.Font = Enum.Font.GothamBold
+    modeMainBtn.BorderSizePixel = 0
+    Instance.new("UICorner", modeMainBtn).CornerRadius = UDim.new(0, 6)
+
+    local modeAltBtn = Instance.new("TextButton", modeFrame)
+    modeAltBtn.Size = UDim2.new(0.5, -2, 1, 0)
+    modeAltBtn.Position = UDim2.new(0.5, 2, 0, 0)
+    modeAltBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+    modeAltBtn.Text = "🔧 ALT"
+    modeAltBtn.TextColor3 = Color3.fromRGB(150, 150, 170)
+    modeAltBtn.TextSize = 11
+    modeAltBtn.Font = Enum.Font.GothamBold
+    modeAltBtn.BorderSizePixel = 0
+    Instance.new("UICorner", modeAltBtn).CornerRadius = UDim.new(0, 6)
+
+    local function updateModeButtons()
+        if playerMode == "main" then
+            modeMainBtn.BackgroundColor3 = Color3.fromRGB(35, 100, 200)
+            modeMainBtn.TextColor3 = Color3.new(1,1,1)
+            modeAltBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+            modeAltBtn.TextColor3 = Color3.fromRGB(150, 150, 170)
+        else
+            modeMainBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+            modeMainBtn.TextColor3 = Color3.fromRGB(150, 150, 170)
+            modeAltBtn.BackgroundColor3 = Color3.fromRGB(170, 80, 15)
+            modeAltBtn.TextColor3 = Color3.new(1,1,1)
+        end
+    end
+    modeMainBtn.MouseButton1Click:Connect(function() playerMode="main"; followTargetName=""; updateModeButtons() end)
+    modeAltBtn.MouseButton1Click:Connect(function() playerMode="alt"; updateModeButtons() end)
+
+    -- Đường phân cách dọc giữa left và right panel
+    local vDivider = Instance.new("Frame", frame)
+    vDivider.Size = UDim2.new(0, 1, 1, -16)
+    vDivider.Position = UDim2.new(0, CW + 2, 0, 8)
+    vDivider.BackgroundColor3 = Color3.fromRGB(70, 70, 100)
+    vDivider.BorderSizePixel = 0
+    vDivider.Visible = false
+
+    -- ===== RIGHT PANEL (settings, xuất hiện khi mở ngang) =====
+    local rightPanel = Instance.new("ScrollingFrame", frame)
+    rightPanel.Size = UDim2.new(0, SW, 1, 0)
+    rightPanel.Position = UDim2.new(0, CW + 6, 0, 0)
+    rightPanel.BackgroundTransparency = 1
+    rightPanel.BorderSizePixel = 0
+    rightPanel.ScrollBarThickness = 3
+    rightPanel.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 120)
+    rightPanel.CanvasSize = UDim2.new(0, 0, 0, 400)
+    rightPanel.Visible = false
+
+    local rPad = Instance.new("UIPadding", rightPanel)
+    rPad.PaddingTop = UDim.new(0, 6)
+    rPad.PaddingLeft = UDim.new(0, 8)
+    rPad.PaddingRight = UDim.new(0, 8)
+
+    local rLayout = Instance.new("UIListLayout", rightPanel)
+    rLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    rLayout.Padding = UDim.new(0, 6)
+
+    -- Helper tạo label trong right panel
+    local function rLabel(text, color, order)
+        local lbl = Instance.new("TextLabel", rightPanel)
+        lbl.Size = UDim2.new(1, 0, 0, 14)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = text
+        lbl.TextColor3 = color or Color3.fromRGB(200,200,200)
+        lbl.TextSize = 10
+        lbl.Font = Enum.Font.Gotham
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.LayoutOrder = order or 0
+        return lbl
+    end
+
+    -- Helper tạo divider trong right panel
+    local function rDiv(order)
+        local d = Instance.new("Frame", rightPanel)
+        d.Size = UDim2.new(1, 0, 0, 1)
+        d.BackgroundColor3 = Color3.fromRGB(60, 60, 90)
+        d.BorderSizePixel = 0
+        d.LayoutOrder = order
+    end
+
+    -- ---- STATS ----
+    local lblPlayer  = rLabel("👤 " .. player.Name,     Color3.fromRGB(255,220,100), 1)
+    local lblUptime  = rLabel("⏱ 00:00:00",              Color3.fromRGB(140,210,255), 2)
+    local lblSvTime  = rLabel("🕐 --:--:--",             Color3.fromRGB(140,210,255), 3)
+    local lblCredits = rLabel("💰 Credits: ...",          Color3.fromRGB(100,255,150), 4)
+    local lblCph     = rLabel("📈 C/h: ...",              Color3.fromRGB(100,255,150), 5)
+    rDiv(6)
+
+    -- ---- WEBHOOK ----
+    local lblWh = rLabel("Webhook URL:", Color3.fromRGB(180,180,255), 7)
+    lblWh.Font = Enum.Font.GothamBold
+
+    local webhookInput = Instance.new("TextBox", rightPanel)
+    webhookInput.Size = UDim2.new(1, 0, 0, 24)
+    webhookInput.BackgroundColor3 = Color3.fromRGB(28,28,48)
+    webhookInput.BorderSizePixel = 0
+    webhookInput.Text = ""
+    webhookInput.PlaceholderText = "Paste webhook URL..."
+    webhookInput.PlaceholderColor3 = Color3.fromRGB(90,90,110)
+    webhookInput.TextColor3 = Color3.fromRGB(210,210,255)
+    webhookInput.TextSize = 9
+    webhookInput.Font = Enum.Font.Gotham
+    webhookInput.ClearTextOnFocus = false
+    webhookInput.LayoutOrder = 8
+    Instance.new("UICorner", webhookInput).CornerRadius = UDim.new(0,5)
+    webhookInput:GetPropertyChangedSignal("Text"):Connect(function() webhookUrl = webhookInput.Text end)
+
+    local btnRow = Instance.new("Frame", rightPanel)
+    btnRow.Size = UDim2.new(1, 0, 0, 26)
+    btnRow.BackgroundTransparency = 1
+    btnRow.LayoutOrder = 9
+
+    local testBtn = Instance.new("TextButton", btnRow)
+    testBtn.Size = UDim2.new(0.48, -2, 1, 0)
+    testBtn.BackgroundColor3 = Color3.fromRGB(35,75,140)
+    testBtn.Text = "Test"
+    testBtn.TextColor3 = Color3.new(1,1,1)
+    testBtn.TextSize = 10
+    testBtn.Font = Enum.Font.GothamBold
+    testBtn.BorderSizePixel = 0
+    Instance.new("UICorner", testBtn).CornerRadius = UDim.new(0,6)
+
+    local autoBtn = Instance.new("TextButton", btnRow)
+    autoBtn.Size = UDim2.new(0.52, -2, 1, 0)
+    autoBtn.Position = UDim2.new(0.48, 2, 0, 0)
+    autoBtn.BackgroundColor3 = Color3.fromRGB(55,55,70)
+    autoBtn.Text = "Auto: OFF"
+    autoBtn.TextColor3 = Color3.new(1,1,1)
+    autoBtn.TextSize = 10
+    autoBtn.Font = Enum.Font.GothamBold
+    autoBtn.BorderSizePixel = 0
+    Instance.new("UICorner", autoBtn).CornerRadius = UDim.new(0,6)
+
+    local lblWhStatus = rLabel("", Color3.fromRGB(140,255,140), 10)
+    rDiv(11)
+
+    -- ---- SPEED SLIDER ----
+    local lblSpeed = rLabel("Speed: " .. tweenSpeed .. " st/s", Color3.fromRGB(160,255,160), 12)
+    lblSpeed.Font = Enum.Font.GothamBold
+
+    local speedTrack = Instance.new("Frame", rightPanel)
+    speedTrack.Size = UDim2.new(1, 0, 0, 18)
+    speedTrack.BackgroundTransparency = 1
+    speedTrack.LayoutOrder = 13
+
+    local speedBg = Instance.new("Frame", speedTrack)
+    speedBg.Size = UDim2.new(1, 0, 0, 6)
+    speedBg.Position = UDim2.new(0, 0, 0.5, -3)
+    speedBg.BackgroundColor3 = Color3.fromRGB(38,55,38)
+    speedBg.BorderSizePixel = 0
+    Instance.new("UICorner", speedBg).CornerRadius = UDim.new(1,0)
+
+    local speedFill = Instance.new("Frame", speedBg)
+    speedFill.Size = UDim2.new((tweenSpeed-10)/90, 0, 1, 0)
+    speedFill.BackgroundColor3 = Color3.fromRGB(70,200,70)
+    speedFill.BorderSizePixel = 0
+    Instance.new("UICorner", speedFill).CornerRadius = UDim.new(1,0)
+
+    local speedKnob = Instance.new("Frame", speedBg)
+    speedKnob.Size = UDim2.new(0,18,0,18)
+    speedKnob.AnchorPoint = Vector2.new(0.5,0.5)
+    speedKnob.Position = UDim2.new((tweenSpeed-10)/90, 0, 0.5, 0)
+    speedKnob.BackgroundColor3 = Color3.fromRGB(110,255,110)
+    speedKnob.BorderSizePixel = 0
+    speedKnob.ZIndex = 2
+    Instance.new("UICorner", speedKnob).CornerRadius = UDim.new(1,0)
+
+    local speedWarn = rLabel("⚠ High speed may kick!", Color3.fromRGB(255,160,40), 14)
+    speedWarn.Visible = false
+    rDiv(15)
+
+    -- ---- ALT CONFIG ----
+    local lblAltTitle = rLabel("🔧 ALT MODE CONFIG", Color3.fromRGB(255,160,60), 16)
+    lblAltTitle.Font = Enum.Font.GothamBold
+    lblAltTitle.Size = UDim2.new(1,0,0,16)
+
+    local lblFollow = rLabel("Follow Main Player:", Color3.fromRGB(200,200,200), 17)
+
+    -- Player list
+    local playerListFrame = Instance.new("Frame", rightPanel)
+    playerListFrame.Size = UDim2.new(1, 0, 0, 72)
+    playerListFrame.BackgroundColor3 = Color3.fromRGB(22,22,36)
+    playerListFrame.BorderSizePixel = 0
+    playerListFrame.ClipsDescendants = true
+    playerListFrame.LayoutOrder = 18
+    Instance.new("UICorner", playerListFrame).CornerRadius = UDim.new(0,6)
+
+    local plLayout = Instance.new("UIListLayout", playerListFrame)
+    plLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    plLayout.Padding = UDim.new(0,2)
+    local plPad = Instance.new("UIPadding", playerListFrame)
+    plPad.PaddingTop = UDim.new(0,4)
+    plPad.PaddingLeft = UDim.new(0,4)
+    plPad.PaddingRight = UDim.new(0,4)
+
+    local lblFollowing = rLabel("→ Chưa chọn", Color3.fromRGB(100,255,150), 19)
+    lblFollowing.Font = Enum.Font.GothamBold
+
+    local lblDelay = rLabel("Beast nhốt sau: " .. altCageDelay .. "s", Color3.fromRGB(255,180,100), 20)
+    lblDelay.Font = Enum.Font.GothamBold
+
+    local cageTrack = Instance.new("Frame", rightPanel)
+    cageTrack.Size = UDim2.new(1, 0, 0, 18)
+    cageTrack.BackgroundTransparency = 1
+    cageTrack.LayoutOrder = 21
+
+    local cageBg = Instance.new("Frame", cageTrack)
+    cageBg.Size = UDim2.new(1, 0, 0, 6)
+    cageBg.Position = UDim2.new(0, 0, 0.5, -3)
+    cageBg.BackgroundColor3 = Color3.fromRGB(50,30,10)
+    cageBg.BorderSizePixel = 0
+    Instance.new("UICorner", cageBg).CornerRadius = UDim.new(1,0)
+
+    local cageFill = Instance.new("Frame", cageBg)
+    cageFill.Size = UDim2.new((altCageDelay-10)/290, 0, 1, 0)
+    cageFill.BackgroundColor3 = Color3.fromRGB(220,120,30)
+    cageFill.BorderSizePixel = 0
+    Instance.new("UICorner", cageFill).CornerRadius = UDim.new(1,0)
+
+    local cageKnob = Instance.new("Frame", cageBg)
+    cageKnob.Size = UDim2.new(0,18,0,18)
+    cageKnob.AnchorPoint = Vector2.new(0.5,0.5)
+    cageKnob.Position = UDim2.new((altCageDelay-10)/290, 0, 0.5, 0)
+    cageKnob.BackgroundColor3 = Color3.fromRGB(255,160,50)
+    cageKnob.BorderSizePixel = 0
+    cageKnob.ZIndex = 2
+    Instance.new("UICorner", cageKnob).CornerRadius = UDim.new(1,0)
+
+    -- Update canvas size tự động
+    rLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        rightPanel.CanvasSize = UDim2.new(0, 0, 0, rLayout.AbsoluteContentSize.Y + 16)
+    end)
+
+    -- ===== SLIDER FUNCTIONS =====
+    local function setSpeed(val)
+        val = math.clamp(math.floor(val), 10, 100)
+        tweenSpeed = val
+        local warn = val > 60
+        lblSpeed.Text = "Speed: " .. val .. " st/s"
+        lblSpeed.TextColor3 = warn and Color3.fromRGB(255,180,50) or Color3.fromRGB(160,255,160)
+        speedFill.BackgroundColor3 = warn and Color3.fromRGB(255,140,30) or Color3.fromRGB(70,200,70)
+        speedKnob.BackgroundColor3 = warn and Color3.fromRGB(255,180,50) or Color3.fromRGB(110,255,110)
+        speedWarn.Visible = warn
+        local pct = (val-10)/90
+        speedFill.Size = UDim2.new(pct, 0, 1, 0)
+        speedKnob.Position = UDim2.new(pct, 0, 0.5, 0)
+    end
+
+    local function setCageDelay(val)
+        val = math.clamp(math.floor(val), 10, 300)
+        altCageDelay = val
+        local pct = (val-10)/290
+        cageFill.Size = UDim2.new(pct, 0, 1, 0)
+        cageKnob.Position = UDim2.new(pct, 0, 0.5, 0)
+        lblDelay.Text = "Beast nhốt sau: " .. val .. "s"
+    end
+
+    -- ===== PLAYER LIST =====
+    local function refreshPlayerList()
+        for _, c in ipairs(playerListFrame:GetChildren()) do
+            if c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end
+        end
+        local others = {}
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= player then table.insert(others, p) end
+        end
+        if #others == 0 then
+            local none = Instance.new("TextLabel", playerListFrame)
+            none.Size = UDim2.new(1,-4,0,20)
+            none.BackgroundTransparency = 1
+            none.Text = "(Không có player nào)"
+            none.TextColor3 = Color3.fromRGB(110,110,130)
+            none.TextSize = 10
+            none.Font = Enum.Font.Gotham
+            return
+        end
+        for _, p in ipairs(others) do
+            local sel = followTargetName == p.Name
+            local btn = Instance.new("TextButton", playerListFrame)
+            btn.Size = UDim2.new(1,-4,0,20)
+            btn.BackgroundColor3 = sel and Color3.fromRGB(40,110,40) or Color3.fromRGB(32,32,52)
+            btn.Text = (sel and "✔ " or "   ") .. p.Name
+            btn.TextColor3 = sel and Color3.fromRGB(140,255,140) or Color3.fromRGB(200,200,200)
+            btn.TextSize = 10
+            btn.Font = Enum.Font.Gotham
+            btn.BorderSizePixel = 0
+            Instance.new("UICorner", btn).CornerRadius = UDim.new(0,4)
+            btn.MouseButton1Click:Connect(function()
+                followTargetName = p.Name
+                lblFollowing.Text = "→ Follow: " .. p.Name
+                refreshPlayerList()
+            end)
+        end
+    end
+
+    Players.PlayerAdded:Connect(function() refreshPlayerList() end)
+    Players.PlayerRemoving:Connect(function() refreshPlayerList() end)
+
+    -- ===== EXPAND / COLLAPSE NGANG =====
+    local TWEEN_OPEN  = TweenInfo.new(0.35, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
+    local TWEEN_CLOSE = TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+
+    -- Lưu lại vị trí compact để restore
+    local compactPos = frame.Position
+
+    local function toggleSettings()
+        settingsOpen = not settingsOpen
+        if settingsOpen then
+            -- Mở to ra giữa màn hình
+            gearBtn.Text = "✕"
+            gearBtn.TextColor3 = Color3.fromRGB(255,120,120)
+            vDivider.Visible = true
+            rightPanel.Visible = true
+            refreshPlayerList()
+            -- Lưu vị trí compact hiện tại
+            compactPos = frame.Position
+            TweenService:Create(frame, TWEEN_OPEN, {
+                Size     = UDim2.new(0.9, 0, 0.85, 0),
+                Position = UDim2.new(0.05, 0, 0.07, 0)
+            }):Play()
+            -- Resize leftPanel và rightPanel theo frame mới
+            TweenService:Create(leftPanel, TWEEN_OPEN, {
+                Size = UDim2.new(0.4, 0, 1, 0)
+            }):Play()
+            TweenService:Create(rightPanel, TWEEN_OPEN, {
+                Size     = UDim2.new(0.58, 0, 1, 0),
+                Position = UDim2.new(0.41, 0, 0, 0)
+            }):Play()
+            TweenService:Create(vDivider, TWEEN_OPEN, {
+                Position = UDim2.new(0.405, 0, 0, 8)
+            }):Play()
+        else
+            -- Thu nhỏ về compact
+            gearBtn.Text = "⚙"
+            gearBtn.TextColor3 = Color3.fromRGB(180,180,220)
+            TweenService:Create(frame, TWEEN_CLOSE, {
+                Size     = UDim2.new(0, CW, 0, CH),
+                Position = compactPos
+            }):Play()
+            TweenService:Create(leftPanel, TWEEN_CLOSE, {
+                Size = UDim2.new(0, CW, 1, 0)
+            }):Play()
+            task.delay(0.25, function()
+                vDivider.Visible = false
+                rightPanel.Visible = false
+                rightPanel.Size     = UDim2.new(0, 220, 1, 0)
+                rightPanel.Position = UDim2.new(0, CW+6, 0, 0)
+                vDivider.Position   = UDim2.new(0, CW+2, 0, 8)
+            end)
+        end
+    end
+
+    gearBtn.MouseButton1Click:Connect(toggleSettings)
+
+    -- ===== SLIDER INPUT =====
+    local UIS = game:GetService("UserInputService")
+    local speedDrag, cageDrag = false, false
+
+    speedBg.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            speedDrag = true
+            setSpeed(10 + math.clamp((i.Position.X-speedBg.AbsolutePosition.X)/speedBg.AbsoluteSize.X,0,1)*90)
+        end
+    end)
+    cageBg.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            cageDrag = true
+            setCageDelay(10 + math.clamp((i.Position.X-cageBg.AbsolutePosition.X)/cageBg.AbsoluteSize.X,0,1)*290)
+        end
+    end)
+    UIS.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            speedDrag = false; cageDrag = false
+        end
+    end)
+    UIS.InputChanged:Connect(function(i)
+        if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
+        if speedDrag then setSpeed(10 + math.clamp((i.Position.X-speedBg.AbsolutePosition.X)/speedBg.AbsoluteSize.X,0,1)*90) end
+        if cageDrag then setCageDelay(10 + math.clamp((i.Position.X-cageBg.AbsolutePosition.X)/cageBg.AbsoluteSize.X,0,1)*290) end
+    end)
+
+    -- ===== WEBHOOK LOGIC =====
+    local function sendWebhook(isTest)
+        if webhookUrl == "" then lblWhStatus.Text = "No URL!" return end
+        local elapsed = tick()-scriptStartTime
+        local credits = getCredits()
+        local delta = (credits and creditsAtStart) and (credits-creditsAtStart) or 0
+        local cph = elapsed > 60 and math.floor(delta/elapsed*3600) or 0
+        local content = (isTest and "**[FTF] TEST**" or "**[FTF] Report**")
+            .."\nPlayer: **"..player.Name.."**"
+            .."\nUptime: **"..formatUptime(elapsed).."**"
+            .."\nCredits: **"..tostring(credits or "?").."C**"
+            .."\nEarned: **+"..tostring(delta).."C**"
+            .."\nC/h: **"..tostring(cph).."C**"
+            .."\nServer: **"..getServerTime().."**"
+        pcall(function()
+            local body = game:GetService("HttpService"):JSONEncode({content=content})
+            if request then
+                request({Url=webhookUrl,Method="POST",Headers={["Content-Type"]="application/json"},Body=body})
+            else
+                game:GetService("HttpService"):PostAsync(webhookUrl,body,Enum.HttpContentType.ApplicationJson)
+            end
+            lblWhStatus.Text = isTest and "Test sent!" or "Sent!"
+        end)
+    end
+
+    testBtn.MouseButton1Click:Connect(function() lblWhStatus.Text="Sending..." task.spawn(function() sendWebhook(true) end) end)
+    autoBtn.MouseButton1Click:Connect(function()
+        autoSendEnabled = not autoSendEnabled
+        autoBtn.BackgroundColor3 = autoSendEnabled and Color3.fromRGB(45,120,45) or Color3.fromRGB(55,55,70)
+        autoBtn.Text = autoSendEnabled and "Auto: ON" or "Auto: OFF"
+        lblWhStatus.Text = autoSendEnabled and ("Every "..webhookInterval.."m") or "Auto off"
+    end)
+
+    -- ===== TOGGLE + CHECKBOX =====
+    toggleButton.MouseButton1Click:Connect(function()
+        scriptEnabled = not scriptEnabled
+        toggleButton.BackgroundColor3 = scriptEnabled and Color3.fromRGB(40,190,40) or Color3.fromRGB(200,50,50)
+        toggleButton.Text = scriptEnabled and "ON" or "OFF"
+        if scriptEnabled then hasEscaped = false end
+    end)
+    checkButton.MouseButton1Click:Connect(function()
+        hackExtraPC = not hackExtraPC
+        checkmark.Visible = hackExtraPC
+        checkbox.BackgroundColor3 = hackExtraPC and Color3.fromRGB(75,35,35) or Color3.fromRGB(55,55,70)
+        checkbox.BorderColor3 = hackExtraPC and Color3.fromRGB(255,80,80) or Color3.fromRGB(110,110,140)
+        checkLabel.TextColor3 = hackExtraPC and Color3.fromRGB(255,110,110) or Color3.fromRGB(170,170,190)
+    end)
+
+    -- ===== STATS UPDATE LOOP =====
+    task.spawn(function()
+        task.wait(2); creditsAtStart = getCredits()
+        while true do
+            task.wait(1)
+            if not settingsOpen then continue end
+            local credits = getCredits()
+            local elapsed = tick()-scriptStartTime
+            local delta = (credits and creditsAtStart) and (credits-creditsAtStart) or 0
+            local cph = elapsed>60 and math.floor(delta/elapsed*3600) or 0
+            lblUptime.Text  = "⏱ " .. formatUptime(elapsed)
+            lblSvTime.Text  = "🕐 " .. getServerTime()
+            lblCredits.Text = "💰 " .. tostring(credits or "?")
+            lblCph.Text     = "📈 +" .. tostring(delta) .. "C (" .. tostring(cph) .. "/h)"
+        end
+    end)
+
+    -- Auto webhook loop
+    task.spawn(function()
+        while true do
+            task.wait(1)
+            if not autoSendEnabled or webhookUrl=="" then continue end
+            local e = tick()-scriptStartTime
+            if e>0 and e%(webhookInterval*60)<1.5 then task.spawn(function() sendWebhook(false) end) end
+        end
+    end)
+
+    -- ===== DRAG (kéo qua titleBar) =====
+    local dragging, dragStart, startPos
+    titleBar.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging=true; dragStart=i.Position; startPos=frame.Position
+        end
+    end)
+    titleBar.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging=false end
+    end)
+    UIS.InputChanged:Connect(function(i)
+        if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+            local d = i.Position-dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X, startPos.Y.Scale, startPos.Y.Offset+d.Y)
+        end
+    end)
+end
+-- ==================== ANTI AFK ====================
+local function antiAFK()
+    task.spawn(function()
+        local VirtualUser = game:GetService("VirtualUser")
+        player.Idled:Connect(function()
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new())
+        end)
+        while true do
+            task.wait(600)
+            pcall(function()
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton2(Vector2.new())
+            end)
+        end
+    end)
+end
+
+-- ==================== INIT ====================
+updateCharacterReferences()
+createGUI()
+antiAFK()
+findBeast()
+task.spawn(mainLoop)
+task.spawn(beastLoop)
+task.spawn(autoSaveLoop)
