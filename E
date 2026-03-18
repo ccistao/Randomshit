@@ -53,13 +53,14 @@ local function updateStatus(status)
     if statusLabel then
         statusLabel.Text = "Status: " .. tostring(status)
     end
-    log(tostring(status))
+    -- Không gọi log() ở đây để tránh duplicate trong console
+    print("[FTF] " .. tostring(status))
 end
 
 -- ===== LOG BUFFER (lưu log trước khi console khởi tạo) =====
-local logBuffer = {} -- {msg, logType}
+local logBuffer = {}
 local MAX_BUFFER = 200
-local consoleLogFn = nil -- sẽ được set bởi createGUI
+local consoleLogFn = nil
 
 local function bufferedLog(msg, logType)
     if consoleLogFn then
@@ -70,17 +71,19 @@ local function bufferedLog(msg, logType)
     end
 end
 
--- Override log và updateStatus để dùng buffer
+-- Override: mỗi hàm chỉ ghi 1 dòng vào console
 local _basePrint = log
 log = function(msg)
     _basePrint(msg)
     bufferedLog(msg, "normal")
 end
 
-local _baseStatus = updateStatus
 updateStatus = function(s)
-    _baseStatus(s)
-    bufferedLog(s, "status")
+    if statusLabel then
+        statusLabel.Text = "Status: " .. tostring(s)
+    end
+    print("[FTF] » " .. tostring(s))
+    bufferedLog(s, "status") -- chỉ 1 dòng status, không có normal duplicate
 end
 
 -- ==================== CHAR REFS ====================
@@ -244,7 +247,7 @@ local function escapeBeast()
 end
 
 -- ==================== LOBBY DETECTION (position-based) ====================
-local LOBBY_MIN = Vector3.new(-21, 40, -512)
+local LOBBY_MIN = Vector3.new(-21, -40, -512)
 local LOBBY_MAX = Vector3.new(413, 80, -253)
 
 local function isInLobby()
