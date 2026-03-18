@@ -1596,20 +1596,55 @@ local function autoSaveLoop()
                         canAutoJump = savedCanJump
                         isSaving = false
                         isMoving = false
+                        -- Xóa PC hiện tại khỏi skippedPCs để hack lại bình thường
+                        if currentPC and currentPC.id then
+                            skippedPCs[currentPC.id] = nil
+                        end
                         if returnTrigger and isHacking and isGameActive() and not gameOver then
+                            -- Đứng yên 0.5s để server ổn định sau khi cứu
+                            task.wait(0.5)
+                            if not isGameActive() or gameOver then break end
+                            local awayPos = Vector3.new(
+                                returnTrigger.Position.X,
+                                returnTrigger.Position.Y - 60,
+                                returnTrigger.Position.Z
+                            )
+                            root.CFrame = CFrame.new(awayPos)
+                            root.AssemblyLinearVelocity = Vector3.zero
+                            task.wait(0.3)
+
+                            -- Bước 2: TP vào lại trigger (server nhận fresh touch)
+                            local noclipBack = true
+                            local noclipBackConn = RunService.Stepped:Connect(function()
+                                if not noclipBack then return end
+                                local c = player.Character
+                                if not c then return end
+                                for _, part in pairs(c:GetDescendants()) do
+                                    if part:IsA("BasePart") then part.CanCollide = false end
+                                end
+                            end)
                             root.CFrame = returnTrigger.CFrame + Vector3.new(0, 0.5, 0)
+                            root.AssemblyLinearVelocity = Vector3.zero
                             task.wait(0.15)
-                            -- Re-fire interact để tiếp tục hack
+                            noclipBack = false
+                            noclipBackConn:Disconnect()
+
+                            -- Bước 3: fire touch + spam interact như lần đầu
                             pcall(function()
                                 firetouchinterest(root, returnTrigger, 0)
-                                task.wait(0.1)
+                                task.wait(0.05)
                                 firetouchinterest(root, returnTrigger, 1)
                             end)
-                            task.wait(0.2)
-                            pcall(function()
-                                local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
-                                if r then r:FireServer("Input", "Action", true) end
-                            end)
+                            local spamT = 0
+                            while spamT < 1.5 and isHacking and isGameActive() and not gameOver do
+                                task.wait(0.1)
+                                spamT = spamT + 0.1
+                                pcall(function()
+                                    local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
+                                    if r then r:FireServer("Input", "Action", true) end
+                                end)
+                            end
+                            updateStatus("Hacking PC " .. tostring(currentPC and currentPC.id or "?"))
                         end
                     end
                 end
@@ -1784,9 +1819,10 @@ local function mainLoop()
                     local beastLeft = false
                     while scriptEnabled do
                         if isSaving then
-                            -- Đang save, thoát chờ beast tạm thời
                             while isSaving do task.wait(0.2) end
+                            skippedPCs = {}
                         end
+                        if not isGameActive() or gameOver then break end
                         if not isBeastNearby(30) then
                             beastLeft = true
                             break
@@ -1794,9 +1830,9 @@ local function mainLoop()
                         task.wait(0.5)
                     end
                     if beastLeft then
-                        skippedPCs = {} -- chỉ clear khi beast thực sự đã đi
+                        skippedPCs = {} -- clear khi beast đã đi
                     end
-                    allCompleted = false -- không thoát while loop
+                    allCompleted = false
                     break -- restart for loop từ đầu
                 else
                     skipCurrentPC = false
@@ -1837,7 +1873,17 @@ local function mainLoop()
                     if not hackedPCs[id] then remainingCount += 1 end
                 end
                 if remainingCount > 0 then
-                    task.wait(3)
+                    -- Chờ beast đi thật sự rồi mới retry, không chờ cứng 3s
+                    updateStatus("Skipped " .. remainingCount .. " PC(s), waiting beast to leave...")
+                    while scriptEnabled and isGameActive() and not gameOver do
+                        if not isBeastNearby(35) then
+                            skippedPCs = {} -- beast đã đi, clear để retry hết
+                            log("Beast left, retrying skipped PCs")
+                            break
+                        end
+                        if isFindExitPhase() and not hackExtraPC then break end
+                        task.wait(0.5)
+                    end
                 else
                     break
                 end
@@ -1931,7 +1977,7 @@ local function createGUI()
     Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 12)
 
     local titleLabel = Instance.new("TextLabel", titleBar)
-    titleLabel.Size = UDim2.new(1, -38, 1, 0)
+    titleLabel.Size = UDim2.new(1, -68, 1, 0)
     titleLabel.Position = UDim2.new(0, 10, 0, 0)
     titleLabel.BackgroundTransparency = 1
     titleLabel.Text = "⚡ AUTO FARM FTF"
@@ -1939,6 +1985,17 @@ local function createGUI()
     titleLabel.TextSize = 12
     titleLabel.Font = Enum.Font.GothamBold
     titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    local consoleBtn = Instance.new("TextButton", titleBar)
+    consoleBtn.Size = UDim2.new(0, 26, 0, 26)
+    consoleBtn.Position = UDim2.new(1, -58, 0.5, -13)
+    consoleBtn.BackgroundColor3 = Color3.fromRGB(30, 60, 30)
+    consoleBtn.Text = "▶"
+    consoleBtn.TextColor3 = Color3.fromRGB(100, 220, 100)
+    consoleBtn.TextSize = 12
+    consoleBtn.Font = Enum.Font.GothamBold
+    consoleBtn.BorderSizePixel = 0
+    Instance.new("UICorner", consoleBtn).CornerRadius = UDim.new(0, 6)
 
     local gearBtn = Instance.new("TextButton", titleBar)
     gearBtn.Size = UDim2.new(0, 26, 0, 26)
@@ -2327,6 +2384,138 @@ local function createGUI()
     Players.PlayerRemoving:Connect(function() refreshPlayerList() end)
 
     -- ===== EXPAND / COLLAPSE NGANG =====
+    -- ===== CONSOLE PANEL =====
+    local CONSOLE_W, CONSOLE_H = 280, 220
+    local consoleOpen = false
+
+    local consolePanel = Instance.new("Frame", screenGui)
+    consolePanel.Size = UDim2.new(0, CONSOLE_W, 0, CONSOLE_H)
+    consolePanel.BackgroundColor3 = Color3.fromRGB(10, 14, 10)
+    consolePanel.BorderSizePixel = 0
+    consolePanel.Visible = false
+    consolePanel.ZIndex = 10
+    Instance.new("UICorner", consolePanel).CornerRadius = UDim.new(0, 8)
+    local consoleStroke = Instance.new("UIStroke", consolePanel)
+    consoleStroke.Color = Color3.fromRGB(40, 120, 40)
+    consoleStroke.Thickness = 1
+
+    local consoleTitleBar = Instance.new("Frame", consolePanel)
+    consoleTitleBar.Size = UDim2.new(1, 0, 0, 22)
+    consoleTitleBar.BackgroundColor3 = Color3.fromRGB(20, 50, 20)
+    consoleTitleBar.BorderSizePixel = 0
+    Instance.new("UICorner", consoleTitleBar).CornerRadius = UDim.new(0, 8)
+
+    local consoleTitleLbl = Instance.new("TextLabel", consoleTitleBar)
+    consoleTitleLbl.Size = UDim2.new(1, -30, 1, 0)
+    consoleTitleLbl.Position = UDim2.new(0, 8, 0, 0)
+    consoleTitleLbl.BackgroundTransparency = 1
+    consoleTitleLbl.Text = "📋 FTF Console"
+    consoleTitleLbl.TextColor3 = Color3.fromRGB(100, 220, 100)
+    consoleTitleLbl.TextSize = 10
+    consoleTitleLbl.Font = Enum.Font.GothamBold
+    consoleTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local consoleClearBtn = Instance.new("TextButton", consoleTitleBar)
+    consoleClearBtn.Size = UDim2.new(0, 26, 0, 18)
+    consoleClearBtn.Position = UDim2.new(1, -28, 0.5, -9)
+    consoleClearBtn.BackgroundColor3 = Color3.fromRGB(60, 30, 30)
+    consoleClearBtn.Text = "CLR"
+    consoleClearBtn.TextColor3 = Color3.fromRGB(255, 120, 120)
+    consoleClearBtn.TextSize = 8
+    consoleClearBtn.Font = Enum.Font.GothamBold
+    consoleClearBtn.BorderSizePixel = 0
+    Instance.new("UICorner", consoleClearBtn).CornerRadius = UDim.new(0, 4)
+
+    local consoleScroll = Instance.new("ScrollingFrame", consolePanel)
+    consoleScroll.Size = UDim2.new(1, -4, 1, -26)
+    consoleScroll.Position = UDim2.new(0, 2, 0, 24)
+    consoleScroll.BackgroundTransparency = 1
+    consoleScroll.BorderSizePixel = 0
+    consoleScroll.ScrollBarThickness = 3
+    consoleScroll.ScrollBarImageColor3 = Color3.fromRGB(60, 160, 60)
+    consoleScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    consoleScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+
+    local consoleLayout = Instance.new("UIListLayout", consoleScroll)
+    consoleLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    consoleLayout.Padding = UDim.new(0, 1)
+
+    local logOrder = 0
+    local maxLogLines = 100
+
+    local function consoleLog(msg, logType)
+        logOrder = logOrder + 1
+        local color = Color3.fromRGB(160, 230, 160)
+        local prefix = ""
+        if logType == "warn" then color = Color3.fromRGB(255, 200, 50) prefix = "⚠ "
+        elseif logType == "error" then color = Color3.fromRGB(255, 80, 80) prefix = "✖ "
+        elseif logType == "status" then color = Color3.fromRGB(100, 200, 255) prefix = "» "
+        end
+        local lbl = Instance.new("TextLabel", consoleScroll)
+        lbl.Size = UDim2.new(1, -4, 0, 0)
+        lbl.AutomaticSize = Enum.AutomaticSize.Y
+        lbl.BackgroundTransparency = 1
+        lbl.Text = prefix .. tostring(msg)
+        lbl.TextColor3 = color
+        lbl.TextSize = 9
+        lbl.Font = Enum.Font.Code
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.TextWrapped = true
+        lbl.LayoutOrder = logOrder
+        task.defer(function()
+            consoleScroll.CanvasSize = UDim2.new(0, 0, 0, consoleLayout.AbsoluteContentSize.Y + 4)
+            consoleScroll.CanvasPosition = Vector2.new(0, math.max(0, consoleLayout.AbsoluteContentSize.Y - consoleScroll.AbsoluteSize.Y))
+        end)
+        local count = 0
+        for _, c in ipairs(consoleScroll:GetChildren()) do if c:IsA("TextLabel") then count += 1 end end
+        if count > maxLogLines then
+            for _, c in ipairs(consoleScroll:GetChildren()) do if c:IsA("TextLabel") then c:Destroy() break end end
+        end
+    end
+
+    consoleClearBtn.MouseButton1Click:Connect(function()
+        for _, c in ipairs(consoleScroll:GetChildren()) do if c:IsA("TextLabel") then c:Destroy() end end
+    end)
+
+    -- Override log + updateStatus -> gửi vào console
+    local _origLog = log
+    log = function(msg) _origLog(msg) consoleLog(msg, "normal") end
+    local _origStatus = updateStatus
+    updateStatus = function(s) _origStatus(s) consoleLog(s, "status") end
+
+    local function toggleConsole()
+        consoleOpen = not consoleOpen
+        if consoleOpen then
+            consoleBtn.Text = "■"
+            consoleBtn.TextColor3 = Color3.fromRGB(255, 120, 120)
+            consoleBtn.BackgroundColor3 = Color3.fromRGB(60, 20, 20)
+            local fx = frame.AbsolutePosition.X
+            local fy = frame.AbsolutePosition.Y + frame.AbsoluteSize.Y + 4
+            local sw = screenGui.AbsoluteSize
+            consolePanel.Position = UDim2.new(0, math.min(fx, sw.X - CONSOLE_W - 4), 0, fy)
+            consolePanel.Visible = true
+        else
+            consoleBtn.Text = "▶"
+            consoleBtn.TextColor3 = Color3.fromRGB(100, 220, 100)
+            consoleBtn.BackgroundColor3 = Color3.fromRGB(30, 60, 30)
+            consolePanel.Visible = false
+        end
+    end
+    consoleBtn.MouseButton1Click:Connect(toggleConsole)
+
+    -- Console drag
+    local conDragging, conDragStart, conStartPos
+    consoleTitleBar.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            conDragging=true conDragStart=i.Position conStartPos=consolePanel.Position
+        end
+    end)
+    consoleTitleBar.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            conDragging=false
+        end
+    end)
+
     local TWEEN_OPEN  = TweenInfo.new(0.35, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
     local TWEEN_CLOSE = TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 
@@ -2407,6 +2596,10 @@ local function createGUI()
         if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
         if speedDrag then setSpeed(10 + math.clamp((i.Position.X-speedBg.AbsolutePosition.X)/speedBg.AbsoluteSize.X,0,1)*90) end
         if cageDrag then setCageDelay(10 + math.clamp((i.Position.X-cageBg.AbsolutePosition.X)/cageBg.AbsoluteSize.X,0,1)*290) end
+        if conDragging then
+            local d = i.Position - conDragStart
+            consolePanel.Position = UDim2.new(conStartPos.X.Scale, conStartPos.X.Offset+d.X, conStartPos.Y.Scale, conStartPos.Y.Offset+d.Y)
+        end
     end)
 
     -- ===== WEBHOOK LOGIC =====
