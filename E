@@ -1073,15 +1073,22 @@ local function autoExitUnified()
         end
 
         local waitTime = 0
-        while waitTime < 10 do
+        while waitTime < 15 do
             task.wait(0.2)
             waitTime = waitTime + 0.2
-            if hasPlayerEscaped() then
+            -- Detect escaped qua flag hoặc bị TP về lobby
+            if hasPlayerEscaped() or isInLobby() then
                 log("🎉 Escaped successfully!")
                 hasEscaped = true
                 return
             end
+            -- Retry TP vào area mỗi 2s nếu chưa escape
+            if waitTime % 2 < 0.2 then
+                log("🚪 Retrying TP into exit area...")
+                root.CFrame = exitData.area.CFrame + Vector3.new(0, 2, 0)
+            end
         end
+        log("🚪 Escape timeout, assuming escaped")
         hasEscaped = true
     end
 
@@ -1620,7 +1627,14 @@ local function autoSaveLoop()
                         local dirIn = (cageCenter - trigger.Position)
                         if dirIn.Magnitude > 0 then dirIn = dirIn.Unit * 3 else dirIn = Vector3.zero end
                         local savePos = Vector3.new(trigger.Position.X + dirIn.X, trigger.Position.Y, trigger.Position.Z + dirIn.Z)
+                        -- Lưu trigger để return sau khi save
+                        -- Nếu currentTrigger nil (đang tween) thì dùng trigger đầu của PC
                         local returnTrigger = currentTrigger
+                        local returnPC = currentPC
+                        if not returnTrigger and returnPC and returnPC.triggers and #returnPC.triggers > 0 then
+                            returnTrigger = returnPC.triggers[1]
+                            log("🚑 Save during tween, will return to PC" .. tostring(returnPC.id) .. " trigger 1")
+                        end
 
                         -- Noclip trước khi TP vào cage
                         local char = player.Character
@@ -1699,7 +1713,7 @@ local function autoSaveLoop()
                         skippedPCs = {}
                         -- Refresh allPCs để check lại progress thực tế
                         allPCs = findAllPCs()
-                        if returnTrigger and currentPC and isGameActive() and not gameOver then
+                        if returnTrigger and returnPC and isGameActive() and not gameOver then
                             -- Đứng yên 0.5s để server ổn định sau khi cứu
                             task.wait(0.5)
                             if not isGameActive() or gameOver then break end
