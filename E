@@ -1394,9 +1394,8 @@ end
 
 local function beastLoop()
     while true do
-        task.wait(0.1)
+        task.wait(0.05) -- tăng từ 0.1 -> 0.05
         if not scriptEnabled or not isSelfBeast() then continue end
-        -- Trận kết thúc -> dừng
         if not isGameActive() then
             updateStatus("Beast: waiting for round...")
             task.wait(1)
@@ -1406,151 +1405,134 @@ local function beastLoop()
         local remote = getHammerEvent()
         if not remote then continue end
 
-        local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        local char = player.Character
+        if not char then continue end
+        local root = char:FindFirstChild("HumanoidRootPart")
         if not root then continue end
 
-        -- Đang có rope -> cage ngay
-        local ropeCheck = player.Character:FindFirstChild("RopeConstraint", true)
+        -- ===== ƯU TIÊN 1: Đang có rope -> cage NGAY =====
+        local ropeCheck = char:FindFirstChild("RopeConstraint", true)
         if ropeCheck then
             local cage = getBeastNearestEmptyCage()
-            if not cage then updateStatus("Beast: No empty cage!") continue end
+            if not cage then continue end
             local trigger = cage:FindFirstChild("PodTrigger", true)
             if not trigger then continue end
+
             updateStatus("Beast: Caging...")
             local cageCenter = cage:GetModelCFrame().Position
             local dirIn = (cageCenter - trigger.Position)
-            if dirIn.Magnitude > 0 then dirIn = dirIn.Unit * 3 else dirIn = Vector3.zero end
+            if dirIn.Magnitude > 0 then dirIn = dirIn.Unit * 2 else dirIn = Vector3.zero end
             local cagePos = Vector3.new(trigger.Position.X + dirIn.X, trigger.Position.Y, trigger.Position.Z + dirIn.Z)
 
-            -- Noclip + freeze khi TP vào cage
-            local char = player.Character
-            local hum = char and char:FindFirstChild("Humanoid")
-            if hum then
-                hum.PlatformStand = true
-                hum:ChangeState(Enum.HumanoidStateType.Physics)
-            end
+            local hum = char:FindFirstChild("Humanoid")
+            if hum then hum.PlatformStand = true hum:ChangeState(Enum.HumanoidStateType.Physics) end
+
+            -- Noclip + pin position
             local noclipActive = true
             local noclipConn = RunService.Stepped:Connect(function()
                 if not noclipActive then return end
                 local c = player.Character
                 if not c then return end
-                for _, part in pairs(c:GetDescendants()) do
-                    if part:IsA("BasePart") then part.CanCollide = false end
+                for _, p in pairs(c:GetDescendants()) do
+                    if p:IsA("BasePart") then p.CanCollide = false end
                 end
+            end)
+            local freezeActive = true
+            local freezeConn = RunService.Heartbeat:Connect(function()
+                if not freezeActive then return end
+                root.CFrame = CFrame.new(cagePos)
+                root.AssemblyLinearVelocity = Vector3.zero
+                root.AssemblyAngularVelocity = Vector3.zero
             end)
 
             root.CFrame = CFrame.new(cagePos)
             root.AssemblyLinearVelocity = Vector3.zero
-            root.AssemblyAngularVelocity = Vector3.zero
-            task.wait(0.15)
 
-            -- Heartbeat pin position để chống gravity
-            local freezeActive = true
-            local freezeConn = RunService.Heartbeat:Connect(function()
-                if not freezeActive then return end
-                pcall(function()
-                    root.CFrame = CFrame.new(cagePos)
-                    root.AssemblyLinearVelocity = Vector3.zero
-                    root.AssemblyAngularVelocity = Vector3.zero
-                end)
-            end)
-
+            -- Spam interact nhanh hơn: 0.05s thay vì 0.15s
             local t = 0
-            while t < 3 do
-                pcall(function() firetouchinterest(root, trigger, 0) task.wait(0.03) firetouchinterest(root, trigger, 1) end)
-                pcall(function() local r = ReplicatedStorage:FindFirstChild("RemoteEvent") if r then r:FireServer("Input", "Action", true) end end)
+            while t < 2.5 do
+                pcall(function()
+                    firetouchinterest(root, trigger, 0)
+                    firetouchinterest(root, trigger, 1)
+                    local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
+                    if r then r:FireServer("Input", "Action", true) end
+                end)
                 local ct = cage:FindFirstChild("CapturedTorso", true)
                 if ct and ct.Value ~= nil then break end
-                task.wait(0.15)
-                t = t + 0.18
+                task.wait(0.05)
+                t = t + 0.05
             end
 
-            freezeActive = false
-            freezeConn:Disconnect()
-
-            -- Tắt noclip
-            noclipActive = false
-            noclipConn:Disconnect()
-            if hum then
-                hum.PlatformStand = false
-                hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-            end
+            freezeActive = false; freezeConn:Disconnect()
+            noclipActive = false; noclipConn:Disconnect()
+            if hum then hum.PlatformStand = false hum:ChangeState(Enum.HumanoidStateType.GettingUp) end
             continue
         end
 
-        -- Tìm ragdoll -> rope
+        -- ===== ƯU TIÊN 2: Có ragdoll -> rope NGAY =====
         local ragdollTarget = getBeastNearestRagdoll()
         if ragdollTarget and ragdollTarget.Character then
             local torso = ragdollTarget.Character:FindFirstChild("UpperTorso") or ragdollTarget.Character:FindFirstChild("Torso")
             if torso then
                 updateStatus("Beast: Roping " .. ragdollTarget.Name)
-                local dir = (root.Position - torso.Position)
-                dir = dir.Magnitude > 0 and dir.Unit or Vector3.new(0,0,1)
-                root.CFrame = CFrame.new(torso.Position + dir * 1)
-                task.wait(0.03)
-                -- Spam rope tới khi có RopeConstraint hoặc timeout
+                -- TP sát vào target
+                root.CFrame = CFrame.new(torso.Position + Vector3.new(0, 0, 1))
+                -- Spam rope không delay
                 local ropeTimer = 0
-                while ropeTimer < 2 do
+                while ropeTimer < 1.5 do
                     remote:FireServer("HammerTieUp", torso, torso.Position)
-                    local rope = player.Character and player.Character:FindFirstChild("RopeConstraint", true)
-                    if rope then break end
-                    task.wait(0.15)
-                    ropeTimer = ropeTimer + 0.15
+                    if char:FindFirstChild("RopeConstraint", true) then break end
+                    task.wait(0.05) -- nhanh hơn: 0.05 thay vì 0.15
+                    ropeTimer = ropeTimer + 0.05
                 end
-                task.wait(0.05)
                 continue
             end
         end
 
-        -- Tìm survivor -> hit
-        -- ALT BEAST MODE: chờ altCageDelay trước khi bắt đầu, và không hit main
+        -- ===== ƯU TIÊN 3: Tìm survivor -> TP sát + spam hit =====
         local target
         if playerMode == "alt" then
             local elapsed = tick() - altRoundStartTick
             if elapsed < altCageDelay then
-                updateStatus("Beast ALT: Chờ " .. math.ceil(altCageDelay - elapsed) .. "s trước khi nhốt...")
+                updateStatus("Beast ALT: Chờ " .. math.ceil(altCageDelay - elapsed) .. "s...")
                 task.wait(0.5)
                 continue
             end
-            -- Sau khi main escape -> giết hết tất cả
-            -- Trước đó -> chỉ nhốt các alt khác (không phải main)
-            if hasMainEscaped() then
-                target = getBeastNearestSurvivor()
-                if target then updateStatus("Beast ALT: Main đã thoát! Giết " .. target.Name) end
-            else
-                target = getBeastNearestAltSurvivor()
-            end
+            target = hasMainEscaped() and getBeastNearestSurvivor() or getBeastNearestAltSurvivor()
         else
             target = getBeastNearestSurvivor()
         end
+
         if not target or not target.Character then
             updateStatus("Beast: All captured!")
-            task.wait(1)
+            task.wait(0.5)
             continue
         end
+
         local torso = target.Character:FindFirstChild("UpperTorso") or target.Character:FindFirstChild("Torso")
         if not torso then continue end
         local hum = target.Character:FindFirstChild("Humanoid")
-        if hum and hum.PlatformStand then continue end -- đang ragdoll rồi, chờ vòng sau rope
+        if hum and hum.PlatformStand then continue end
 
         updateStatus("Beast: Hitting " .. target.Name)
-        local dir = (root.Position - torso.Position)
-        dir = dir.Magnitude > 0 and dir.Unit or Vector3.new(0,0,1)
-        root.CFrame = CFrame.new(torso.Position + dir * 1)
-        task.wait(0.03)
-        -- Spam hit cho tới khi ragdoll hoặc timeout
+
+        -- TP sát target
+        root.CFrame = CFrame.new(torso.Position + Vector3.new(0, 0, 0.5))
+
+        -- Spam hit nhanh nhất có thể, không delay giữa Click và Hit
         local hitTimer = 0
-        while hitTimer < 2 do
+        while hitTimer < 1.5 do
             if not target.Character then break end
             local h = target.Character:FindFirstChild("Humanoid")
-            if h and h.PlatformStand then break end -- đã ragdoll
+            if h and h.PlatformStand then break end
+            -- TP liên tục bám theo target
+            local t2 = target.Character:FindFirstChild("UpperTorso") or target.Character:FindFirstChild("Torso")
+            if t2 then root.CFrame = CFrame.new(t2.Position + Vector3.new(0, 0, 0.5)) end
             remote:FireServer("HammerClick", true)
-            task.wait(0.02)
             remote:FireServer("HammerHit", torso)
-            task.wait(0.15)
-            hitTimer = hitTimer + 0.17
+            task.wait(0.05) -- nhanh hơn 3x: 0.05 thay vì 0.15
+            hitTimer = hitTimer + 0.05
         end
-        task.wait(0.1)
     end
 end
 
