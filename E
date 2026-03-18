@@ -35,6 +35,7 @@ local rootPart = nil
 
 local allPCs = {}
 local isSaving = false
+local isReturning = false -- đang return về PC sau save, tạm bỏ qua beast check
 
 -- ==================== ALT MODE ====================
 local playerMode = "main"
@@ -603,9 +604,9 @@ local function hackPC(pcData)
         if not char then return end
         local hum = char:FindFirstChild("Humanoid")
 
-        if firstMoveOfRound then
+        if firstMoveOfRound or isReturning then
             firstMoveOfRound = false
-            log("→ TP direct to PC" .. pcId .. " (first move)")
+            log("→ TP direct to PC" .. pcId .. (isReturning and " (returning after save)" or " (first move)"))
             rootPart.CFrame = trigger.CFrame + Vector3.new(0, 0.5, 0)
             task.wait(0.1)
         else
@@ -842,7 +843,7 @@ local function hackPC(pcData)
         end
 
         -- Beast check (bỏ qua nếu đang save)
-        if isBeastNearby(30) and not isSaving then
+        if isBeastNearby(30) and not isSaving and not isReturning then
             isHacking = false
             currentPC = nil
             canAutoJump = false
@@ -1664,6 +1665,7 @@ local function autoSaveLoop()
                     if capturedPlayer then
                         isSaving = true
                         isMoving = true
+                        isReturning = true -- tắt beast check từ lúc này
                         local savedCanJump = canAutoJump
                         canAutoJump = false
                         log("🚑 Saving: " .. capturedPlayer.Name .. " (save #" .. (savesThisRound+1) .. ")")
@@ -1672,8 +1674,8 @@ local function autoSaveLoop()
                         local dirIn = (cageCenter - trigger.Position)
                         if dirIn.Magnitude > 0 then dirIn = dirIn.Unit * 3 else dirIn = Vector3.zero end
                         local savePos = Vector3.new(trigger.Position.X + dirIn.X, trigger.Position.Y, trigger.Position.Z + dirIn.Z)
-                        -- Lưu trigger để return sau khi save
-                        -- Nếu currentTrigger nil (đang tween) thì dùng trigger đầu của PC
+                        -- Lưu trạng thái trước khi save
+                        local wasHacking = isHacking -- true = đang hack, false = đang tween
                         local returnTrigger = currentTrigger
                         local returnPC = currentPC
                         if not returnTrigger and returnPC and returnPC.triggers and #returnPC.triggers > 0 then
@@ -1754,15 +1756,25 @@ local function autoSaveLoop()
                         if not isGameActive() or gameOver then break end
 
                         if returnPC then
-                            log("🔄 Save done! Hacking PC" .. tostring(returnPC.id) .. " immediately...")
-                            updateStatus("🔄 Returning to PC " .. tostring(returnPC.id) .. "...")
-                            -- Set currentPC về đúng PC cần hack
-                            -- để mainLoop không nhảy sang PC khác
                             currentPC = returnPC
-                            -- Gọi thẳng hackPC luôn, không để mainLoop tự quyết
-                            task.spawn(function()
-                                hackPC(returnPC)
-                            end)
+                            if wasHacking then
+                                log("🔄 Was hacking → TP back to PC" .. tostring(returnPC.id) .. "...")
+                                updateStatus("🔄 TP back to PC " .. tostring(returnPC.id) .. "...")
+                                task.spawn(function()
+                                    hackPC(returnPC)
+                                    isReturning = false -- bật lại beast check sau khi về tới trigger
+                                end)
+                            else
+                                log("🔄 Was tweening → tween back to PC" .. tostring(returnPC.id) .. "...")
+                                updateStatus("🔄 Returning to PC " .. tostring(returnPC.id) .. "...")
+                                firstMoveOfRound = false
+                                task.spawn(function()
+                                    hackPC(returnPC)
+                                    isReturning = false
+                                end)
+                            end
+                        else
+                            isReturning = false -- không có PC để về thì bật lại luôn
                         end
                     end
                 end
@@ -1929,7 +1941,7 @@ local function mainLoop()
                     break
                 end
 
-                if isBeastNearby(23) then
+                if isBeastNearby(23) and not isReturning and not isSaving then
                     escapeBeast()
                     skipCurrentPC = true
                     updateStatus("👹 Beast nearby, waiting to leave... (PC" .. tostring(currentPC and currentPC.id or "?") .. ")")
