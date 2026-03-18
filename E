@@ -51,11 +51,11 @@ local function saveConfig()
     pcall(function()
         local HttpService = game:GetService("HttpService")
         local cfg = HttpService:JSONEncode({
-            tweenSpeed    = tweenSpeed,
-            webhookUrl    = _G.ftfWebhookUrl or "",
+            tweenSpeed      = tweenSpeed,
+            webhookUrl      = _G.ftfWebhookUrl or "",
             webhookInterval = _G.ftfWebhookInterval or 5,
-            hackExtraPC   = _G.ftfHackExtraPC or false,
-            altCageDelay  = altCageDelay,
+            hackExtraPC     = _G.ftfHackExtraPC or false,
+            altCageDelay    = altCageDelay,
         })
         writefile(CONFIG_FILE, cfg)
     end)
@@ -73,8 +73,9 @@ local function loadConfig()
         if cfg.altCageDelay then altCageDelay = math.clamp(cfg.altCageDelay, 10, 300) end
         _G.ftfWebhookUrl = cfg.webhookUrl or ""
         _G.ftfWebhookInterval = cfg.webhookInterval or 5
+        _G.ftfAutoSend = cfg.autoSendEnabled or false
         _G.ftfHackExtraPC = cfg.hackExtraPC or false
-        log("✅ Config loaded! Speed=" .. tweenSpeed .. " CageDelay=" .. altCageDelay)
+        log("✅ Config loaded! Speed=" .. tweenSpeed .. " Interval=" .. (_G.ftfWebhookInterval) .. "m AutoSend=" .. tostring(_G.ftfAutoSend))
     end)
 end
 
@@ -1919,6 +1920,13 @@ local function mainLoop()
         local maxAttempts = #allPCs * 3
 
         while totalAttempts < maxAttempts and scriptEnabled and not (isFindExitPhase() and not hackExtraPC) do
+            -- Nếu đang return về PC sau save thì chờ
+            if isReturning or isSaving then
+                while (isReturning or isSaving) and isGameActive() and scriptEnabled do
+                    task.wait(0.2)
+                end
+            end
+
             -- Check game còn active không trước mỗi vòng
             local gs2 = ReplicatedStorage:FindFirstChild("GameStatus")
             local gs2txt = gs2 and tostring(gs2.Value):upper() or ""
@@ -2018,16 +2026,20 @@ local function mainLoop()
                     if not hackedPCs[id] then remainingCount += 1 end
                 end
                 if remainingCount > 0 then
-                    -- Chờ beast đi thật sự rồi mới retry, không chờ cứng 3s
                     updateStatus("Skipped " .. remainingCount .. " PC(s), waiting beast to leave...")
+                    local beastGone = false
                     while scriptEnabled and isGameActive() and not gameOver do
                         if not isBeastNearby(35) then
-                            skippedPCs = {} -- beast đã đi, clear để retry hết
-                            log("👹 Beast left! Clearing skipped PCs and retrying...")
+                            skippedPCs = {}
+                            log("👹 Beast left! Retrying skipped PCs...")
+                            beastGone = true
                             break
                         end
                         if isFindExitPhase() and not hackExtraPC then break end
                         task.wait(0.5)
+                    end
+                    if beastGone then
+                        totalAttempts = 0 -- reset attempts để không bị thoát sớm
                     end
                 else
                     break
@@ -2097,7 +2109,7 @@ local function createGUI()
     local webhookUrl = _G.ftfWebhookUrl or ""
     local webhookInterval = _G.ftfWebhookInterval or 5
     local creditsAtStart = nil
-    local autoSendEnabled = false
+    local autoSendEnabled = _G.ftfAutoSend or false
     local settingsOpen = false
 
     local function getCredits()
@@ -2392,16 +2404,25 @@ local function createGUI()
     local lblWhStatus = rLabel("", Color3.fromRGB(140,255,140), 10)
 
     -- ---- WEBHOOK INTERVAL SLIDER ----
-    local lblInterval = rLabel("Send every: " .. webhookInterval .. " min", Color3.fromRGB(180,180,255), 11)
-    lblInterval.Font = Enum.Font.GothamBold
 
-    local intervalTrack = Instance.new("Frame", rightPanel)
-    intervalTrack.Size = UDim2.new(1, -42, 0, 18)
-    intervalTrack.BackgroundTransparency = 1
-    intervalTrack.LayoutOrder = 12
+    -- Interval label row with input box top-right
+    local intervalLabelRow = Instance.new("Frame", rightPanel)
+    intervalLabelRow.Size = UDim2.new(1, 0, 0, 16)
+    intervalLabelRow.BackgroundTransparency = 1
+    intervalLabelRow.LayoutOrder = 11
 
-    local intervalInput = Instance.new("TextBox", rightPanel)
-    intervalInput.Size = UDim2.new(0, 36, 0, 18)
+    local lblInterval2 = Instance.new("TextLabel", intervalLabelRow)
+    lblInterval2.Size = UDim2.new(1, -42, 1, 0)
+    lblInterval2.BackgroundTransparency = 1
+    lblInterval2.TextColor3 = Color3.fromRGB(180,180,255)
+    lblInterval2.TextSize = 10
+    lblInterval2.Font = Enum.Font.GothamBold
+    lblInterval2.TextXAlignment = Enum.TextXAlignment.Left
+    lblInterval2.Text = "Send every: " .. webhookInterval .. " min"
+
+    local intervalInput = Instance.new("TextBox", intervalLabelRow)
+    intervalInput.Size = UDim2.new(0, 36, 1, 0)
+    intervalInput.Position = UDim2.new(1, -36, 0, 0)
     intervalInput.BackgroundColor3 = Color3.fromRGB(28, 28, 48)
     intervalInput.BorderSizePixel = 0
     intervalInput.Text = tostring(webhookInterval)
@@ -2409,8 +2430,12 @@ local function createGUI()
     intervalInput.TextSize = 10
     intervalInput.Font = Enum.Font.GothamBold
     intervalInput.ClearTextOnFocus = true
-    intervalInput.LayoutOrder = 12
     Instance.new("UICorner", intervalInput).CornerRadius = UDim.new(0, 4)
+
+    local intervalTrack = Instance.new("Frame", rightPanel)
+    intervalTrack.Size = UDim2.new(1, 0, 0, 18)
+    intervalTrack.BackgroundTransparency = 1
+    intervalTrack.LayoutOrder = 12
 
     local intervalBg = Instance.new("Frame", intervalTrack)
     intervalBg.Size = UDim2.new(1, 0, 0, 6)
@@ -2440,9 +2465,11 @@ local function createGUI()
         local pct = (val-1)/59
         intervalFill.Size = UDim2.new(pct, 0, 1, 0)
         intervalKnob.Position = UDim2.new(pct, 0, 0.5, 0)
-        lblInterval.Text = "Send every: " .. val .. " min"
+        lblInterval2.Text = "Send every: " .. val .. " min"
         lblWhStatus.Text = autoSendEnabled and ("Every "..val.."m") or ""
         intervalInput.Text = tostring(val)
+        _G.ftfWebhookInterval = val
+        saveConfig()
     end
     intervalInput.FocusLost:Connect(function()
         local n = tonumber(intervalInput.Text)
@@ -2452,16 +2479,21 @@ local function createGUI()
     rDiv(13)
 
     -- ---- SPEED SLIDER ----
-    local lblSpeed = rLabel("Speed: " .. tweenSpeed .. " st/s", Color3.fromRGB(160,255,160), 14)
+    local speedLabelRow = Instance.new("Frame", rightPanel)
+    speedLabelRow.Size = UDim2.new(1, 0, 0, 16)
+    speedLabelRow.BackgroundTransparency = 1
+    speedLabelRow.LayoutOrder = 14
+
+    local lblSpeed = Instance.new("TextLabel", speedLabelRow)
+    lblSpeed.Size = UDim2.new(1, -42, 1, 0)
+    lblSpeed.BackgroundTransparency = 1
+    lblSpeed.Text = "Speed: " .. tweenSpeed .. " st/s"
+    lblSpeed.TextColor3 = Color3.fromRGB(160,255,160)
+    lblSpeed.TextSize = 10
     lblSpeed.Font = Enum.Font.GothamBold
+    lblSpeed.TextXAlignment = Enum.TextXAlignment.Left
 
-    -- Speed slider + input row
-    local speedRow = Instance.new("Frame", rightPanel)
-    speedRow.Size = UDim2.new(1, 0, 0, 22)
-    speedRow.BackgroundTransparency = 1
-    speedRow.LayoutOrder = 15
-
-    local speedInput = Instance.new("TextBox", speedRow)
+    local speedInput = Instance.new("TextBox", speedLabelRow)
     speedInput.Size = UDim2.new(0, 36, 1, 0)
     speedInput.Position = UDim2.new(1, -36, 0, 0)
     speedInput.BackgroundColor3 = Color3.fromRGB(28, 28, 48)
@@ -2473,9 +2505,10 @@ local function createGUI()
     speedInput.ClearTextOnFocus = true
     Instance.new("UICorner", speedInput).CornerRadius = UDim.new(0, 4)
 
-    local speedTrack = Instance.new("Frame", speedRow)
-    speedTrack.Size = UDim2.new(1, -42, 1, 0)
+    local speedTrack = Instance.new("Frame", rightPanel)
+    speedTrack.Size = UDim2.new(1, 0, 0, 18)
     speedTrack.BackgroundTransparency = 1
+    speedTrack.LayoutOrder = 15
 
     local speedBg = Instance.new("Frame", speedTrack)
     speedBg.Size = UDim2.new(1, 0, 0, 6)
@@ -2995,7 +3028,17 @@ local function createGUI()
         autoBtn.BackgroundColor3 = autoSendEnabled and Color3.fromRGB(45,120,45) or Color3.fromRGB(55,55,70)
         autoBtn.Text = autoSendEnabled and "Auto: ON" or "Auto: OFF"
         lblWhStatus.Text = autoSendEnabled and ("Every "..webhookInterval.."m") or "Auto off"
+        _G.ftfAutoSend = autoSendEnabled
+        saveConfig()
     end)
+
+    -- Apply loaded autoSend to UI
+    if _G.ftfAutoSend then
+        autoSendEnabled = true
+        autoBtn.BackgroundColor3 = Color3.fromRGB(45,120,45)
+        autoBtn.Text = "Auto: ON"
+        lblWhStatus.Text = "Every " .. webhookInterval .. "m"
+    end
 
     -- ===== TOGGLE + CHECKBOX =====
     toggleButton.MouseButton1Click:Connect(function()
