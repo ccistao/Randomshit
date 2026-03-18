@@ -1758,20 +1758,27 @@ local function autoSaveLoop()
 
                         if returnPC then
                             currentPC = returnPC
+                            isHacking = true
                             if wasHacking then
                                 log("🔄 Was hacking → TP back to PC" .. tostring(returnPC.id) .. "...")
                                 updateStatus("🔄 TP back to PC " .. tostring(returnPC.id) .. "...")
                                 task.spawn(function()
-                                    hackPC(returnPC)
-                                    isReturning = false -- bật lại beast check sau khi về tới trigger
+                                    if isGameActive() and not gameOver then
+                                        hackPC(returnPC)
+                                    end
+                                    isReturning = false
+                                    isHacking = false
                                 end)
                             else
                                 log("🔄 Was tweening → tween back to PC" .. tostring(returnPC.id) .. "...")
                                 updateStatus("🔄 Returning to PC " .. tostring(returnPC.id) .. "...")
                                 firstMoveOfRound = false
                                 task.spawn(function()
-                                    hackPC(returnPC)
+                                    if isGameActive() and not gameOver then
+                                        hackPC(returnPC)
+                                    end
                                     isReturning = false
+                                    isHacking = false
                                 end)
                             end
                         else
