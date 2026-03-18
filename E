@@ -2538,57 +2538,63 @@ local function createGUI()
     local consoleScroll = Instance.new("ScrollingFrame", consolePanel)
     consoleScroll.Size = UDim2.new(1, -4, 1, -32)
     consoleScroll.Position = UDim2.new(0, 2, 0, 30)
-    consoleScroll.BackgroundTransparency = 1
+    consoleScroll.BackgroundColor3 = Color3.fromRGB(8, 12, 8)
+    consoleScroll.BackgroundTransparency = 0
     consoleScroll.BorderSizePixel = 0
     consoleScroll.ScrollBarThickness = 3
     consoleScroll.ScrollBarImageColor3 = Color3.fromRGB(60, 160, 60)
     consoleScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     consoleScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+    Instance.new("UICorner", consoleScroll).CornerRadius = UDim.new(0, 4)
 
     local consoleLayout = Instance.new("UIListLayout", consoleScroll)
     consoleLayout.SortOrder = Enum.SortOrder.LayoutOrder
     consoleLayout.Padding = UDim.new(0, 1)
+    local consolePad = Instance.new("UIPadding", consoleScroll)
+    consolePad.PaddingLeft = UDim.new(0, 4)
+    consolePad.PaddingTop = UDim.new(0, 2)
 
     local logOrder = 0
-    local maxLogLines = 100
+    local maxLogLines = 80
+    local LINE_H = 13
 
     local function consoleLog(msg, logType)
         logOrder = logOrder + 1
-        local color = Color3.fromRGB(160, 230, 160)
-        local prefix = ""
+        local color
+        local prefix
         if logType == "warn" then
-            color = Color3.fromRGB(255, 200, 50)
-            prefix = "⚠ "
+            color = Color3.fromRGB(255, 200, 50); prefix = "⚠ "
         elseif logType == "error" then
-            color = Color3.fromRGB(255, 80, 80)
-            prefix = "✖ "
+            color = Color3.fromRGB(255, 80, 80); prefix = "✖ "
         elseif logType == "status" then
-            color = Color3.fromRGB(100, 200, 255)
-            prefix = "» "
+            color = Color3.fromRGB(100, 200, 255); prefix = "» "
+        else
+            color = Color3.fromRGB(160, 230, 160); prefix = ""
         end
+
         local lbl = Instance.new("TextLabel", consoleScroll)
-        lbl.Size = UDim2.new(1, -4, 0, 0)
-        lbl.AutomaticSize = Enum.AutomaticSize.Y
+        lbl.Size = UDim2.new(1, -6, 0, LINE_H)
         lbl.BackgroundTransparency = 1
         lbl.Text = prefix .. tostring(msg)
         lbl.TextColor3 = color
         lbl.TextSize = 9
         lbl.Font = Enum.Font.Code
         lbl.TextXAlignment = Enum.TextXAlignment.Left
-        lbl.TextWrapped = true
+        lbl.TextTruncate = Enum.TextTruncate.AtEnd
         lbl.LayoutOrder = logOrder
-        task.defer(function()
-            consoleScroll.CanvasSize = UDim2.new(0, 0, 0, consoleLayout.AbsoluteContentSize.Y + 4)
-            consoleScroll.CanvasPosition = Vector2.new(0, math.max(0, consoleLayout.AbsoluteContentSize.Y - consoleScroll.AbsoluteSize.Y))
-        end)
-        local count = 0
+
+        -- Update canvas
+        local totalH = logOrder * (LINE_H + 1)
+        consoleScroll.CanvasSize = UDim2.new(0, 0, 0, totalH)
+        consoleScroll.CanvasPosition = Vector2.new(0, math.max(0, totalH - consoleScroll.AbsoluteSize.Y))
+
+        -- Giới hạn số dòng
+        local children = {}
         for _, c in ipairs(consoleScroll:GetChildren()) do
-            if c:IsA("TextLabel") then count += 1 end
+            if c:IsA("TextLabel") then table.insert(children, c) end
         end
-        if count > maxLogLines then
-            for _, c in ipairs(consoleScroll:GetChildren()) do
-                if c:IsA("TextLabel") then c:Destroy() break end
-            end
+        if #children > maxLogLines then
+            children[1]:Destroy()
         end
     end
 
@@ -2596,6 +2602,8 @@ local function createGUI()
         for _, c in ipairs(consoleScroll:GetChildren()) do
             if c:IsA("TextLabel") then c:Destroy() end
         end
+        logOrder = 0
+        consoleScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     end)
 
     -- Set consoleLogFn và flush buffer
