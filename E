@@ -245,16 +245,25 @@ end
 -- ==================== WAIT FOR GAME ====================
 local function waitForGameActive()
 
-    -- Nếu đang HACK phase giữa trận -> bắt đầu ngay (script bật giữa game)
-    -- Nhưng chỉ khi roundsPlayed == 0 (lần đầu bật script)
-    if roundsPlayed == 0 then
-        local gs0 = ReplicatedStorage:FindFirstChild("GameStatus")
-        if gs0 then
-            local txt = tostring(gs0.Value):upper()
-            if txt:find("HACK") then
-                return true
-            end
-        end
+    -- Check ngay GameStatus hiện tại
+    local function getCurrentStatus()
+        local gs = ReplicatedStorage:FindFirstChild("GameStatus")
+        return gs and tostring(gs.Value):upper() or ""
+    end
+
+    local curStatus = getCurrentStatus()
+    log("waitForGame: current status = '" .. curStatus .. "'")
+
+    -- Nếu đang HACK phase -> bắt đầu ngay
+    -- Chỉ skip nếu roundsPlayed == 0 (lần đầu) HOẶC vừa reset xong
+    if curStatus:find("HACK") or curStatus:find("HEAD START") then
+        log("waitForGame: game already active, starting now")
+        return true
+    end
+
+    -- Nếu đang Find Exit -> chờ round mới
+    if curStatus:find("FIND") and curStatus:find("EXIT") then
+        log("waitForGame: Find Exit phase, waiting for new round...")
     end
 
     updateStatus("Waiting for game...")
@@ -266,7 +275,22 @@ local function waitForGameActive()
         task.wait(0.5)
         elapsed = elapsed + 0.5
 
-        -- Check GameStatusBox
+        local txt = getCurrentStatus()
+
+        -- HEAD START = round mới bắt đầu
+        if txt:find("HEAD START") then
+            log("waitForGame: HEAD START detected!")
+            task.wait(2)
+            return true
+        end
+
+        -- HACK phase (có thể miss HEAD START)
+        if txt:find("HACK") then
+            log("waitForGame: HACK phase detected!")
+            return true
+        end
+
+        -- GameStatusBox fallback
         local ok, result = pcall(function()
             local pg = player:FindFirstChild("PlayerGui")
             if not pg then return nil end
@@ -276,26 +300,22 @@ local function waitForGameActive()
             if not gif then return nil end
             return gif:FindFirstChild("GameStatusBox")
         end)
-
         if ok and result and result.Text then
-            local txt = result.Text:upper()
-            if txt:find("15 SEC HEAD START") or txt:find("HEAD START")
-            or txt:find("GIAY") or txt:find("BAT DAU") then
+            local t = result.Text:upper()
+            if t:find("HEAD START") or t:find("GIAY") or t:find("BAT DAU") then
+                log("waitForGame: HEAD START via GameStatusBox!")
                 task.wait(2)
                 return true
             end
         end
 
-        -- Fallback: GameStatus
-        local gs = ReplicatedStorage:FindFirstChild("GameStatus")
-        if gs then
-            local txt = tostring(gs.Value):upper()
-            if txt:find("HEAD START") then
-                task.wait(1)
-                return true
-            end
+        -- Log mỗi 10s để biết đang chờ gì
+        if math.floor(elapsed) % 10 == 0 then
+            log("waitForGame: still waiting... status='" .. txt .. "' (" .. math.floor(elapsed) .. "s)")
         end
     end
+
+    log("waitForGame: timeout after " .. timeout .. "s!")
     return false
 end
 
@@ -1765,7 +1785,7 @@ local function mainLoop()
         altRoundStartTick = tick()
         savesThisRound = 0
         firstMoveOfRound = true
-        log("=== ROUND " .. roundsPlayed .. " START | Extra=" .. tostring(hackExtraPC) .. " | Mode=" .. playerMode .. " ===")
+        log("=== ROUND " .. roundsPlayed .. " START | Extra=" .. tostring(hackExtraPC) .. " | Mode=" .. playerMode .. " | Status=" .. tostring(ReplicatedStorage:FindFirstChild("GameStatus") and ReplicatedStorage:FindFirstChild("GameStatus").Value or "?") .. " ===")
 
         -- Nếu là beast thì skip toàn bộ sur logic
         if isSelfBeast() then
