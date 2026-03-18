@@ -2489,9 +2489,15 @@ local function createGUI()
         logOrder = logOrder + 1
         local color = Color3.fromRGB(160, 230, 160)
         local prefix = ""
-        if logType == "warn" then color = Color3.fromRGB(255, 200, 50) prefix = "⚠ "
-        elseif logType == "error" then color = Color3.fromRGB(255, 80, 80) prefix = "✖ "
-        elseif logType == "status" then color = Color3.fromRGB(100, 200, 255) prefix = "» "
+        if logType == "warn" then
+            color = Color3.fromRGB(255, 200, 50)
+            prefix = "⚠ "
+        elseif logType == "error" then
+            color = Color3.fromRGB(255, 80, 80)
+            prefix = "✖ "
+        elseif logType == "status" then
+            color = Color3.fromRGB(100, 200, 255)
+            prefix = "» "
         end
         local lbl = Instance.new("TextLabel", consoleScroll)
         lbl.Size = UDim2.new(1, -4, 0, 0)
@@ -2509,21 +2515,33 @@ local function createGUI()
             consoleScroll.CanvasPosition = Vector2.new(0, math.max(0, consoleLayout.AbsoluteContentSize.Y - consoleScroll.AbsoluteSize.Y))
         end)
         local count = 0
-        for _, c in ipairs(consoleScroll:GetChildren()) do if c:IsA("TextLabel") then count += 1 end end
+        for _, c in ipairs(consoleScroll:GetChildren()) do
+            if c:IsA("TextLabel") then count += 1 end
+        end
         if count > maxLogLines then
-            for _, c in ipairs(consoleScroll:GetChildren()) do if c:IsA("TextLabel") then c:Destroy() break end end
+            for _, c in ipairs(consoleScroll:GetChildren()) do
+                if c:IsA("TextLabel") then c:Destroy() break end
+            end
         end
     end
 
     consoleClearBtn.MouseButton1Click:Connect(function()
-        for _, c in ipairs(consoleScroll:GetChildren()) do if c:IsA("TextLabel") then c:Destroy() end end
+        for _, c in ipairs(consoleScroll:GetChildren()) do
+            if c:IsA("TextLabel") then c:Destroy() end
+        end
     end)
 
     -- Override log + updateStatus -> gửi vào console
     local _origLog = log
-    log = function(msg) _origLog(msg) consoleLog(msg, "normal") end
+    log = function(msg)
+        _origLog(msg)
+        consoleLog(msg, "normal")
+    end
     local _origStatus = updateStatus
-    updateStatus = function(s) _origStatus(s) consoleLog(s, "status") end
+    updateStatus = function(s)
+        _origStatus(s)
+        consoleLog(s, "status")
+    end
 
     local function toggleConsole()
         consoleOpen = not consoleOpen
@@ -2615,7 +2633,8 @@ local function createGUI()
 
     -- ===== SLIDER INPUT =====
     local UIS = game:GetService("UserInputService")
-    local speedDrag, cageDrag = false, false
+    local speedDrag, cageDrag, intervalDrag = false, false, false
+    local dragging, dragStart, startPos
 
     speedBg.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
@@ -2629,12 +2648,6 @@ local function createGUI()
             setCageDelay(10 + math.clamp((i.Position.X-cageBg.AbsolutePosition.X)/cageBg.AbsoluteSize.X,0,1)*290)
         end
     end)
-    UIS.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            speedDrag = false; cageDrag = false; intervalDrag = false
-        end
-    end)
-    local intervalDrag = false
     intervalBg.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             intervalDrag = true
@@ -2642,7 +2655,16 @@ local function createGUI()
             setInterval(1 + pct*59)
         end
     end)
-
+    titleBar.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging=true; dragStart=i.Position; startPos=frame.Position
+        end
+    end)
+    UIS.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            speedDrag=false; cageDrag=false; intervalDrag=false; dragging=false; conDragging=false
+        end
+    end)
     UIS.InputChanged:Connect(function(i)
         if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
         if speedDrag then setSpeed(10 + math.clamp((i.Position.X-speedBg.AbsolutePosition.X)/speedBg.AbsoluteSize.X,0,1)*90) end
@@ -2651,6 +2673,10 @@ local function createGUI()
         if conDragging then
             local d = i.Position - conDragStart
             consolePanel.Position = UDim2.new(conStartPos.X.Scale, conStartPos.X.Offset+d.X, conStartPos.Y.Scale, conStartPos.Y.Offset+d.Y)
+        end
+        if dragging then
+            local d = i.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X, startPos.Y.Scale, startPos.Y.Offset+d.Y)
         end
     end)
 
@@ -2729,22 +2755,6 @@ local function createGUI()
         end
     end)
 
-    -- ===== DRAG (kéo qua titleBar) =====
-    local dragging, dragStart, startPos
-    titleBar.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            dragging=true; dragStart=i.Position; startPos=frame.Position
-        end
-    end)
-    titleBar.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging=false end
-    end)
-    UIS.InputChanged:Connect(function(i)
-        if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
-            local d = i.Position-dragStart
-            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X, startPos.Y.Scale, startPos.Y.Offset+d.Y)
-        end
-    end)
 end
 -- ==================== ANTI AFK ====================
 local function antiAFK()
