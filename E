@@ -810,6 +810,16 @@ local function hackPC(pcData)
             break
         end
 
+        -- Dừng hack nếu Find Exit phase (và không hack extra)
+        if isFindExitPhase() and not hackExtraPC then
+            log("PC" .. pcId .. ": Find Exit! Stop hacking")
+            isHacking = false
+            currentPC = nil
+            canAutoJump = false
+            currentTrigger = nil
+            return false
+        end
+
         -- Beast check (bỏ qua nếu đang save)
         if isBeastNearby(30) and not isSaving then
             isHacking = false
