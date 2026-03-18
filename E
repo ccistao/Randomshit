@@ -2508,7 +2508,7 @@ local function createGUI()
     consolePanel.BorderSizePixel = 0
     consolePanel.Visible = false
     consolePanel.ZIndex = 10
-    consolePanel.ClipsDescendants = false
+    consolePanel.ClipsDescendants = true
     Instance.new("UICorner", consolePanel).CornerRadius = UDim.new(0, 8)
     local consoleStroke = Instance.new("UIStroke", consolePanel)
     consoleStroke.Color = Color3.fromRGB(40, 120, 40)
@@ -2518,7 +2518,7 @@ local function createGUI()
     consoleTitleBar.Size = UDim2.new(1, 0, 0, 28)
     consoleTitleBar.BackgroundColor3 = Color3.fromRGB(20, 60, 20)
     consoleTitleBar.BorderSizePixel = 0
-    consoleTitleBar.ZIndex = 3
+    consoleTitleBar.ZIndex = 12
     Instance.new("UICorner", consoleTitleBar).CornerRadius = UDim.new(0, 8)
     local consoleTitleStroke = Instance.new("UIStroke", consoleTitleBar)
     consoleTitleStroke.Color = Color3.fromRGB(60, 180, 60)
@@ -2583,7 +2583,7 @@ local function createGUI()
         end
 
         local lbl = Instance.new("TextLabel", consoleScroll)
-        lbl.Size = UDim2.new(1, -6, 0, LINE_H)
+        lbl.Size = UDim2.new(1, 0, 0, LINE_H)
         lbl.BackgroundTransparency = 1
         lbl.Text = prefix .. tostring(msg)
         lbl.TextColor3 = color
@@ -2592,11 +2592,14 @@ local function createGUI()
         lbl.TextXAlignment = Enum.TextXAlignment.Left
         lbl.TextTruncate = Enum.TextTruncate.AtEnd
         lbl.LayoutOrder = logOrder
+        lbl.ZIndex = 11
 
-        -- Update canvas
-        local totalH = logOrder * (LINE_H + 1)
-        consoleScroll.CanvasSize = UDim2.new(0, 0, 0, totalH)
-        consoleScroll.CanvasPosition = Vector2.new(0, math.max(0, totalH - consoleScroll.AbsoluteSize.Y))
+        -- Update canvas và scroll xuống
+        task.defer(function()
+            local totalH = consoleLayout.AbsoluteContentSize.Y + 4
+            consoleScroll.CanvasSize = UDim2.new(0, 0, 0, totalH)
+            consoleScroll.CanvasPosition = Vector2.new(0, math.max(0, totalH - consoleScroll.AbsoluteSize.Y))
+        end)
 
         -- Giới hạn số dòng
         local children = {}
