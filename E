@@ -2346,9 +2346,21 @@ local function createGUI()
     lblInterval.Font = Enum.Font.GothamBold
 
     local intervalTrack = Instance.new("Frame", rightPanel)
-    intervalTrack.Size = UDim2.new(1, 0, 0, 18)
+    intervalTrack.Size = UDim2.new(1, -42, 0, 18)
     intervalTrack.BackgroundTransparency = 1
     intervalTrack.LayoutOrder = 12
+
+    local intervalInput = Instance.new("TextBox", rightPanel)
+    intervalInput.Size = UDim2.new(0, 36, 0, 18)
+    intervalInput.BackgroundColor3 = Color3.fromRGB(28, 28, 48)
+    intervalInput.BorderSizePixel = 0
+    intervalInput.Text = tostring(webhookInterval)
+    intervalInput.TextColor3 = Color3.fromRGB(140, 140, 255)
+    intervalInput.TextSize = 10
+    intervalInput.Font = Enum.Font.GothamBold
+    intervalInput.ClearTextOnFocus = true
+    intervalInput.LayoutOrder = 12
+    Instance.new("UICorner", intervalInput).CornerRadius = UDim.new(0, 4)
 
     local intervalBg = Instance.new("Frame", intervalTrack)
     intervalBg.Size = UDim2.new(1, 0, 0, 6)
@@ -2380,7 +2392,12 @@ local function createGUI()
         intervalKnob.Position = UDim2.new(pct, 0, 0.5, 0)
         lblInterval.Text = "Send every: " .. val .. " min"
         lblWhStatus.Text = autoSendEnabled and ("Every "..val.."m") or ""
+        intervalInput.Text = tostring(val)
     end
+    intervalInput.FocusLost:Connect(function()
+        local n = tonumber(intervalInput.Text)
+        if n then setInterval(n) end
+    end)
 
     rDiv(13)
 
@@ -2388,10 +2405,27 @@ local function createGUI()
     local lblSpeed = rLabel("Speed: " .. tweenSpeed .. " st/s", Color3.fromRGB(160,255,160), 14)
     lblSpeed.Font = Enum.Font.GothamBold
 
-    local speedTrack = Instance.new("Frame", rightPanel)
-    speedTrack.Size = UDim2.new(1, 0, 0, 18)
+    -- Speed slider + input row
+    local speedRow = Instance.new("Frame", rightPanel)
+    speedRow.Size = UDim2.new(1, 0, 0, 22)
+    speedRow.BackgroundTransparency = 1
+    speedRow.LayoutOrder = 15
+
+    local speedInput = Instance.new("TextBox", speedRow)
+    speedInput.Size = UDim2.new(0, 36, 1, 0)
+    speedInput.Position = UDim2.new(1, -36, 0, 0)
+    speedInput.BackgroundColor3 = Color3.fromRGB(28, 28, 48)
+    speedInput.BorderSizePixel = 0
+    speedInput.Text = tostring(tweenSpeed)
+    speedInput.TextColor3 = Color3.fromRGB(160, 255, 160)
+    speedInput.TextSize = 10
+    speedInput.Font = Enum.Font.GothamBold
+    speedInput.ClearTextOnFocus = true
+    Instance.new("UICorner", speedInput).CornerRadius = UDim.new(0, 4)
+
+    local speedTrack = Instance.new("Frame", speedRow)
+    speedTrack.Size = UDim2.new(1, -42, 1, 0)
     speedTrack.BackgroundTransparency = 1
-    speedTrack.LayoutOrder = 15
 
     local speedBg = Instance.new("Frame", speedTrack)
     speedBg.Size = UDim2.new(1, 0, 0, 6)
@@ -2401,7 +2435,7 @@ local function createGUI()
     Instance.new("UICorner", speedBg).CornerRadius = UDim.new(1,0)
 
     local speedFill = Instance.new("Frame", speedBg)
-    speedFill.Size = UDim2.new((tweenSpeed-10)/90, 0, 1, 0)
+    speedFill.Size = UDim2.new((tweenSpeed-1)/59, 0, 1, 0)
     speedFill.BackgroundColor3 = Color3.fromRGB(70,200,70)
     speedFill.BorderSizePixel = 0
     Instance.new("UICorner", speedFill).CornerRadius = UDim.new(1,0)
@@ -2409,13 +2443,13 @@ local function createGUI()
     local speedKnob = Instance.new("Frame", speedBg)
     speedKnob.Size = UDim2.new(0,18,0,18)
     speedKnob.AnchorPoint = Vector2.new(0.5,0.5)
-    speedKnob.Position = UDim2.new((tweenSpeed-10)/90, 0, 0.5, 0)
+    speedKnob.Position = UDim2.new((tweenSpeed-1)/59, 0, 0.5, 0)
     speedKnob.BackgroundColor3 = Color3.fromRGB(110,255,110)
     speedKnob.BorderSizePixel = 0
     speedKnob.ZIndex = 2
     Instance.new("UICorner", speedKnob).CornerRadius = UDim.new(1,0)
 
-    local speedWarn = rLabel("⚠ High speed may kick!", Color3.fromRGB(255,160,40), 16)
+    local speedWarn = rLabel("⚠ Speed ≥45 có thể bị kick!", Color3.fromRGB(255,160,40), 16)
     speedWarn.Visible = false
     rDiv(17)
 
@@ -2483,18 +2517,23 @@ local function createGUI()
 
     -- ===== SLIDER FUNCTIONS =====
     local function setSpeed(val)
-        val = math.clamp(math.floor(val), 10, 100)
+        val = math.clamp(math.floor(val), 1, 60)
         tweenSpeed = val
-        local warn = val > 60
+        local warn = val >= 45
         lblSpeed.Text = "Speed: " .. val .. " st/s"
         lblSpeed.TextColor3 = warn and Color3.fromRGB(255,180,50) or Color3.fromRGB(160,255,160)
         speedFill.BackgroundColor3 = warn and Color3.fromRGB(255,140,30) or Color3.fromRGB(70,200,70)
         speedKnob.BackgroundColor3 = warn and Color3.fromRGB(255,180,50) or Color3.fromRGB(110,255,110)
         speedWarn.Visible = warn
-        local pct = (val-10)/90
+        local pct = (val-1)/59
         speedFill.Size = UDim2.new(pct, 0, 1, 0)
         speedKnob.Position = UDim2.new(pct, 0, 0.5, 0)
+        speedInput.Text = tostring(val)
     end
+    speedInput.FocusLost:Connect(function()
+        local n = tonumber(speedInput.Text)
+        if n then setSpeed(n) end
+    end)
 
     local function setCageDelay(val)
         val = math.clamp(math.floor(val), 10, 300)
@@ -2760,61 +2799,113 @@ local function createGUI()
 
     gearBtn.MouseButton1Click:Connect(toggleSettings)
 
-    -- ===== SLIDER INPUT =====
+    -- ===== SLIDER + DRAG INPUT (Heartbeat-based for smooth mobile) =====
     local UIS = game:GetService("UserInputService")
     local speedDrag, cageDrag, intervalDrag = false, false, false
     local dragging, dragStart, startPos
+    local conDragging, conDragStart, conStartPos
+    local touchPos = Vector2.new(0, 0)
 
-    speedBg.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            speedDrag = true
-            setSpeed(10 + math.clamp((i.Position.X-speedBg.AbsolutePosition.X)/speedBg.AbsoluteSize.X,0,1)*90)
+    -- Track touch/mouse position - chỉ theo dõi 1 ngón tay (touch ID đầu tiên)
+    local activeTouchId = nil -- lock vào 1 touch duy nhất
+
+    local function isMine(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or i.UserInputType == Enum.UserInputType.MouseMovement then
+            return true
         end
+        if i.UserInputType == Enum.UserInputType.Touch then
+            return activeTouchId == nil or activeTouchId == i
+        end
+        return false
+    end
+
+    UIS.InputChanged:Connect(function(i)
+        if not isMine(i) then return end
+        if i.UserInputType == Enum.UserInputType.MouseMovement
+        or i.UserInputType == Enum.UserInputType.Touch then
+            touchPos = Vector2.new(i.Position.X, i.Position.Y)
+        end
+    end)
+
+    UIS.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or (i.UserInputType == Enum.UserInputType.Touch and i == activeTouchId) then
+            speedDrag=false; cageDrag=false; intervalDrag=false
+            dragging=false; conDragging=false
+            activeTouchId = nil
+        end
+    end)
+
+    local function beginDrag(i)
+        -- Chỉ nhận ngón tay đầu tiên, bỏ qua ngón sau
+        if i.UserInputType == Enum.UserInputType.Touch then
+            if activeTouchId ~= nil then return false end
+            activeTouchId = i
+        elseif i.UserInputType ~= Enum.UserInputType.MouseButton1 then
+            return false
+        end
+        touchPos = Vector2.new(i.Position.X, i.Position.Y)
+        return true
+    end
+
+    -- Sliders
+    speedBg.InputBegan:Connect(function(i)
+        if beginDrag(i) then speedDrag = true end
     end)
     cageBg.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            cageDrag = true
-            setCageDelay(10 + math.clamp((i.Position.X-cageBg.AbsolutePosition.X)/cageBg.AbsoluteSize.X,0,1)*290)
-        end
+        if beginDrag(i) then cageDrag = true end
     end)
     intervalBg.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            intervalDrag = true
-            local pct = math.clamp((i.Position.X - intervalBg.AbsolutePosition.X)/intervalBg.AbsoluteSize.X, 0, 1)
-            setInterval(1 + pct*59)
-        end
+        if beginDrag(i) then intervalDrag = true end
     end)
+
+    -- Frame drag
     titleBar.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        if beginDrag(i) then
             dragging = true
-            dragStart = i.Position
+            dragStart = touchPos
             startPos = Vector2.new(frame.AbsolutePosition.X, frame.AbsolutePosition.Y)
         end
     end)
+
+    -- Console drag
     consoleTitleBar.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        if beginDrag(i) then
             conDragging = true
-            conDragStart = i.Position
+            conDragStart = touchPos
             conStartPos = Vector2.new(consolePanel.AbsolutePosition.X, consolePanel.AbsolutePosition.Y)
         end
     end)
-    UIS.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            speedDrag=false; cageDrag=false; intervalDrag=false; dragging=false; conDragging=false
+
+    -- Heartbeat: update every frame for buttery smooth drag
+    RunService.Heartbeat:Connect(function()
+        if not (speedDrag or cageDrag or intervalDrag or dragging or conDragging) then return end
+        local p = touchPos
+        if speedDrag then
+            setSpeed(1 + math.clamp((p.X - speedBg.AbsolutePosition.X) / math.max(1, speedBg.AbsoluteSize.X), 0, 1) * 59)
         end
-    end)
-    UIS.InputChanged:Connect(function(i)
-        if i.UserInputType ~= Enum.UserInputType.MouseMovement and i.UserInputType ~= Enum.UserInputType.Touch then return end
-        if speedDrag then setSpeed(10 + math.clamp((i.Position.X-speedBg.AbsolutePosition.X)/speedBg.AbsoluteSize.X,0,1)*90) end
-        if cageDrag then setCageDelay(10 + math.clamp((i.Position.X-cageBg.AbsolutePosition.X)/cageBg.AbsoluteSize.X,0,1)*290) end
-        if intervalDrag then setInterval(1 + math.clamp((i.Position.X-intervalBg.AbsolutePosition.X)/intervalBg.AbsoluteSize.X,0,1)*59) end
-        if conDragging then
-            local d = i.Position - conDragStart
-            consolePanel.Position = UDim2.fromOffset(conStartPos.X + d.X, conStartPos.Y + d.Y)
+        if cageDrag then
+            setCageDelay(10 + math.clamp((p.X - cageBg.AbsolutePosition.X) / math.max(1, cageBg.AbsoluteSize.X), 0, 1) * 290)
         end
-        if dragging then
-            local d = i.Position - dragStart
-            frame.Position = UDim2.fromOffset(startPos.X + d.X, startPos.Y + d.Y)
+        if intervalDrag then
+            setInterval(1 + math.clamp((p.X - intervalBg.AbsolutePosition.X) / math.max(1, intervalBg.AbsoluteSize.X), 0, 1) * 59)
+        end
+        if dragging and dragStart then
+            local sw = screenGui.AbsoluteSize
+            local d = p - dragStart
+            frame.Position = UDim2.fromOffset(
+                math.clamp(startPos.X + d.X, 0, sw.X - frame.AbsoluteSize.X),
+                math.clamp(startPos.Y + d.Y, 0, sw.Y - frame.AbsoluteSize.Y)
+            )
+        end
+        if conDragging and conDragStart then
+            local sw = screenGui.AbsoluteSize
+            local d = p - conDragStart
+            consolePanel.Position = UDim2.fromOffset(
+                math.clamp(conStartPos.X + d.X, 0, sw.X - consolePanel.AbsoluteSize.X),
+                math.clamp(conStartPos.Y + d.Y, 0, sw.Y - consolePanel.AbsoluteSize.Y)
+            )
         end
     end)
 
