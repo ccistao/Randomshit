@@ -1114,67 +1114,116 @@ local function autoExitUnified()
             continue
         end
 
-        for _, exitData in ipairs(exits) do
-            if not scriptEnabled or hasEscaped then break end
+        if #exits == 0 then task.wait(0.5) continue end
 
-            if lastExitUsed and exitData.model == lastExitUsed then
-                continue
+        -- Tìm exit nào không có beast
+        local function getBestExit()
+            for _, e in ipairs(exits) do
+                if not isBeastNearby(35) then return e end
+                -- Check riêng từng exit
+                local door = e.model:FindFirstChild("Door")
+                if isExitOpened(e) then return e end
             end
+            -- Không có exit nào sạch -> trả về exit ít beast nhất
+            return exits[1]
+        end
 
-            if isExitOpened(exitData) then
-                log("Exit already open, going in")
-                escape(exitData)
-                lastExitUsed = exitData.model
+        -- Logic chính: ping pong giữa các exit
+        local exitCount = #exits
+        if exitCount == 0 then task.wait(0.5) continue end
+
+        -- Tìm exit hiện tại không có beast
+        local targetExit = nil
+        for i, e in ipairs(exits) do
+            -- Check beast có gần exit này không (dùng khoảng cách tới trigger)
+            local beastChar = beast and beast.Character
+            local beastRoot = beastChar and beastChar:FindFirstChild("HumanoidRootPart")
+            local beastNearThis = false
+            if beastRoot then
+                beastNearThis = (beastRoot.Position - e.trigger.Position).Magnitude < 35
+            end
+            if not beastNearThis then
+                targetExit = e
                 break
-            else
-                if isBeastNearby(35) then
-                    log("Beast near exit, try next")
-                    task.wait(0.5)
+            end
+        end
+
+        if not targetExit then
+            -- Beast chặn tất cả -> TP sang exit ngược lại và chờ
+            -- Tìm exit xa beast nhất
+            local bestDist = 0
+            local beastChar = beast and beast.Character
+            local beastRoot = beastChar and beastChar:FindFirstChild("HumanoidRootPart")
+            for _, e in ipairs(exits) do
+                if beastRoot then
+                    local d = (beastRoot.Position - e.trigger.Position).Magnitude
+                    if d > bestDist then
+                        bestDist = d
+                        targetExit = e
+                    end
                 else
-                    -- Check xem có người khác đang mở cửa này chưa
-                    local otherOpener = getPlayerOpeningDoor(exitData.trigger)
-                    if otherOpener then
-                        -- Người khác đang mở -> đứng gần đợi, không spam remote
-                        log("Other player opening door: " .. otherOpener.Name .. ", waiting...")
-                        tpFront(exitData.trigger)
-                        local opened, beastInterrupted = waitForDoorOpen(exitData, 20)
-                        if beastInterrupted then
-                            log("Beast interrupted while waiting")
-                        elseif opened then
-                            escape(exitData)
-                            lastExitUsed = exitData.model
-                            break
-                        else
-                            log("Door timeout waiting for other player")
-                        end
-                    else
-                        -- Mình mở
-                        tpFront(exitData.trigger)
-                        task.wait(0.2)
-                        local success = startOpening(exitData.trigger)
-                        if success then
-                            local firing = true
-                            task.spawn(function()
-                                while firing do
-                                    task.wait(0.15)
-                                    pcall(function()
-                                        local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
-                                        if r then r:FireServer("Input", "Action", true) end
-                                    end)
-                                end
+                    targetExit = e
+                end
+            end
+            -- TP tới exit xa nhất rồi chờ
+            if targetExit then
+                tpFront(targetExit.trigger)
+                updateStatus("Beast blocking exits, switching...")
+                task.wait(0.3)
+            end
+            continue
+        end
+
+        -- Có exit trống -> xử lý bình thường
+        if lastExitUsed and targetExit.model == lastExitUsed then
+            lastExitUsed = nil
+        end
+
+        if isExitOpened(targetExit) then
+            log("Exit already open, going in")
+            escape(targetExit)
+            lastExitUsed = targetExit.model
+        else
+            local otherOpener = getPlayerOpeningDoor(targetExit.trigger)
+            if otherOpener then
+                log("Other player opening door: " .. otherOpener.Name)
+                tpFront(targetExit.trigger)
+                local opened, beastInterrupted = waitForDoorOpen(targetExit, 20)
+                if opened then
+                    escape(targetExit)
+                    lastExitUsed = targetExit.model
+                end
+            else
+                tpFront(targetExit.trigger)
+                task.wait(0.2)
+                local success = startOpening(targetExit.trigger)
+                if success then
+                    local firing = true
+                    task.spawn(function()
+                        while firing do
+                            task.wait(0.15)
+                            pcall(function()
+                                local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
+                                if r then r:FireServer("Input", "Action", true) end
                             end)
-                            local opened, beastInterrupted = waitForDoorOpen(exitData, 20)
-                            firing = false
-                            if beastInterrupted then
-                                log("Beast interrupted")
-                            elseif opened then
-                                escape(exitData)
-                                lastExitUsed = exitData.model
+                        end
+                    end)
+                    local opened, beastInterrupted = waitForDoorOpen(targetExit, 20)
+                    firing = false
+                    if beastInterrupted then
+                        log("Beast came, switching exit...")
+                        -- TP ngay sang exit khác
+                        for _, e in ipairs(exits) do
+                            if e.model ~= targetExit.model then
+                                tpFront(e.trigger)
                                 break
-                            else
-                                log("Door timeout, try next")
                             end
                         end
+                    elseif opened then
+                        escape(targetExit)
+                        lastExitUsed = targetExit.model
+                    else
+                        log("Door timeout, switching exit")
                     end
                 end
             end
