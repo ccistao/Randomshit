@@ -56,6 +56,33 @@ local function updateStatus(status)
     log(tostring(status))
 end
 
+-- ===== LOG BUFFER (lưu log trước khi console khởi tạo) =====
+local logBuffer = {} -- {msg, logType}
+local MAX_BUFFER = 200
+local consoleLogFn = nil -- sẽ được set bởi createGUI
+
+local function bufferedLog(msg, logType)
+    if consoleLogFn then
+        consoleLogFn(msg, logType)
+    else
+        table.insert(logBuffer, {msg = tostring(msg), logType = logType or "normal"})
+        if #logBuffer > MAX_BUFFER then table.remove(logBuffer, 1) end
+    end
+end
+
+-- Override log và updateStatus để dùng buffer
+local _basePrint = log
+log = function(msg)
+    _basePrint(msg)
+    bufferedLog(msg, "normal")
+end
+
+local _baseStatus = updateStatus
+updateStatus = function(s)
+    _baseStatus(s)
+    bufferedLog(s, "status")
+end
+
 -- ==================== CHAR REFS ====================
 local function updateCharacterReferences()
     character = player.Character or player.CharacterAdded:Wait()
@@ -218,6 +245,35 @@ end
 -- ==================== WAIT FOR GAME ====================
 local function waitForGameActive()
     updateStatus("Waiting for game...")
+
+    -- Nếu đang giữa trận (HACK phase) -> bắt đầu ngay
+    local function isAlreadyActive()
+        local gs = ReplicatedStorage:FindFirstChild("GameStatus")
+        if gs then
+            local txt = tostring(gs.Value):upper()
+            if txt:find("HACK") or txt:find("HEAD START") then
+                return true
+            end
+        end
+        return false
+    end
+
+    -- Nếu đang Find Exit phase -> chờ trận mới, không nhảy vào
+    local function isFindExitNow()
+        local gs = ReplicatedStorage:FindFirstChild("GameStatus")
+        if gs then
+            local txt = tostring(gs.Value):upper()
+            if txt:find("FIND") and txt:find("EXIT") then return true end
+        end
+        return false
+    end
+
+    -- Nếu đang giữa hack phase -> OK
+    if isAlreadyActive() then
+        return true
+    end
+
+    -- Nếu đang Find Exit hoặc không rõ -> chờ round mới có HEAD START
     local timeout = 300
     local elapsed = 0
 
@@ -251,6 +307,10 @@ local function waitForGameActive()
             local txt = tostring(gs.Value):upper()
             if txt:find("HEAD START") then
                 task.wait(1)
+                return true
+            end
+            -- Mid-game hack phase (script bật giữa trận)
+            if txt:find("HACK") then
                 return true
             end
         end
@@ -2436,22 +2496,27 @@ local function createGUI()
     consolePanel.BorderSizePixel = 0
     consolePanel.Visible = false
     consolePanel.ZIndex = 10
+    consolePanel.ClipsDescendants = false
     Instance.new("UICorner", consolePanel).CornerRadius = UDim.new(0, 8)
     local consoleStroke = Instance.new("UIStroke", consolePanel)
     consoleStroke.Color = Color3.fromRGB(40, 120, 40)
-    consoleStroke.Thickness = 1
+    consoleStroke.Thickness = 1.5
 
     local consoleTitleBar = Instance.new("Frame", consolePanel)
-    consoleTitleBar.Size = UDim2.new(1, 0, 0, 22)
-    consoleTitleBar.BackgroundColor3 = Color3.fromRGB(20, 50, 20)
+    consoleTitleBar.Size = UDim2.new(1, 0, 0, 28)
+    consoleTitleBar.BackgroundColor3 = Color3.fromRGB(20, 60, 20)
     consoleTitleBar.BorderSizePixel = 0
+    consoleTitleBar.ZIndex = 3
     Instance.new("UICorner", consoleTitleBar).CornerRadius = UDim.new(0, 8)
+    local consoleTitleStroke = Instance.new("UIStroke", consoleTitleBar)
+    consoleTitleStroke.Color = Color3.fromRGB(60, 180, 60)
+    consoleTitleStroke.Thickness = 1.5
 
     local consoleTitleLbl = Instance.new("TextLabel", consoleTitleBar)
     consoleTitleLbl.Size = UDim2.new(1, -30, 1, 0)
     consoleTitleLbl.Position = UDim2.new(0, 8, 0, 0)
     consoleTitleLbl.BackgroundTransparency = 1
-    consoleTitleLbl.Text = "📋 FTF Console"
+    consoleTitleLbl.Text = "📋 FTF Console  ☰ drag"
     consoleTitleLbl.TextColor3 = Color3.fromRGB(100, 220, 100)
     consoleTitleLbl.TextSize = 10
     consoleTitleLbl.Font = Enum.Font.GothamBold
@@ -2469,8 +2534,8 @@ local function createGUI()
     Instance.new("UICorner", consoleClearBtn).CornerRadius = UDim.new(0, 4)
 
     local consoleScroll = Instance.new("ScrollingFrame", consolePanel)
-    consoleScroll.Size = UDim2.new(1, -4, 1, -26)
-    consoleScroll.Position = UDim2.new(0, 2, 0, 24)
+    consoleScroll.Size = UDim2.new(1, -4, 1, -32)
+    consoleScroll.Position = UDim2.new(0, 2, 0, 30)
     consoleScroll.BackgroundTransparency = 1
     consoleScroll.BorderSizePixel = 0
     consoleScroll.ScrollBarThickness = 3
@@ -2531,17 +2596,13 @@ local function createGUI()
         end
     end)
 
-    -- Override log + updateStatus -> gửi vào console
-    local _origLog = log
-    log = function(msg)
-        _origLog(msg)
-        consoleLog(msg, "normal")
+    -- Set consoleLogFn và flush buffer
+    consoleLogFn = consoleLog
+    -- Hiện hết log đã buffer trước đó
+    for _, entry in ipairs(logBuffer) do
+        consoleLog(entry.msg, entry.logType)
     end
-    local _origStatus = updateStatus
-    updateStatus = function(s)
-        _origStatus(s)
-        consoleLog(s, "status")
-    end
+    logBuffer = {}
 
     local function toggleConsole()
         consoleOpen = not consoleOpen
@@ -2563,13 +2624,9 @@ local function createGUI()
     end
     consoleBtn.MouseButton1Click:Connect(toggleConsole)
 
-    -- Console drag
+    -- Console drag + frame drag được xử lý trong UIS.InputChanged bên dưới
     local conDragging, conDragStart, conStartPos
-    consoleTitleBar.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            conDragging=true conDragStart=i.Position conStartPos=consolePanel.Position
-        end
-    end)
+
     consoleTitleBar.InputEnded:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             conDragging=false
@@ -2657,7 +2714,16 @@ local function createGUI()
     end)
     titleBar.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            dragging=true; dragStart=i.Position; startPos=frame.Position
+            dragging = true
+            dragStart = i.Position
+            startPos = Vector2.new(frame.AbsolutePosition.X, frame.AbsolutePosition.Y)
+        end
+    end)
+    consoleTitleBar.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            conDragging = true
+            conDragStart = i.Position
+            conStartPos = Vector2.new(consolePanel.AbsolutePosition.X, consolePanel.AbsolutePosition.Y)
         end
     end)
     UIS.InputEnded:Connect(function(i)
@@ -2672,11 +2738,11 @@ local function createGUI()
         if intervalDrag then setInterval(1 + math.clamp((i.Position.X-intervalBg.AbsolutePosition.X)/intervalBg.AbsoluteSize.X,0,1)*59) end
         if conDragging then
             local d = i.Position - conDragStart
-            consolePanel.Position = UDim2.new(conStartPos.X.Scale, conStartPos.X.Offset+d.X, conStartPos.Y.Scale, conStartPos.Y.Offset+d.Y)
+            consolePanel.Position = UDim2.fromOffset(conStartPos.X + d.X, conStartPos.Y + d.Y)
         end
         if dragging then
             local d = i.Position - dragStart
-            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X, startPos.Y.Scale, startPos.Y.Offset+d.Y)
+            frame.Position = UDim2.fromOffset(startPos.X + d.X, startPos.Y + d.Y)
         end
     end)
 
