@@ -3215,20 +3215,6 @@ local function createGUI()
         lblWhStatus.Text = "Every " .. webhookInterval .. "m"
     end
 
-    -- Apply loaded ping config to UI
-    if _G.ftfPingDiscon then
-        pingDisconEnabled = true
-        pingCheckmark.Visible = true
-        pingCheckbox.BackgroundColor3 = Color3.fromRGB(25, 55, 75)
-        pingCheckbox.BorderColor3 = Color3.fromRGB(100, 220, 255)
-        pingLabel.TextColor3 = Color3.fromRGB(140, 220, 255)
-        pingIdInput.Visible = true
-    end
-    if _G.ftfPingUserId and _G.ftfPingUserId ~= "" then
-        pingUserId = _G.ftfPingUserId
-        pingIdInput.Text = _G.ftfPingUserId
-    end
-
     -- ===== TOGGLE + CHECKBOX =====
     toggleButton.MouseButton1Click:Connect(function()
         scriptEnabled = not scriptEnabled
@@ -3349,6 +3335,20 @@ local function createGUI()
         _G.ftfPingUserId = pingUserId
         saveConfig()
     end)
+
+    -- Apply loaded ping config to UI (PHẢI đặt SAU khi ping UI đã tạo xong)
+    if _G.ftfPingDiscon then
+        pingDisconEnabled = true
+        pingCheckmark.Visible = true
+        pingCheckbox.BackgroundColor3 = Color3.fromRGB(25, 55, 75)
+        pingCheckbox.BorderColor3 = Color3.fromRGB(100, 220, 255)
+        pingLabel.TextColor3 = Color3.fromRGB(140, 220, 255)
+        pingIdInput.Visible = true
+    end
+    if _G.ftfPingUserId and _G.ftfPingUserId ~= "" then
+        pingUserId = _G.ftfPingUserId
+        pingIdInput.Text = _G.ftfPingUserId
+    end
 
     -- Toggle ping checkbox
     local pingBtn = Instance.new("TextButton", pingRow)
