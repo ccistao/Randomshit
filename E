@@ -627,7 +627,8 @@ local function hackPC(pcData)
 
         if firstMoveOfRound or isReturning then
             firstMoveOfRound = false
-            log("→ TP direct to PC" .. pcId .. (isReturning and " (returning after save)" or " (first move)"))
+            isReturning = false -- clear ngay sau khi TP về, không để ảnh hưởng PC khác
+            log("→ TP direct to PC" .. pcId .. " (returning after save / first move)")
             rootPart.CFrame = trigger.CFrame + Vector3.new(0, 0.5, 0)
             task.wait(0.1)
         else
