@@ -828,8 +828,6 @@ local function hackPC(pcData)
     currentPC = pcData
     updateStatus("Hacking PC " .. pcId)
 
-    local lastProgress = 0
-    local stuckCount = 0
     local lastLoggedPct = -1
 
     while isHacking and scriptEnabled and not gameOver do
@@ -897,21 +895,6 @@ local function hackPC(pcData)
         local pct = math.floor(prog * 100)
         if pct ~= lastLoggedPct and pct % 10 == 0 and pct > 0 then
             lastLoggedPct = pct
-        end
-
-        -- Stuck detection
-        if prog == lastProgress then
-            stuckCount = stuckCount + 1
-            if stuckCount > 10 then
-                log("🔄 PC" .. pcId .. ": stuck at " .. math.floor(prog*100) .. "%, retry")
-                pcall(function()
-                    local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
-                    if r then r:FireServer("Input", "Action", true) end
-                end)
-                stuckCount = 0
-            end
-        else
-            stuckCount = 0
         end
 
         -- Skill check
