@@ -743,15 +743,32 @@ local function hackPC(pcData)
         end)
     end
 
-    -- ===== SKIP NGAY NẾU PC ĐÃ DONE (check trước khi move, không tốn thời gian di chuyển) =====
-    local screen = pcData.computer:FindFirstChild("Screen")
-    if screen and screen:IsA("BasePart") then
-        local c = screen.Color
-        if c.G > c.R + 0.2 and c.G > c.B + 0.2 then
-            log("PC" .. pcId .. ": screen green, already done, skip")
-            hackedPCs[pcData.id] = true
-            return true
+    -- ===== SKIP NGAY NẾU PC ĐÃ DONE (check trước khi move) =====
+    local function isScreenGreen()
+        -- Check Screen trực tiếp
+        local screen = pcData.computer:FindFirstChild("Screen")
+        if not screen then
+            screen = pcData.computer:FindFirstDescendant and pcData.computer:FindFirstDescendant("Screen")
         end
+        if not screen then
+            -- Search descendants
+            for _, v in ipairs(pcData.computer:GetDescendants()) do
+                if v.Name == "Screen" and v:IsA("BasePart") then
+                    screen = v; break
+                end
+            end
+        end
+        if screen and screen:IsA("BasePart") then
+            local c = screen.Color
+            return c.G > c.R + 0.2 and c.G > c.B + 0.2
+        end
+        return false
+    end
+
+    if isScreenGreen() then
+        log("✅ PC" .. pcId .. ": screen green, skip")
+        hackedPCs[pcData.id] = true
+        return true
     end
     local pcProgressNow = getPCProgress(pcData)
     if pcProgressNow >= 1 then
@@ -997,29 +1014,7 @@ local function autoExitUnified()
     end
 
     local function isExitOpened(exitData)
-        local model = exitData.model
-        -- Method 1: Door transparency
-        local door = model:FindFirstChild("Door")
-        if door and door:IsA("BasePart") then
-            if door.Transparency > 0.5 then return true end
-            if not door.CanCollide then return true end
-        end
-        -- Method 2: Any part named Door/Gate/Exit in model
-        for _, part in ipairs(model:GetDescendants()) do
-            if part:IsA("BasePart") then
-                local n = part.Name:lower()
-                if (n:find("door") or n:find("gate") or n:find("open")) then
-                    if part.Transparency > 0.5 or not part.CanCollide then
-                        return true
-                    end
-                end
-            end
-        end
-        -- Method 3: ExitArea CanCollide off = door open
-        if exitData.area and exitData.area:IsA("BasePart") then
-            if not exitData.area.CanCollide then return true end
-        end
-        return false
+        return false -- server-side only, không detect được client-side
     end
 
     -- Lấy ActionProgress của player bất kỳ
