@@ -50,11 +50,14 @@ local function saveConfig()
     pcall(function()
         local HttpService = game:GetService("HttpService")
         local cfg = HttpService:JSONEncode({
-            tweenSpeed      = tweenSpeed,
-            webhookUrl      = _G.ftfWebhookUrl or "",
-            webhookInterval = _G.ftfWebhookInterval or 5,
-            hackExtraPC     = _G.ftfHackExtraPC or false,
-            altCageDelay    = altCageDelay,
+            tweenSpeed         = tweenSpeed,
+            webhookUrl         = _G.ftfWebhookUrl or "",
+            webhookInterval    = _G.ftfWebhookInterval or 5,
+            hackExtraPC        = _G.ftfHackExtraPC or false,
+            altCageDelay       = altCageDelay,
+            autoSendEnabled    = _G.ftfAutoSend or false,
+            pingDisconEnabled  = _G.ftfPingDiscon or false,
+            pingUserId         = _G.ftfPingUserId or "",
         })
         writefile(CONFIG_FILE, cfg)
     end)
@@ -74,6 +77,8 @@ local function loadConfig()
         _G.ftfWebhookInterval = cfg.webhookInterval or 5
         _G.ftfAutoSend = cfg.autoSendEnabled or false
         _G.ftfHackExtraPC = cfg.hackExtraPC or false
+        _G.ftfPingDiscon = cfg.pingDisconEnabled or false
+        _G.ftfPingUserId = cfg.pingUserId or ""
         log("✅ Config loaded! Speed=" .. tweenSpeed .. " Interval=" .. (_G.ftfWebhookInterval) .. "m AutoSend=" .. tostring(_G.ftfAutoSend))
     end)
 end
@@ -2667,7 +2672,7 @@ local function createGUI()
     speedKnob.ZIndex = 2
     Instance.new("UICorner", speedKnob).CornerRadius = UDim.new(1,0)
 
-    local speedWarn = rLabel("⚠ Speed ≥35 is risky! Max 45 (kick risk)", Color3.fromRGB(255,160,40), 16)
+    local speedWarn = rLabel("⚠ Speed ≥35 may get you kicked!", Color3.fromRGB(255,160,40), 16)
     speedWarn.Visible = false
     rDiv(17)
 
@@ -2739,7 +2744,7 @@ local function createGUI()
         tweenSpeed = val
         local warn = val >= 35
         local pct  = (val - 10) / 35  -- range 10-45 = 35 steps
-        lblSpeed.Text = "Speed: " .. val .. " st/s" .. (val == 45 and "  ⚠ MAX" or "")
+        lblSpeed.Text = "Speed: " .. val .. " st/s"
         lblSpeed.TextColor3 = warn and Color3.fromRGB(255,180,50) or Color3.fromRGB(160,255,160)
         speedFill.BackgroundColor3 = warn and Color3.fromRGB(255,140,30) or Color3.fromRGB(70,200,70)
         speedKnob.BackgroundColor3 = warn and Color3.fromRGB(255,180,50) or Color3.fromRGB(110,255,110)
@@ -3210,6 +3215,20 @@ local function createGUI()
         lblWhStatus.Text = "Every " .. webhookInterval .. "m"
     end
 
+    -- Apply loaded ping config to UI
+    if _G.ftfPingDiscon then
+        pingDisconEnabled = true
+        pingCheckmark.Visible = true
+        pingCheckbox.BackgroundColor3 = Color3.fromRGB(25, 55, 75)
+        pingCheckbox.BorderColor3 = Color3.fromRGB(100, 220, 255)
+        pingLabel.TextColor3 = Color3.fromRGB(140, 220, 255)
+        pingIdInput.Visible = true
+    end
+    if _G.ftfPingUserId and _G.ftfPingUserId ~= "" then
+        pingUserId = _G.ftfPingUserId
+        pingIdInput.Text = _G.ftfPingUserId
+    end
+
     -- ===== TOGGLE + CHECKBOX =====
     toggleButton.MouseButton1Click:Connect(function()
         scriptEnabled = not scriptEnabled
@@ -3327,6 +3346,8 @@ local function createGUI()
     pingIdPad.PaddingLeft = UDim.new(0, 6)
     pingIdInput:GetPropertyChangedSignal("Text"):Connect(function()
         pingUserId = pingIdInput.Text:gsub("%s+", "")
+        _G.ftfPingUserId = pingUserId
+        saveConfig()
     end)
 
     -- Toggle ping checkbox
@@ -3341,6 +3362,8 @@ local function createGUI()
         pingCheckbox.BorderColor3 = pingDisconEnabled and Color3.fromRGB(100, 220, 255) or Color3.fromRGB(110, 110, 140)
         pingLabel.TextColor3 = pingDisconEnabled and Color3.fromRGB(140, 220, 255) or Color3.fromRGB(170, 170, 190)
         pingIdInput.Visible = pingDisconEnabled
+        _G.ftfPingDiscon = pingDisconEnabled
+        saveConfig()
     end)
 
     -- ===== KICK / DISCONNECT DETECTION =====
@@ -3371,20 +3394,21 @@ local function createGUI()
         end)
     end
 
-    -- Kick detection: lắng nghe khi player bị kick khỏi game
-    game:GetService("Players").LocalPlayer.Kicked:Connect(function(reason)
-        if webhookUrl == "" then return end
-        sendKickWebhook(reason ~= "" and reason or "No reason provided", true)
+    -- Kick detection: wrap pcall vì một số executor không support event Kicked
+    pcall(function()
+        game:GetService("Players").LocalPlayer.Kicked:Connect(function(reason)
+            if webhookUrl == "" then return end
+            sendKickWebhook(reason ~= "" and reason or "No reason provided", true)
+        end)
     end)
 
-    -- Disconnect detection: khi mất kết nối
-    game:GetService("RunService").Heartbeat:Connect(function()
-        -- handled via Kicked event above for kicks
-    end)
-    game.Close:Connect(function()
-        if webhookUrl ~= "" then
-            sendKickWebhook("Client closed / disconnected", false)
-        end
+    -- Disconnect detection
+    pcall(function()
+        game.Close:Connect(function()
+            if webhookUrl ~= "" then
+                sendKickWebhook("Client closed / disconnected", false)
+            end
+        end)
     end)
 
 end
