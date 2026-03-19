@@ -10,18 +10,6 @@ local hackExtraPC = false
 local gameOver = false
 
 local currentTrigger = nil
-local player = game.Players.LocalPlayer
-local Players = game:GetService("Players")
-local Replicated = game:GetService("ReplicatedStorage")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local CurrentMap = ReplicatedStorage:WaitForChild("CurrentMap")
-local RunService = game:GetService("RunService")
-
-local scriptEnabled = false
-local hackExtraPC = false
-local gameOver = false
-
-local currentTrigger = nil
 local currentPC = nil
 local skippedPCs = {}
 local isHacking = false
@@ -1680,18 +1668,22 @@ local function beastLoop()
         -- TP sát target
         root.CFrame = CFrame.new(torso.Position + Vector3.new(0, 0, 0.5))
 
-        -- Spam hit nhanh nhất có thể, không delay giữa Click và Hit
+        -- Spam hit nhanh nhất có thể
         local hitTimer = 0
         while hitTimer < 1.5 do
             if not target.Character then break end
             local h = target.Character:FindFirstChild("Humanoid")
-            if h and h.PlatformStand then break end
+            -- Break ngay nếu target bị cage (PlatformStand hoặc Health = 0)
+            if h and (h.PlatformStand or h.Health <= 0) then
+                log("👹 " .. target.Name .. " caged! Moving on...")
+                break
+            end
             -- TP liên tục bám theo target
             local t2 = target.Character:FindFirstChild("UpperTorso") or target.Character:FindFirstChild("Torso")
             if t2 then root.CFrame = CFrame.new(t2.Position + Vector3.new(0, 0, 0.5)) end
             remote:FireServer("HammerClick", true)
             remote:FireServer("HammerHit", torso)
-            task.wait(0.05) -- nhanh hơn 3x: 0.05 thay vì 0.15
+            task.wait(0.05)
             hitTimer = hitTimer + 0.05
         end
     end
