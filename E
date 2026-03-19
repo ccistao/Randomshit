@@ -137,7 +137,6 @@ updateStatus = function(s)
         statusLabel.Text = "Status: " .. str
     end
     print("[FTF] » " .. str)
-    -- Chỉ ghi vào console khi thay đổi
     if str ~= _lastStatus then
         _lastStatus = str
         bufferedLog(str, "status")
