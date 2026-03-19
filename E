@@ -2921,18 +2921,29 @@ local function createGUI()
     end
     logBuffer = {}
 
+    -- Lưu vị trí console để restore khi bật lại
+    local savedConsolePos = nil
+
     local function toggleConsole()
         consoleOpen = not consoleOpen
         if consoleOpen then
             consoleBtn.Text = "■"
             consoleBtn.TextColor3 = Color3.fromRGB(255, 120, 120)
             consoleBtn.BackgroundColor3 = Color3.fromRGB(60, 20, 20)
-            local fx = frame.AbsolutePosition.X
-            local fy = frame.AbsolutePosition.Y + frame.AbsoluteSize.Y + 4
-            local sw = screenGui.AbsoluteSize
-            consolePanel.Position = UDim2.new(0, math.min(fx, sw.X - CONSOLE_W - 4), 0, fy)
+            if savedConsolePos then
+                -- Restore vị trí cũ
+                consolePanel.Position = savedConsolePos
+            else
+                -- Lần đầu mở: đặt bên dưới main frame
+                local fx = frame.AbsolutePosition.X
+                local fy = frame.AbsolutePosition.Y + frame.AbsoluteSize.Y + 4
+                local sw = screenGui.AbsoluteSize
+                consolePanel.Position = UDim2.new(0, math.min(fx, sw.X - CONSOLE_W - 4), 0, fy)
+            end
             consolePanel.Visible = true
         else
+            -- Lưu vị trí hiện tại trước khi ẩn
+            savedConsolePos = consolePanel.Position
             consoleBtn.Text = "▶"
             consoleBtn.TextColor3 = Color3.fromRGB(100, 220, 100)
             consoleBtn.BackgroundColor3 = Color3.fromRGB(30, 60, 30)
