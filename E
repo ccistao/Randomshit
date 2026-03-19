@@ -23,7 +23,7 @@ local jumpTimer = 0
 local statusLabel = nil
 
 local jumpInterval = 4
-local tweenSpeed = 35
+local tweenSpeed = 30
 
 local roundsPlayed = 0
 local firstMoveOfRound = true
@@ -68,7 +68,7 @@ local function loadConfig()
             return HttpService:JSONDecode(readfile(CONFIG_FILE))
         end)
         if not ok or not cfg then return end
-        if cfg.tweenSpeed then tweenSpeed = math.clamp(cfg.tweenSpeed, 1, 60) end
+        if cfg.tweenSpeed then tweenSpeed = math.clamp(cfg.tweenSpeed, 10, 45) end
         if cfg.altCageDelay then altCageDelay = math.clamp(cfg.altCageDelay, 10, 300) end
         _G.ftfWebhookUrl = cfg.webhookUrl or ""
         _G.ftfWebhookInterval = cfg.webhookInterval or 5
@@ -2653,7 +2653,7 @@ local function createGUI()
     Instance.new("UICorner", speedBg).CornerRadius = UDim.new(1,0)
 
     local speedFill = Instance.new("Frame", speedBg)
-    speedFill.Size = UDim2.new((tweenSpeed-1)/59, 0, 1, 0)
+    speedFill.Size = UDim2.new((tweenSpeed-10)/35, 0, 1, 0)
     speedFill.BackgroundColor3 = Color3.fromRGB(70,200,70)
     speedFill.BorderSizePixel = 0
     Instance.new("UICorner", speedFill).CornerRadius = UDim.new(1,0)
@@ -2661,13 +2661,13 @@ local function createGUI()
     local speedKnob = Instance.new("Frame", speedBg)
     speedKnob.Size = UDim2.new(0,18,0,18)
     speedKnob.AnchorPoint = Vector2.new(0.5,0.5)
-    speedKnob.Position = UDim2.new((tweenSpeed-1)/59, 0, 0.5, 0)
+    speedKnob.Position = UDim2.new((tweenSpeed-10)/35, 0, 0.5, 0)
     speedKnob.BackgroundColor3 = Color3.fromRGB(110,255,110)
     speedKnob.BorderSizePixel = 0
     speedKnob.ZIndex = 2
     Instance.new("UICorner", speedKnob).CornerRadius = UDim.new(1,0)
 
-    local speedWarn = rLabel("⚠ Speed ≥45 may get you kicked!", Color3.fromRGB(255,160,40), 16)
+    local speedWarn = rLabel("⚠ Speed ≥35 is risky! Max 45 (kick risk)", Color3.fromRGB(255,160,40), 16)
     speedWarn.Visible = false
     rDiv(17)
 
@@ -2735,15 +2735,15 @@ local function createGUI()
 
     -- ===== SLIDER FUNCTIONS =====
     local function setSpeed(val)
-        val = math.clamp(math.floor(val), 1, 60)
+        val = math.clamp(math.floor(val), 10, 45)
         tweenSpeed = val
-        local warn = val >= 45
-        lblSpeed.Text = "Speed: " .. val .. " st/s"
+        local warn = val >= 35
+        local pct  = (val - 10) / 35  -- range 10-45 = 35 steps
+        lblSpeed.Text = "Speed: " .. val .. " st/s" .. (val == 45 and "  ⚠ MAX" or "")
         lblSpeed.TextColor3 = warn and Color3.fromRGB(255,180,50) or Color3.fromRGB(160,255,160)
         speedFill.BackgroundColor3 = warn and Color3.fromRGB(255,140,30) or Color3.fromRGB(70,200,70)
         speedKnob.BackgroundColor3 = warn and Color3.fromRGB(255,180,50) or Color3.fromRGB(110,255,110)
         speedWarn.Visible = warn
-        local pct = (val-1)/59
         speedFill.Size = UDim2.new(pct, 0, 1, 0)
         speedKnob.Position = UDim2.new(pct, 0, 0.5, 0)
         speedInput.Text = tostring(val)
@@ -3116,7 +3116,7 @@ local function createGUI()
         if not (speedDrag or cageDrag or intervalDrag or dragging or conDragging) then return end
         local p = touchPos
         if speedDrag then
-            setSpeed(1 + math.clamp((p.X - speedBg.AbsolutePosition.X) / math.max(1, speedBg.AbsoluteSize.X), 0, 1) * 59)
+            setSpeed(10 + math.clamp((p.X - speedBg.AbsolutePosition.X) / math.max(1, speedBg.AbsoluteSize.X), 0, 1) * 35)
         end
         if cageDrag then
             setCageDelay(10 + math.clamp((p.X - cageBg.AbsolutePosition.X) / math.max(1, cageBg.AbsoluteSize.X), 0, 1) * 290)
@@ -3268,6 +3268,122 @@ local function createGUI()
                 lastSentTick = now
                 task.spawn(function() sendWebhook(false) end)
             end
+        end
+    end)
+
+    -- ===== PING ON DISCONNECT CHECKBOX =====
+    rDiv(22)
+    local pingDisconEnabled = false
+    local pingUserId = ""
+
+    local pingRow = Instance.new("Frame", rightPanel)
+    pingRow.Size = UDim2.new(1, 0, 0, 18)
+    pingRow.BackgroundTransparency = 1
+    pingRow.LayoutOrder = 23
+
+    local pingCheckbox = Instance.new("Frame", pingRow)
+    pingCheckbox.Size = UDim2.new(0, 14, 0, 14)
+    pingCheckbox.Position = UDim2.new(0, 0, 0.5, -7)
+    pingCheckbox.BackgroundColor3 = Color3.fromRGB(55, 55, 70)
+    pingCheckbox.BorderSizePixel = 1
+    pingCheckbox.BorderColor3 = Color3.fromRGB(110, 110, 140)
+    Instance.new("UICorner", pingCheckbox).CornerRadius = UDim.new(0, 3)
+
+    local pingCheckmark = Instance.new("TextLabel", pingCheckbox)
+    pingCheckmark.Size = UDim2.new(1, 0, 1, 0)
+    pingCheckmark.BackgroundTransparency = 1
+    pingCheckmark.Text = "✓"
+    pingCheckmark.TextColor3 = Color3.fromRGB(100, 220, 255)
+    pingCheckmark.TextSize = 12
+    pingCheckmark.Font = Enum.Font.GothamBold
+    pingCheckmark.Visible = false
+
+    local pingLabel = Instance.new("TextLabel", pingRow)
+    pingLabel.Size = UDim2.new(1, -18, 1, 0)
+    pingLabel.Position = UDim2.new(0, 18, 0, 0)
+    pingLabel.BackgroundTransparency = 1
+    pingLabel.Text = "Ping when disconnected"
+    pingLabel.TextColor3 = Color3.fromRGB(170, 170, 190)
+    pingLabel.TextSize = 10
+    pingLabel.Font = Enum.Font.Gotham
+    pingLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    -- Input nhập User ID để ping
+    local pingIdInput = Instance.new("TextBox", rightPanel)
+    pingIdInput.Size = UDim2.new(1, 0, 0, 26)
+    pingIdInput.BackgroundColor3 = Color3.fromRGB(22, 22, 36)
+    pingIdInput.BorderSizePixel = 0
+    pingIdInput.Text = ""
+    pingIdInput.PlaceholderText = "Enter Discord User ID to ping..."
+    pingIdInput.PlaceholderColor3 = Color3.fromRGB(90, 90, 110)
+    pingIdInput.TextColor3 = Color3.fromRGB(140, 220, 255)
+    pingIdInput.TextSize = 10
+    pingIdInput.Font = Enum.Font.Gotham
+    pingIdInput.ClearTextOnFocus = false
+    pingIdInput.LayoutOrder = 24
+    pingIdInput.Visible = false
+    Instance.new("UICorner", pingIdInput).CornerRadius = UDim.new(0, 5)
+    local pingIdPad = Instance.new("UIPadding", pingIdInput)
+    pingIdPad.PaddingLeft = UDim.new(0, 6)
+    pingIdInput:GetPropertyChangedSignal("Text"):Connect(function()
+        pingUserId = pingIdInput.Text:gsub("%s+", "")
+    end)
+
+    -- Toggle ping checkbox
+    local pingBtn = Instance.new("TextButton", pingRow)
+    pingBtn.Size = UDim2.new(1, 0, 1, 0)
+    pingBtn.BackgroundTransparency = 1
+    pingBtn.Text = ""
+    pingBtn.MouseButton1Click:Connect(function()
+        pingDisconEnabled = not pingDisconEnabled
+        pingCheckmark.Visible = pingDisconEnabled
+        pingCheckbox.BackgroundColor3 = pingDisconEnabled and Color3.fromRGB(25, 55, 75) or Color3.fromRGB(55, 55, 70)
+        pingCheckbox.BorderColor3 = pingDisconEnabled and Color3.fromRGB(100, 220, 255) or Color3.fromRGB(110, 110, 140)
+        pingLabel.TextColor3 = pingDisconEnabled and Color3.fromRGB(140, 220, 255) or Color3.fromRGB(170, 170, 190)
+        pingIdInput.Visible = pingDisconEnabled
+    end)
+
+    -- ===== KICK / DISCONNECT DETECTION =====
+    local function sendKickWebhook(reason, isKick)
+        if webhookUrl == "" then return end
+        local elapsed = tick() - scriptStartTime
+        local credits = getCredits()
+        local delta   = (credits and creditsAtStart) and (credits - creditsAtStart) or 0
+        local pingStr = (pingDisconEnabled and pingUserId ~= "") and ("<@" .. pingUserId .. "> ") or ""
+
+        local eventType = isKick and "🔨 **KICKED**" or "🔌 **DISCONNECTED**"
+        local content = pingStr .. eventType
+            .. "\n━━━━━━━━━━━━━━━━━━━━"
+            .. "\n👤 **Player:** " .. player.Name
+            .. "\n📋 **Reason:** " .. tostring(reason or "Unknown")
+            .. "\n⏱ **Session uptime:** " .. formatUptime(elapsed)
+            .. "\n🔄 **Rounds completed:** " .. tostring(roundsPlayed)
+            .. "\n💰 **Credits:** " .. tostring(credits or "?") .. "C"
+            .. "\n📈 **Earned:** +" .. tostring(delta) .. "C"
+
+        pcall(function()
+            local body = game:GetService("HttpService"):JSONEncode({content = content})
+            if request then
+                request({Url=webhookUrl, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
+            else
+                game:GetService("HttpService"):PostAsync(webhookUrl, body, Enum.HttpContentType.ApplicationJson)
+            end
+        end)
+    end
+
+    -- Kick detection: lắng nghe khi player bị kick khỏi game
+    game:GetService("Players").LocalPlayer.Kicked:Connect(function(reason)
+        if webhookUrl == "" then return end
+        sendKickWebhook(reason ~= "" and reason or "No reason provided", true)
+    end)
+
+    -- Disconnect detection: khi mất kết nối
+    game:GetService("RunService").Heartbeat:Connect(function()
+        -- handled via Kicked event above for kicks
+    end)
+    game.Close:Connect(function()
+        if webhookUrl ~= "" then
+            sendKickWebhook("Client closed / disconnected", false)
         end
     end)
 
