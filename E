@@ -3118,27 +3118,52 @@ local function createGUI()
     -- ===== WEBHOOK LOGIC =====
     local function sendWebhook(isTest)
         if webhookUrl == "" then lblWhStatus.Text = "No URL!" return end
-        local elapsed = tick()-scriptStartTime
+        local elapsed = tick() - scriptStartTime
         local credits = getCredits()
-        local delta = (credits and creditsAtStart) and (credits-creditsAtStart) or 0
-        local cph = elapsed > 60 and math.floor(delta/elapsed*3600) or 0
-        local content = (isTest and "**[FTF] TEST**" or "**[FTF] Report**")
-            .."\nPlayer: **"..player.Name.."**"
-            .."\nUptime: **"..formatUptime(elapsed).."**"
-            .."\nRounds: **"..tostring(roundsPlayed).."**"
-            .."\nCredits: **"..tostring(credits or "?").."C**"
-            .."\nEarned: **+"..tostring(delta).."C**"
-            .."\nC/h: **"..tostring(cph).."C/h**"
+        local delta   = (credits and creditsAtStart) and (credits - creditsAtStart) or 0
+
+        local mapName = "?"
         pcall(function()
-            local body = game:GetService("HttpService"):JSONEncode({content=content})
+            local mv = ReplicatedStorage:FindFirstChild("CurrentMap")
+            if mv and mv.Value then mapName = mv.Value.Name end
+        end)
+        local gameStatus = "?"
+        pcall(function()
+            local gs = ReplicatedStorage:FindFirstChild("GameStatus")
+            if gs then gameStatus = tostring(gs.Value) end
+        end)
+        local beastName  = beast and beast.Name or "N/A"
+        local escapedStr = hasEscaped and "✅ Escaped" or "⏳ In game"
+        local modeStr    = playerMode == "alt"
+            and ("ALT → " .. (followTargetName ~= "" and followTargetName or "?"))
+            or "MAIN"
+
+        local header  = isTest and "🧪 **[FTF] TEST REPORT**" or "📊 **[FTF] Auto Report**"
+        local content = header
+            .. "\n━━━━━━━━━━━━━━━━━━━━"
+            .. "\n👤 **Player:** " .. player.Name
+            .. "\n🗺 **Map:** " .. mapName
+            .. "\n🎮 **Mode:** " .. modeStr
+            .. "\n⚙ **HackExtra:** " .. (hackExtraPC and "ON" or "OFF")
+            .. "\n━━━━━━━━━━━━━━━━━━━━"
+            .. "\n⏱ **Uptime:** " .. formatUptime(elapsed)
+            .. "\n🔄 **Rounds:** " .. tostring(roundsPlayed)
+            .. "\n💰 **Credits:** " .. tostring(credits or "?") .. "C"
+            .. "\n📈 **Earned:** +" .. tostring(delta) .. "C"
+            .. "\n━━━━━━━━━━━━━━━━━━━━"
+            .. "\n👹 **Beast:** " .. beastName
+            .. "\n🚦 **Status:** " .. gameStatus
+            .. "\n🚪 **Escape:** " .. escapedStr
+        pcall(function()
+            local body = game:GetService("HttpService"):JSONEncode({content = content})
             if request then
-                request({Url=webhookUrl,Method="POST",Headers={["Content-Type"]="application/json"},Body=body})
+                request({Url=webhookUrl, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
             else
-                game:GetService("HttpService"):PostAsync(webhookUrl,body,Enum.HttpContentType.ApplicationJson)
+                game:GetService("HttpService"):PostAsync(webhookUrl, body, Enum.HttpContentType.ApplicationJson)
             end
             lblWhStatus.Text = isTest and "Test sent!" or "Sent!"
         end)
-    end
+    endnd
 
     testBtn.MouseButton1Click:Connect(function() lblWhStatus.Text="Sending..." task.spawn(function() sendWebhook(true) end) end)
     autoBtn.MouseButton1Click:Connect(function()
@@ -3197,7 +3222,6 @@ local function createGUI()
             local credits = getCredits()
             local elapsed = tick()-scriptStartTime
             local delta = (credits and creditsAtStart) and (credits-creditsAtStart) or 0
-            local cph = elapsed > 60 and math.floor(delta/elapsed*3600) or 0
             lblUptime.Text  = "⏱ " .. formatUptime(elapsed)
             lblRounds.Text  = "🎮 Rounds: " .. roundsPlayed
             lblCredits.Text = "💰 " .. tostring(credits or "?") .. "C"
@@ -3205,13 +3229,18 @@ local function createGUI()
         end
     end)
 
-    -- Auto webhook loop
+    -- Auto webhook loop (fix duplicate: dùng lastSentTick thay vì modulo window)
+    local lastSentTick = 0
     task.spawn(function()
         while true do
             task.wait(1)
-            if not autoSendEnabled or webhookUrl=="" then continue end
-            local e = tick()-scriptStartTime
-            if e>0 and e%(webhookInterval*60)<1.5 then task.spawn(function() sendWebhook(false) end) end
+            if not autoSendEnabled or webhookUrl == "" then continue end
+            local now = tick()
+            local e   = now - scriptStartTime
+            if e > 0 and (now - lastSentTick) >= (webhookInterval * 60) then
+                lastSentTick = now
+                task.spawn(function() sendWebhook(false) end)
+            end
         end
     end)
 
