@@ -111,13 +111,17 @@ local function log(msg)
     bufferedLog(tostring(msg), "normal")
 end
 
--- updateStatus: update label + luôn tạo dòng mới trong console
+-- updateStatus: update label + chỉ log khi text thay đổi
+local _lastStatus = ""
 local function updateStatus(status)
     local s = tostring(status)
     if statusLabel then
         statusLabel.Text = "Status: " .. s
     end
-    bufferedLog(s, "status")
+    if s ~= _lastStatus then
+        _lastStatus = s
+        bufferedLog(s, "status")
+    end
 end
 
 -- ==================== CHAR REFS ====================
@@ -159,6 +163,14 @@ local function resetGameState()
     end)
 
     updateCharacterReferences()
+    -- Safety: đảm bảo nhân vật không bị freeze từ round trước
+    pcall(function()
+        local hum = player.Character and player.Character:FindFirstChild("Humanoid")
+        if hum then
+            hum.WalkSpeed = 16
+            hum.JumpPower = 50
+        end
+    end)
     updateStatus("Waiting for new game")
 end
 
@@ -856,15 +868,24 @@ local function hackPC(pcData)
     local freezeHack = true
     local freezeHackConn = RunService.Heartbeat:Connect(function()
         if not freezeHack then return end
-        if hackRoot then
+        if not isHacking then freezeHack = false return end -- auto-stop nếu không còn hack
+        if isMoving then return end -- không freeze khi đang tween/move
+        if hackRoot and hackRoot.Parent then
             hackRoot.AssemblyLinearVelocity = Vector3.zero
         end
     end)
 
     local function unfreezeHack()
         freezeHack = false
-        freezeHackConn:Disconnect()
-        if hackHum then
+        pcall(function() freezeHackConn:Disconnect() end)
+        -- Restore từ character hiện tại (có thể đã respawn)
+        local curHum = player.Character and player.Character:FindFirstChild("Humanoid")
+        if curHum then
+            curHum.WalkSpeed = 16
+            curHum.JumpPower = 50
+        end
+        -- Cũng restore từ hackHum gốc nếu còn valid
+        if hackHum and hackHum.Parent then
             hackHum.WalkSpeed = 16
             hackHum.JumpPower = 50
         end
@@ -2011,9 +2032,14 @@ local function mainLoop()
         updateStatus("Found " .. #allPCs .. " PC(s)")
 
         local totalAttempts = 0
-        local maxAttempts = #allPCs * 3
+        local roundStartTick = tick()
 
-        while totalAttempts < maxAttempts and scriptEnabled and not (isFindExitPhase() and not hackExtraPC) do
+        while scriptEnabled and not (isFindExitPhase() and not hackExtraPC) do
+            -- Safety: thoát sau 5 phút nếu bị kẹt
+            if tick() - roundStartTick > 300 then
+                log("⚠ Round timeout 5min, moving on...")
+                break
+            end
             -- Nếu đang return về PC sau save thì chờ
             if isReturning or isSaving then
                 while (isReturning or isSaving) and isGameActive() and scriptEnabled do
@@ -2122,6 +2148,10 @@ local function mainLoop()
                 if remainingCount > 0 then
                     updateStatus("Skipped " .. remainingCount .. " PC(s), waiting beast to leave...")
                     local beastGone = false
+                    -- Chạy trốn beast ngay
+                    if isBeastNearby(35) then
+                        escapeBeast()
+                    end
                     while scriptEnabled and isGameActive() and not gameOver do
                         if not isBeastNearby(35) then
                             skippedPCs = {}
@@ -2133,7 +2163,7 @@ local function mainLoop()
                         task.wait(0.5)
                     end
                     if beastGone then
-                        totalAttempts = 0 -- reset attempts để không bị thoát sớm
+                        totalAttempts = 0
                     end
                 else
                     break
@@ -2837,11 +2867,11 @@ local function createGUI()
     local logOrder = 0
     local maxLogLines = 80
     local LINE_H = 13
+    local labelQueue = {} -- track labels theo thứ tự để xóa nhanh
 
     local function consoleLog(msg, logType)
         logOrder = logOrder + 1
-        local color
-        local prefix
+        local color, prefix
         if logType == "warn" then
             color = Color3.fromRGB(255, 200, 50); prefix = "⚠ "
         elseif logType == "error" then
@@ -2864,21 +2894,20 @@ local function createGUI()
         lbl.LayoutOrder = logOrder
         lbl.ZIndex = 11
 
-        -- Update canvas và scroll xuống
+        table.insert(labelQueue, lbl)
+
+        -- Xóa dòng cũ nếu quá giới hạn (O(1), không cần scan)
+        while #labelQueue > maxLogLines do
+            local old = table.remove(labelQueue, 1)
+            if old and old.Parent then old:Destroy() end
+        end
+
+        -- Update canvas
         task.defer(function()
             local totalH = consoleLayout.AbsoluteContentSize.Y + 4
             consoleScroll.CanvasSize = UDim2.new(0, 0, 0, totalH)
             consoleScroll.CanvasPosition = Vector2.new(0, math.max(0, totalH - consoleScroll.AbsoluteSize.Y))
         end)
-
-        -- Giới hạn số dòng
-        local children = {}
-        for _, c in ipairs(consoleScroll:GetChildren()) do
-            if c:IsA("TextLabel") then table.insert(children, c) end
-        end
-        if #children > maxLogLines then
-            children[1]:Destroy()
-        end
     end
 
     consoleClearBtn.MouseButton1Click:Connect(function()
