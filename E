@@ -113,7 +113,36 @@ end
 -- log: luôn tạo dòng mới trong console
 local function log(msg)
     bufferedLog(tostring(msg), "normal")
+    sessionLog(tostring(msg))  -- ghi vào session file log
 end
+
+-- ==================== SESSION FILE LOG ====================
+local SESSION_LOG_FILE = "ftf/session_log.txt"
+local sessionLogLines  = {}
+local MAX_SESSION_LINES = 200  -- giữ 200 dòng gần nhất trong memory
+
+local function getTimestamp()
+    local t = os.date("*t")
+    return string.format("%02d:%02d:%02d", t.hour, t.min, t.sec)
+end
+
+local function sessionLog(msg)
+    local line = "[" .. getTimestamp() .. "] " .. tostring(msg)
+    table.insert(sessionLogLines, line)
+    if #sessionLogLines > MAX_SESSION_LINES then
+        table.remove(sessionLogLines, 1)
+    end
+    -- Ghi ra file liên tục để có data kể cả khi crash đột ngột
+    pcall(function()
+        if writefile and makefolder then
+            if not isfolder("ftf") then makefolder("ftf") end
+            writefile(SESSION_LOG_FILE, table.concat(sessionLogLines, "\n"))
+        end
+    end)
+end
+
+-- Hook vào log() để tự động ghi session log
+local _origLog = nil  -- sẽ set sau khi log() được define
 
 -- updateStatus: update label + chỉ log khi text thay đổi
 local _lastStatus = ""
@@ -204,7 +233,7 @@ local function findBeast()
 
     task.spawn(function()
         while true do
-            task.wait(0.3)
+            task.wait(0.05)
 
             if not scriptEnabled then continue end
 
@@ -887,7 +916,7 @@ local function hackPC(pcData)
     end
 
     while isHacking and scriptEnabled and not gameOver do
-        task.wait(0.15)
+        task.wait(0.05)
 
         -- Check game còn active không
         if not isGameActive() then
@@ -2063,7 +2092,7 @@ local function mainLoop()
                     break
                 end
 
-                if isBeastNearby(23) and not isReturning and not isSaving then
+                if isBeastNearby(30) and not isReturning and not isSaving then
                     escapeBeast()
                     skipCurrentPC = true
                     local _bDist2 = 0
@@ -2087,7 +2116,7 @@ local function mainLoop()
                             beastLeft = true
                             break
                         end
-                        task.wait(0.5)
+                        task.wait(0.2)
                     end
                     if beastLeft then
                         skippedPCs = {}
@@ -3402,12 +3431,42 @@ local function createGUI()
         end)
     end)
 
-    -- Disconnect detection
+    -- Disconnect detection + gửi last session logs
     pcall(function()
         game.Close:Connect(function()
-            if webhookUrl ~= "" then
-                sendKickWebhook("Client closed / disconnected", false)
-            end
+            if webhookUrl == "" then return end
+
+            -- Gửi kick/disconnect basic info
+            sendKickWebhook("Client closed / disconnected", false)
+
+            -- Gửi 50 dòng log cuối để debug
+            task.wait(0.3)
+            pcall(function()
+                local lines = sessionLogLines
+                local start = math.max(1, #lines - 49)
+                local last50 = {}
+                for i = start, #lines do
+                    table.insert(last50, lines[i])
+                end
+                local logText = table.concat(last50, "\n")
+                if #logText > 1800 then
+                    logText = "..." .. logText:sub(-1800)
+                end
+
+                local pingStr = ""
+                if pingDisconEnabled and pingUserId ~= "" then
+                    pingStr = "<@" .. pingUserId .. "> "
+                end
+
+                local content = pingStr .. "📋 **Last 50 Actions Before Disconnect**"
+                    .. "\n**Player:** " .. player.Name
+                    .. "\n```\n" .. logText .. "\n```"
+
+                local body = game:GetService("HttpService"):JSONEncode({content = content})
+                if request then
+                    request({Url=webhookUrl, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
+                end
+            end)
         end)
     end)
 
