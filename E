@@ -83,6 +83,14 @@ end
 loadConfig()
 
 
+-- Safe firetouchinterest wrapper
+local _firetouchinterest = firetouchinterest
+local function safeFire(root, trigger, state)
+    if _firetouchinterest then
+        pcall(_firetouchinterest, root, trigger, state)
+    end
+end
+
 -- ==================== LOG ====================
 local function log(msg)
     print("[FTF] " .. tostring(msg))
@@ -727,9 +735,9 @@ local function hackPC(pcData)
     local function fireInteract(trigger)
         pcall(function()
             if trigger and rootPart then
-                firetouchinterest(rootPart, trigger, 0)
+                safeFire(rootPart, trigger, 0)
                 task.wait(0.1)
-                firetouchinterest(rootPart, trigger, 1)
+                safeFire(rootPart, trigger, 1)
             end
         end)
         task.wait(0.2)
@@ -747,9 +755,6 @@ local function hackPC(pcData)
     local function isScreenGreen()
         -- Check Screen trực tiếp
         local screen = pcData.computer:FindFirstChild("Screen")
-        if not screen then
-            screen = pcData.computer:FindFirstDescendant and pcData.computer:FindFirstDescendant("Screen")
-        end
         if not screen then
             -- Search descendants
             for _, v in ipairs(pcData.computer:GetDescendants()) do
@@ -806,9 +811,9 @@ local function hackPC(pcData)
         -- Spam fire mỗi 0.1s trong 1.6s để chắc server nhận
         pcall(function()
             if trigger and rootPart then
-                firetouchinterest(rootPart, trigger, 0)
+                safeFire(rootPart, trigger, 0)
                 task.wait(0.1)
-                firetouchinterest(rootPart, trigger, 1)
+                safeFire(rootPart, trigger, 1)
             end
         end)
         local spamTime = 0
@@ -1280,8 +1285,8 @@ local function autoExitUnified()
                             pcall(function()
                                 local root2 = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
                                 if root2 then
-                                    firetouchinterest(root2, targetExit.trigger, 0)
-                                    firetouchinterest(root2, targetExit.trigger, 1)
+                                    safeFire(root2, targetExit.trigger, 0)
+                                    safeFire(root2, targetExit.trigger, 1)
                                 end
                                 local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
                                 if r then r:FireServer("Input", "Action", true) end
@@ -1569,8 +1574,8 @@ local function beastLoop()
             local t = 0
             while t < 2.5 do
                 pcall(function()
-                    firetouchinterest(root, trigger, 0)
-                    firetouchinterest(root, trigger, 1)
+                    safeFire(root, trigger, 0)
+                    safeFire(root, trigger, 1)
                     local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
                     if r then r:FireServer("Input", "Action", true) end
                 end)
@@ -1747,7 +1752,7 @@ local function autoSaveLoop()
                         -- Interact save
                         local t = 0
                         while t < 3 do
-                            pcall(function() firetouchinterest(root, trigger, 0) task.wait(0.03) firetouchinterest(root, trigger, 1) end)
+                            pcall(function() safeFire(root, trigger, 0) task.wait(0.03) safeFire(root, trigger, 1) end)
                             pcall(function() local r = ReplicatedStorage:FindFirstChild("RemoteEvent") if r then r:FireServer("Input", "Action", true) end end)
                             ct = v:FindFirstChild("CapturedTorso", true)
                             if ct and ct.Value == nil then
@@ -2380,9 +2385,9 @@ local function createGUI()
     -- ---- STATS ----
     local lblPlayer  = rLabel("👤 " .. player.Name,     Color3.fromRGB(255,220,100), 1)
     local lblUptime  = rLabel("⏱ 00:00:00",              Color3.fromRGB(140,210,255), 2)
-    local lblSvTime  = rLabel("🕐 --:--:--",             Color3.fromRGB(140,210,255), 3)
+    local lblRounds  = rLabel("🎮 Rounds: 0",             Color3.fromRGB(200,200,255), 3)
     local lblCredits = rLabel("💰 Credits: ...",          Color3.fromRGB(100,255,150), 4)
-    local lblCph     = rLabel("📈 C/h: ...",              Color3.fromRGB(100,255,150), 5)
+    local lblEarned  = rLabel("📈 Earned: ...",           Color3.fromRGB(100,255,150), 5)
     rDiv(6)
 
     -- ---- WEBHOOK ----
@@ -3040,10 +3045,10 @@ local function createGUI()
         local content = (isTest and "**[FTF] TEST**" or "**[FTF] Report**")
             .."\nPlayer: **"..player.Name.."**"
             .."\nUptime: **"..formatUptime(elapsed).."**"
+            .."\nRounds: **"..tostring(roundsPlayed).."**"
             .."\nCredits: **"..tostring(credits or "?").."C**"
             .."\nEarned: **+"..tostring(delta).."C**"
-            .."\nC/h: **"..tostring(cph).."C**"
-            .."\nServer: **"..getServerTime().."**"
+            .."\nC/h: **"..tostring(cph).."C/h**"
         pcall(function()
             local body = game:GetService("HttpService"):JSONEncode({content=content})
             if request then
@@ -3112,11 +3117,11 @@ local function createGUI()
             local credits = getCredits()
             local elapsed = tick()-scriptStartTime
             local delta = (credits and creditsAtStart) and (credits-creditsAtStart) or 0
-            local cph = elapsed>60 and math.floor(delta/elapsed*3600) or 0
+            local cph = elapsed > 60 and math.floor(delta/elapsed*3600) or 0
             lblUptime.Text  = "⏱ " .. formatUptime(elapsed)
-            lblSvTime.Text  = "🕐 " .. getServerTime()
-            lblCredits.Text = "💰 " .. tostring(credits or "?")
-            lblCph.Text     = "📈 +" .. tostring(delta) .. "C (" .. tostring(cph) .. "/h)"
+            lblRounds.Text  = "🎮 Rounds: " .. roundsPlayed
+            lblCredits.Text = "💰 " .. tostring(credits or "?") .. "C"
+            lblEarned.Text  = "📈 +" .. tostring(delta) .. "C  (" .. tostring(cph) .. "/h)"
         end
     end)
 
