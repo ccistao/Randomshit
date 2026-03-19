@@ -2076,7 +2076,8 @@ local function mainLoop()
                             gameEndedDuringWait = true
                             break
                         end
-                        if isFindExitPhase() then break end
+                        -- FIX hackExtraPC: nếu hackExtra thì không bỏ qua dù Find Exit đã bắt đầu
+                        if isFindExitPhase() and not hackExtraPC then break end
                         if not isBeastNearby(30) then
                             beastLeft = true
                             break
@@ -2163,7 +2164,22 @@ local function mainLoop()
             end
         end
 
-        if hackExtraPC then task.wait(2) end
+        -- FIX hackExtraPC: nếu còn PC bị skip chưa hack thì retry trước khi exit
+        if hackExtraPC then
+            local hasUnhacked = false
+            for _, pcData in ipairs(allPCs) do
+                if not hackedPCs[pcData.id] then
+                    hasUnhacked = true
+                    break
+                end
+            end
+            if hasUnhacked and isGameActive() then
+                log("⚡ [EXTRA] Còn PC chưa hack (bị skip do beast) → retry trước khi exit", "warn")
+                skippedPCs = {}
+                continue -- quay lại vòng while để hack nốt
+            end
+            task.wait(2)
+        end
 
         -- Nếu đang save thì chờ save xong rồi mới tiếp
         if isSaving then
