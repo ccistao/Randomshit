@@ -1,6 +1,5 @@
 local player = game.Players.LocalPlayer
 local Players = game:GetService("Players")
-local Replicated = game:GetService("ReplicatedStorage")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CurrentMap = ReplicatedStorage:WaitForChild("CurrentMap")
 local RunService = game:GetService("RunService")
@@ -206,7 +205,7 @@ local function findBeast()
 
             if foundBeast then
                 if not beast or not Players:FindFirstChild(beast.Name) or not isBeast(beast) then
-                    log("👹 Beast lost/changed")
+                    log("👹 [BEAST] Beast " .. (beast and beast.Name or "?") .. " đã rời/đổi → reset state", "warn")
                     beast = nil
                     foundBeast = false
                     isHacking = false
@@ -251,7 +250,7 @@ local function findBeast()
                     if isBeast(p) then
                         beast = p
                         foundBeast = true
-                        log("👹 Beast found: " .. p.Name)
+                        log("👹 [BEAST] Tìm thấy beast: " .. p.Name .. " | isBeast=true")
                         break
                     end
                 end
@@ -291,11 +290,21 @@ local function isBeastNearby(distance)
 end
 
 local function escapeBeast()
-    log("⚠ Beast nearby! Escaping PC " .. tostring(currentPC and currentPC.id or "?"))
+    local beastDist = 0
+    pcall(function()
+        local br = beast and beast.Character and (
+            beast.Character:FindFirstChild("HumanoidRootPart")
+            or beast.Character:FindFirstChild("Torso"))
+        if br and rootPart then
+            beastDist = math.floor((rootPart.Position - br.Position).Magnitude)
+        end
+    end)
+    log("⚠ [BEAST] Beast cách " .. beastDist .. " studs! Bỏ qua PC" .. tostring(currentPC and currentPC.id or "?") .. " → tìm PC khác", "warn")
     updateStatus("Beast nearby! Moving to next PC...")
     skipCurrentPC = true
     if currentPC and currentPC.id then
         skippedPCs[currentPC.id] = true
+        log("[BEAST] Đã thêm PC" .. currentPC.id .. " vào danh sách skip")
     end
     isHacking = false
     canAutoJump = false
@@ -390,7 +399,7 @@ local function waitForGameActive()
 end
 
 -- ==================== ACTION BOX HOOK ====================
-spawn(function()
+task.spawn(function()
     local playerGui = player:WaitForChild("PlayerGui")
     local function onActionBoxVisible(ab)
         ab:GetPropertyChangedSignal("Visible"):Connect(function()
@@ -635,7 +644,7 @@ local function hackPC(pcData)
         if firstMoveOfRound or isReturning then
             firstMoveOfRound = false
             isReturning = false -- clear ngay sau khi TP về, không để ảnh hưởng PC khác
-            log("→ TP direct to PC" .. pcId .. " (returning after save / first move)")
+            log("[MOVE] TP thẳng đến PC" .. pcId .. " | lý do: " .. (isReturning and "vừa save" or "first move đầu ván"))
             rootPart.CFrame = trigger.CFrame + Vector3.new(0, 0.5, 0)
             task.wait(0.1)
         else
@@ -738,26 +747,7 @@ local function hackPC(pcData)
         isMoving = false
     end
 
-    -- ===== HELPER: fire interact tại trigger =====
-    local function fireInteract(trigger)
-        pcall(function()
-            if trigger and rootPart then
-                safeFire(rootPart, trigger, 0)
-                task.wait(0.1)
-                safeFire(rootPart, trigger, 1)
-            end
-        end)
-        task.wait(0.2)
-        pcall(function()
-            local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
-            if r then
-                r:FireServer("Input", "Action", true)
-                task.wait(0.1)
-                r:FireServer("Input", "Action", true)
-            end
-        end)
-    end
-
+    log("[PC" .. pcId .. "] Bắt đầu hack | triggers=" .. #pcData.triggers .. " | computer=" .. pcName)
     -- ===== SKIP NGAY NẾU PC ĐÃ DONE (check trước khi move) =====
     local function isScreenGreen()
         -- Check Screen trực tiếp
@@ -778,20 +768,20 @@ local function hackPC(pcData)
     end
 
     if isScreenGreen() then
-        log("✅ PC" .. pcId .. ": screen green, skip")
+        log("✅ [PC" .. pcId .. "] Screen đã xanh (done bởi player khác) → skip")
         hackedPCs[pcData.id] = true
         return true
     end
     local pcProgressNow = getPCProgress(pcData)
     if pcProgressNow >= 1 then
-        log("✅ PC" .. pcId .. ": already done, skip")
+        log("✅ [PC" .. pcId .. "] Progress=" .. math.floor(pcProgressNow*100) .. "% → đã done, skip")
         hackedPCs[pcData.id] = true
         return true
     end
 
     -- ===== SKIP NẾU FIND EXIT VÀ KHÔNG HACK EXTRA =====
     if isFindExitPhase() and not hackExtraPC then
-        log("PC" .. pcId .. ": Find Exit phase, skip")
+        log("[PC" .. pcId .. "] Find Exit phase đang chạy + hackExtraPC=false → skip PC này")
         return false
     end
 
@@ -891,8 +881,6 @@ local function hackPC(pcData)
         end
     end
 
-    local lastLoggedPct = -1
-
     while isHacking and scriptEnabled and not gameOver do
         task.wait(0.15)
 
@@ -910,7 +898,7 @@ local function hackPC(pcData)
 
         -- Dừng hack nếu Find Exit phase (và không hack extra)
         if isFindExitPhase() and not hackExtraPC then
-            log("PC" .. pcId .. ": Find Exit! Stop hacking")
+            log("[PC" .. pcId .. "] [WARN] Find Exit phase bắt đầu trong khi đang hack → dừng ngay", "warn")
             isHacking = false
             currentPC = nil
             canAutoJump = false
@@ -927,7 +915,12 @@ local function hackPC(pcData)
             skipCurrentPC = true
             if pcData.id then
                 skippedPCs[pcData.id] = true
-                log("PC" .. pcId .. ": skip (beast nearby)")
+                local _bd = 0
+                pcall(function()
+                    local _br = beast and beast.Character and (beast.Character:FindFirstChild("HumanoidRootPart") or beast.Character:FindFirstChild("Torso"))
+                    if _br and rootPart then _bd = math.floor((rootPart.Position - _br.Position).Magnitude) end
+                end)
+                log("⚠ [PC" .. pcId .. "] Beast cách " .. _bd .. " studs trong khi hack → skip", "warn")
             end
             unfreezeHack()
             escapeBeast()
@@ -959,12 +952,6 @@ local function hackPC(pcData)
 
         local prog = getPlayerActionProgress()
 
-        -- Log every 10%
-        local pct = math.floor(prog * 100)
-        if pct ~= lastLoggedPct and pct % 10 == 0 and pct > 0 then
-            lastLoggedPct = pct
-        end
-
         -- Skill check
         if pcData.computer:FindFirstChild("SkillCheckActive")
             and pcData.computer.SkillCheckActive.Value then
@@ -984,7 +971,7 @@ local function hackPC(pcData)
         end
 
         if doneByColor or prog >= 0.999 then
-            log("✅ PC" .. pcId .. " DONE!")
+            log("✅ [PC" .. pcId .. "] Hack xong! | isCoHack=" .. tostring(isCoHacking()))
             updateStatus("Done PC " .. pcId)
             hackedPCs[pcData.id] = true
 
@@ -999,7 +986,6 @@ local function hackPC(pcData)
             return true
         end
 
-        lastProgress = prog
     end
 
     unfreezeHack()
@@ -1095,24 +1081,33 @@ local function autoExitUnified()
         timeoutSecs = timeoutSecs or 20
         local waited = 0
         local beastInterrupted = false
+        local prevProg = 0
+        local peakProg = 0
 
         while waited < timeoutSecs do
-            task.wait(0.2)
-            waited = waited + 0.2
+            task.wait(0.05) -- FIX Bug1: poll nhanh để không miss window 100%
+            waited = waited + 0.05
 
             if isBeastNearby(35) then
-                log("Beast near door -> try other exit")
+                local beastDist = 0
+                pcall(function()
+                    local br = beast and beast.Character and (
+                        beast.Character:FindFirstChild("HumanoidRootPart")
+                        or beast.Character:FindFirstChild("Torso"))
+                    if br and rootPart then
+                        beastDist = math.floor((rootPart.Position - br.Position).Magnitude)
+                    end
+                end)
+                log("👹 [EXIT] Beast cách " .. beastDist .. " studs khi đang mở cửa → chuyển exit khác", "warn")
                 beastInterrupted = true
                 break
             end
 
-            -- Check visual mở cửa (ưu tiên nhất)
             if isExitOpened(exitData) then
-                log("🚪 Door opened! (visual check)")
+                log("🚪 [EXIT] Cửa mở! (visual check)")
                 return true, false
             end
 
-            -- Check progress
             local otherOpener = getPlayerOpeningDoor(exitData.trigger)
             local prog = 0
             if otherOpener then
@@ -1121,19 +1116,26 @@ local function autoExitUnified()
                 prog = getActionProgress(player)
             end
 
+            peakProg = math.max(peakProg, prog)
+
             if prog >= 0.999 then
-                log("🚪 Door opened! (progress 100%)")
-                task.wait(0.2)
-                -- Double check visual
-                if isExitOpened(exitData) then
-                    return true, false
-                end
-                -- Nếu visual chưa update thì chờ thêm chút
-                task.wait(0.5)
+                log("🚪 [EXIT] Cửa mở! (progress 100%)")
+                task.wait(0.1)
                 return true, false
             end
+
+            -- Detect drop: server reset ActionProgress về 0 sau khi mở cửa thành công
+            if prevProg >= 0.7 and prog < 0.1 and peakProg >= 0.7 then
+                log("🚪 [EXIT] Cửa mở! (drop detect " .. math.floor(prevProg*100) .. "% → " .. math.floor(prog*100) .. "%)", "warn")
+                return true, false
+            end
+
+            prevProg = prog
         end
 
+        if not beastInterrupted then
+            log("⏱ [EXIT] Timeout " .. timeoutSecs .. "s | peakProg=" .. math.floor(peakProg*100) .. "% → switch exit", "warn")
+        end
         return false, beastInterrupted
     end
 
@@ -1146,6 +1148,7 @@ local function autoExitUnified()
 
         local hum = char:FindFirstChild("Humanoid")
 
+        log("[ESCAPE] Bắt đầu thoát! TP xuống để trigger server escape... | exitArea=" .. tostring(exitData.area ~= nil))
         -- TP xuống -80 rồi freeze 2s rồi vào exit area
         local myPos = root.Position
         root.CFrame = CFrame.new(myPos.X, myPos.Y - 80, myPos.Z)
@@ -1184,7 +1187,7 @@ local function autoExitUnified()
             waitTime = waitTime + 0.2
 
             if hasPlayerEscaped() or isInLobby() then
-                log("🎉 Escaped successfully!")
+                log("🎉 [ESCAPE] Thoát thành công! hasEscaped=true")
                 hasEscaped = true
                 return
             end
@@ -1201,7 +1204,7 @@ local function autoExitUnified()
                 root.AssemblyLinearVelocity = Vector3.zero
             end
         end
-        log("🚪 Escape timeout, assuming escaped")
+        log("⏱ [ESCAPE] Timeout 20s vẫn chưa detect escaped → coi như đã thoát", "warn")
         hasEscaped = true
     end
 
@@ -1243,21 +1246,8 @@ local function autoExitUnified()
 
         if #exits == 0 then task.wait(0.5) continue end
 
-        -- Tìm exit nào không có beast
-        local function getBestExit()
-            for _, e in ipairs(exits) do
-                if not isBeastNearby(35) then return e end
-                -- Check riêng từng exit
-                local door = e.model:FindFirstChild("Door")
-                if isExitOpened(e) then return e end
-            end
-            -- Không có exit nào sạch -> trả về exit ít beast nhất
-            return exits[1]
-        end
-
         -- Logic chính: ping pong giữa các exit
-        local exitCount = #exits
-        if exitCount == 0 then task.wait(0.5) continue end
+        if #exits == 0 then task.wait(0.5) continue end
 
         -- Tìm exit hiện tại không có beast
         local targetExit = nil
@@ -1276,27 +1266,41 @@ local function autoExitUnified()
         end
 
         if not targetExit then
-            -- Beast chặn tất cả -> TP sang exit ngược lại và chờ
-            -- Tìm exit xa beast nhất
+            -- FIX Bug2: Beast chặn tất cả → TP cao lên exit xa nhất + chờ beast rời
             local bestDist = 0
             local beastChar = beast and beast.Character
             local beastRoot = beastChar and beastChar:FindFirstChild("HumanoidRootPart")
             for _, e in ipairs(exits) do
                 if beastRoot then
                     local d = (beastRoot.Position - e.trigger.Position).Magnitude
-                    if d > bestDist then
-                        bestDist = d
-                        targetExit = e
-                    end
+                    if d > bestDist then bestDist = d targetExit = e end
                 else
                     targetExit = e
                 end
             end
-            -- TP tới exit xa nhất rồi chờ
             if targetExit then
-                tpFront(targetExit.trigger)
-                updateStatus("👹 Beast blocking exits! Switching to furthest exit...")
-                task.wait(0.3)
+                local _c = player.Character
+                local _r = _c and _c:FindFirstChild("HumanoidRootPart")
+                if _r then
+                    _r.CFrame = CFrame.new(
+                        targetExit.trigger.Position.X,
+                        targetExit.trigger.Position.Y + 35,
+                        targetExit.trigger.Position.Z)
+                    log("👹 [EXIT] Beast chặn hết " .. #exits .. " exit → TP cao lên exit xa nhất (dist=" .. math.floor(bestDist) .. " studs)", "warn")
+                else
+                    log("[EXIT] Không tìm được rootPart để tránh beast!", "error")
+                end
+                updateStatus("👹 Beast blocking exits! Chờ beast rời...")
+                local bw = 0
+                while isBeastNearby(45) and scriptEnabled and not hasEscaped and bw < 15 do
+                    task.wait(0.3)
+                    bw = bw + 0.3
+                end
+                if bw >= 15 then
+                    log("[EXIT] Beast vẫn chặn sau 15s → tiếp tục anyway", "warn")
+                else
+                    log("[EXIT] Beast rời sau " .. string.format("%.1f", bw) .. "s → retry exit")
+                end
             end
             continue
         end
@@ -1322,6 +1326,7 @@ local function autoExitUnified()
                 end
             else
                 tpFront(targetExit.trigger)
+                log("[EXIT] TP đến cửa exit | trigger=" .. targetExit.trigger.Name .. " pos=" .. tostring(math.floor(targetExit.trigger.Position.X)) .. "," .. tostring(math.floor(targetExit.trigger.Position.Y)) .. "," .. tostring(math.floor(targetExit.trigger.Position.Z)))
                 task.wait(0.2)
                 local success = startOpening(targetExit.trigger)
                 if success then
@@ -1329,7 +1334,7 @@ local function autoExitUnified()
                     local lastLogProg = -1
                     task.spawn(function()
                         while firing do
-                            task.wait(0.15)
+                            task.wait(0.05) -- FIX Bug1: fire nhanh hơn
                             pcall(function()
                                 local root2 = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
                                 if root2 then
@@ -1344,20 +1349,41 @@ local function autoExitUnified()
                             local pct = math.floor(prog * 10) * 10
                             if pct ~= lastLogProg and pct > 0 then
                                 lastLogProg = pct
-                                log("🚪 Exit progress: " .. pct .. "%")
+                                log("🚪 [EXIT] Đang mở cửa: " .. pct .. "%")
                             end
                         end
                     end)
                     local opened, beastInterrupted = waitForDoorOpen(targetExit, 20)
                     firing = false
                     if beastInterrupted then
-                        log("👹 Beast came while opening! Switching exit...")
-                        -- TP ngay sang exit khác
+                        log("👹 [EXIT] Beast vào lúc đang mở cửa! Tìm exit khác...", "warn")
+                        -- FIX Bug2: TP cao lên exit khác để tránh bị đánh
+                        local safeExit = nil
                         for _, e in ipairs(exits) do
-                            if e.model ~= targetExit.model then
-                                tpFront(e.trigger)
-                                break
+                            if e.model ~= targetExit.model then safeExit = e break end
+                        end
+                        if safeExit then
+                            local _c = player.Character
+                            local _r = _c and _c:FindFirstChild("HumanoidRootPart")
+                            if _r then
+                                _r.CFrame = CFrame.new(_r.Position.X, _r.Position.Y + 35, _r.Position.Z)
+                                log("[EXIT] TP lên cao 35 studs để tránh beast")
+                            else
+                                log("[EXIT] Không tìm được rootPart để TP tránh beast!", "error")
                             end
+                        else
+                            log("[EXIT] Không có exit thứ 2 để chuyển sang!", "error")
+                        end
+                        -- Chờ beast đi xa hẳn rồi mới retry
+                        local bw = 0
+                        while isBeastNearby(45) and scriptEnabled and not hasEscaped and bw < 15 do
+                            task.wait(0.3)
+                            bw = bw + 0.3
+                        end
+                        if bw >= 15 then
+                            log("[EXIT] Chờ beast 15s vẫn chưa rời → tiếp tục anyway", "warn")
+                        else
+                            log("[EXIT] Beast đã rời sau " .. string.format("%.1f", bw) .. "s → retry")
                         end
                     elseif opened then
                         escape(targetExit)
@@ -1432,42 +1458,6 @@ local function isSelfCaged()
     return false
 end
 
--- Tìm survivor gần nhất KHÔNG PHẢI main (dùng cho alt-beast mode)
-local function getBeastNearestAltSurvivor()
-    local char = player.Character
-    if not char then return nil end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return nil end
-    local nearest, nearestDist = nil, math.huge
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= player and p.Name ~= followTargetName and p.Character then
-            local hum = p.Character:FindFirstChild("Humanoid")
-            local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
-            if hum and torso then
-                local captured = false
-                local mapV = ReplicatedStorage:FindFirstChild("CurrentMap")
-                mapV = mapV and mapV.Value
-                if mapV then
-                    for _, v in ipairs(mapV:GetChildren()) do
-                        if v.Name == "FreezePod" then
-                            local ct = v:FindFirstChild("CapturedTorso", true)
-                            if ct and ct.Value == torso then captured = true break end
-                        end
-                    end
-                end
-                if not captured then
-                    local dist = (root.Position - torso.Position).Magnitude
-                    if dist < nearestDist then
-                        nearest = p
-                        nearestDist = dist
-                    end
-                end
-            end
-        end
-    end
-    return nearest
-end
-
 -- ==================== BEAST AUTO ====================
 local function getHammerEvent()
     local char = player.Character
@@ -1475,7 +1465,8 @@ local function getHammerEvent()
     return hammer and hammer:FindFirstChild("HammerEvent")
 end
 
-local function getBeastNearestSurvivor()
+-- excludeName: nếu có thì bỏ qua player đó (dùng cho alt mode)
+local function getBeastNearestSurvivor(excludeName)
     local char = player.Character
     if not char then return nil end
     local root = char:FindFirstChild("HumanoidRootPart")
@@ -1483,11 +1474,10 @@ local function getBeastNearestSurvivor()
     local nearest, nearestDist = nil, math.huge
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= player and p.Character then
+            if excludeName and p.Name == excludeName then continue end
             local hum = p.Character:FindFirstChild("Humanoid")
-            local torso = p.Character:FindFirstChild("UpperTorso")
-                or p.Character:FindFirstChild("Torso")
+            local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
             if hum and torso then
-                -- Skip nếu đã bị nhốt
                 local captured = false
                 local map = ReplicatedStorage:FindFirstChild("CurrentMap")
                 map = map and map.Value
@@ -1501,10 +1491,7 @@ local function getBeastNearestSurvivor()
                 end
                 if not captured then
                     local dist = (root.Position - torso.Position).Magnitude
-                    if dist < nearestDist then
-                        nearest = p
-                        nearestDist = dist
-                    end
+                    if dist < nearestDist then nearest = p nearestDist = dist end
                 end
             end
         end
@@ -1668,7 +1655,7 @@ local function beastLoop()
                 task.wait(0.5)
                 continue
             end
-            target = hasMainEscaped() and getBeastNearestSurvivor() or getBeastNearestAltSurvivor()
+            target = hasMainEscaped() and getBeastNearestSurvivor() or getBeastNearestSurvivor(followTargetName)
         else
             target = getBeastNearestSurvivor()
         end
@@ -1752,7 +1739,7 @@ local function autoSaveLoop()
                         isReturning = true -- tắt beast check từ lúc này
                         local savedCanJump = canAutoJump
                         canAutoJump = false
-                        log("🚑 Saving: " .. capturedPlayer.Name .. " (save #" .. (savesThisRound+1) .. ")")
+                        log("🚑 [SAVE] Phát hiện " .. capturedPlayer.Name .. " bị nhốt! Bắt đầu save #" .. (savesThisRound+1))
                         updateStatus("Saving: " .. capturedPlayer.Name)
                         local cageCenter = v:GetModelCFrame().Position
                         local dirIn = (cageCenter - trigger.Position)
@@ -1809,7 +1796,7 @@ local function autoSaveLoop()
                             ct = v:FindFirstChild("CapturedTorso", true)
                             if ct and ct.Value == nil then
                                 savesThisRound = savesThisRound + 1
-                                log("✅ Saved " .. capturedPlayer.Name .. "! Returns=" .. savesThisRound)
+                                log("✅ [SAVE] Đã giải cứu " .. capturedPlayer.Name .. "! Tổng saves ván này=" .. (savesThisRound+1))
                                 updateStatus("Saved! Returning to PC...")
                                 break
                             end
@@ -1923,7 +1910,7 @@ local function mainLoop()
             end
         end
 
-        log("=== ROUND " .. roundsPlayed .. " START | Extra=" .. tostring(hackExtraPC) .. " | Mode=" .. playerMode .. " | Status=" .. tostring(ReplicatedStorage:FindFirstChild("GameStatus") and ReplicatedStorage:FindFirstChild("GameStatus").Value or "?") .. " ===")
+        log("=== [ROUND " .. roundsPlayed .. " BẮT ĐẦU] HackExtra=" .. tostring(hackExtraPC) .. " | Mode=" .. playerMode .. " | PCs=" .. #allPCs .. " | GameStatus=" .. tostring(ReplicatedStorage:FindFirstChild("GameStatus") and ReplicatedStorage:FindFirstChild("GameStatus").Value or "?") .. " ===")
 
         -- Nếu là beast thì skip toàn bộ sur logic
         if isSelfBeast() then
@@ -1963,6 +1950,7 @@ local function mainLoop()
 
                 -- Check nếu đang bị nhốt trong cage
                 if isSelfCaged() then
+                    log("🔒 [ALT] Bị nhốt vào cage! Chờ " .. main.Name .. " đến cứu...", "warn")
                     updateStatus("ALT: Caged! Waiting for " .. main.Name .. " to rescue...")
                     altWasRescued = false
                     -- Đợi cho đến khi được thả
@@ -1997,6 +1985,7 @@ local function mainLoop()
                 -- Tìm PC main đang hack và vào hack cùng
                 local mainPC = getPCNearPlayer(main)
                 if mainPC and not hackedPCs[mainPC.id] then
+                    log("[ALT] Co-hack cùng main tại PC" .. mainPC.id)
                     updateStatus("ALT: Co-hacking with main at PC " .. mainPC.id)
                     hackPC(mainPC)
                 else
@@ -2072,6 +2061,9 @@ local function mainLoop()
                 if isBeastNearby(23) and not isReturning and not isSaving then
                     escapeBeast()
                     skipCurrentPC = true
+                    local _bDist2 = 0
+                    pcall(function() local br2 = beast and beast.Character and (beast.Character:FindFirstChild("HumanoidRootPart") or beast.Character:FindFirstChild("Torso")) if br2 and rootPart then _bDist2 = math.floor((rootPart.Position - br2.Position).Magnitude) end end)
+                    log("👹 [MAIN] Beast cách " .. _bDist2 .. " studs khi đang ở PC" .. tostring(currentPC and currentPC.id or "?") .. " → dừng hack chờ beast rời", "warn")
                     updateStatus("👹 Beast nearby, waiting to leave... (PC" .. tostring(currentPC and currentPC.id or "?") .. ")")
                     local beastLeft = false
                     local gameEndedDuringWait = false
@@ -2136,7 +2128,7 @@ local function mainLoop()
             totalAttempts = totalAttempts + 1
 
             if allCompleted then
-                log("✅ All PCs done! Waiting for Find Exit...")
+                log("✅ [MAIN] Tất cả PC đã hack xong! Tổng=" .. #allPCs .. " | Chờ Find Exit phase...")
                 break
             end
 
@@ -2204,7 +2196,7 @@ local function mainLoop()
         if not scriptEnabled then continue end
 
         if isFindExitPhase() then
-            log("🚪 Find Exit detected! Auto-exit starting...")
+            log("🚪 [MAIN] Find Exit phase phát hiện! Bắt đầu auto-exit...")
             updateStatus("Auto Exit started!")
             autoExitUnified()
             log("=== ROUND " .. roundsPlayed .. " COMPLETE ===")
@@ -2799,7 +2791,7 @@ local function createGUI()
 
     -- ===== EXPAND / COLLAPSE NGANG =====
     -- ===== CONSOLE PANEL =====
-    local CONSOLE_W, CONSOLE_H = 280, 220
+    local CONSOLE_W, CONSOLE_H = 400, 340
     local consoleOpen = false
 
     local consolePanel = Instance.new("Frame", screenGui)
@@ -2830,7 +2822,7 @@ local function createGUI()
     consoleTitleLbl.BackgroundTransparency = 1
     consoleTitleLbl.Text = "📋 FTF Console  ☰ drag"
     consoleTitleLbl.TextColor3 = Color3.fromRGB(100, 220, 100)
-    consoleTitleLbl.TextSize = 10
+    consoleTitleLbl.TextSize = 13
     consoleTitleLbl.Font = Enum.Font.GothamBold
     consoleTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -2865,8 +2857,8 @@ local function createGUI()
     consolePad.PaddingTop = UDim.new(0, 2)
 
     local logOrder = 0
-    local maxLogLines = 80
-    local LINE_H = 13
+    local maxLogLines = 120
+    local LINE_H = 17
     local labelQueue = {} -- track labels theo thứ tự để xóa nhanh
 
     local function consoleLog(msg, logType)
@@ -2887,7 +2879,7 @@ local function createGUI()
         lbl.BackgroundTransparency = 1
         lbl.Text = prefix .. tostring(msg)
         lbl.TextColor3 = color
-        lbl.TextSize = 9
+        lbl.TextSize = 13
         lbl.Font = Enum.Font.Code
         lbl.TextXAlignment = Enum.TextXAlignment.Left
         lbl.TextTruncate = Enum.TextTruncate.AtEnd
@@ -3209,7 +3201,7 @@ local function createGUI()
             lblUptime.Text  = "⏱ " .. formatUptime(elapsed)
             lblRounds.Text  = "🎮 Rounds: " .. roundsPlayed
             lblCredits.Text = "💰 " .. tostring(credits or "?") .. "C"
-            lblEarned.Text  = "📈 +" .. tostring(delta) .. "C  (" .. tostring(cph) .. "/h)"
+            lblEarned.Text  = "📈 +" .. tostring(delta) .. "C"
         end
     end)
 
