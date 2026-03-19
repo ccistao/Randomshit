@@ -3163,7 +3163,7 @@ local function createGUI()
             end
             lblWhStatus.Text = isTest and "Test sent!" or "Sent!"
         end)
-    endnd
+    end
 
     testBtn.MouseButton1Click:Connect(function() lblWhStatus.Text="Sending..." task.spawn(function() sendWebhook(true) end) end)
     autoBtn.MouseButton1Click:Connect(function()
