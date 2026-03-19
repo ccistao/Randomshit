@@ -10,6 +10,18 @@ local hackExtraPC = false
 local gameOver = false
 
 local currentTrigger = nil
+local player = game.Players.LocalPlayer
+local Players = game:GetService("Players")
+local Replicated = game:GetService("ReplicatedStorage")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CurrentMap = ReplicatedStorage:WaitForChild("CurrentMap")
+local RunService = game:GetService("RunService")
+
+local scriptEnabled = false
+local hackExtraPC = false
+local gameOver = false
+
+local currentTrigger = nil
 local currentPC = nil
 local skippedPCs = {}
 local isHacking = false
@@ -92,25 +104,7 @@ local function safeFire(root, trigger, state)
 end
 
 -- ==================== LOG ====================
-local function log(msg)
-    print("[FTF] " .. tostring(msg))
-end
-
-local _lastStatus = ""
-local function updateStatus(status)
-    local s = tostring(status)
-    if statusLabel then
-        statusLabel.Text = "Status: " .. s
-    end
-    print("[FTF] " .. s)
-    -- Chỉ log vào console khi status thay đổi
-    if s ~= _lastStatus then
-        _lastStatus = s
-        -- bufferedLog sẽ được gọi sau khi override bên dưới
-    end
-end
-
--- ===== LOG BUFFER (lưu log trước khi console khởi tạo) =====
+-- ===== LOG BUFFER =====
 local logBuffer = {}
 local MAX_BUFFER = 200
 local consoleLogFn = nil
@@ -124,23 +118,18 @@ local function bufferedLog(msg, logType)
     end
 end
 
--- Override: mỗi hàm chỉ ghi 1 dòng vào console
-local _basePrint = log
-log = function(msg)
-    _basePrint(msg)
-    bufferedLog(msg, "normal")
+-- log: luôn tạo dòng mới trong console
+local function log(msg)
+    bufferedLog(tostring(msg), "normal")
 end
 
-updateStatus = function(s)
-    local str = tostring(s)
+-- updateStatus: update label + luôn tạo dòng mới trong console
+local function updateStatus(status)
+    local s = tostring(status)
     if statusLabel then
-        statusLabel.Text = "Status: " .. str
+        statusLabel.Text = "Status: " .. s
     end
-    print("[FTF] » " .. str)
-    if str ~= _lastStatus then
-        _lastStatus = str
-        bufferedLog(str, "status")
-    end
+    bufferedLog(s, "status")
 end
 
 -- ==================== CHAR REFS ====================
@@ -163,12 +152,23 @@ local function resetGameState()
     jumpTimer = 0
     hackedPCs = {}
     skippedPCs = {}
+    allPCs = {}
     hasEscaped = false
     gameOver = false
     beast = nil
     foundBeast = false
     firstMoveOfRound = true
     isMoving = false
+    isReturning = false
+    isSaving = false
+    coHackProgressCache = {}
+
+    -- Clear TempFloor_FTF parts nếu còn sót
+    pcall(function()
+        for _, v in ipairs(workspace:GetChildren()) do
+            if v.Name == "TempFloor_FTF" then v:Destroy() end
+        end
+    end)
 
     updateCharacterReferences()
     updateStatus("Waiting for new game")
@@ -347,12 +347,19 @@ local function waitForGameActive()
     local mapStatus = mapVal and mapVal.Value and mapVal.Value.Name or "nil"
     log("waitForGame: lobby=" .. tostring(isInLobby()) .. " map='" .. mapStatus .. "' status='" .. curStatus .. "'")
 
-    -- Nếu đang trong map rồi -> active ngay
+    -- Nếu đang trong map nhưng game over -> chờ về sảnh trước
+    if isInGame() and (curStatus:find("GAME OVER") or curStatus:find("BEAST LEFT") or curStatus:find("INTERMISSION")) then
+        log("waitForGame: game over in map, waiting for lobby...")
+        repeat task.wait(0.5) until isInLobby() or not scriptEnabled
+    end
+
+    -- Nếu đang trong map và game active -> bắt đầu ngay
     if isInGame() then
         log("waitForGame: already in-game, starting now")
         return true
     end
 
+    -- Đang trong sảnh -> chờ TP vào map
     updateStatus("Waiting for game...")
 
     -- Chờ cho tới khi bị TP vào map (thoát khỏi lobby box)
@@ -850,6 +857,31 @@ local function hackPC(pcData)
     currentPC = pcData
     updateStatus("Hacking PC " .. pcId)
 
+    -- Freeze nhân vật khi hack
+    local hackChar = player.Character
+    local hackHum = hackChar and hackChar:FindFirstChild("Humanoid")
+    local hackRoot = hackChar and hackChar:FindFirstChild("HumanoidRootPart")
+    if hackHum then
+        hackHum.WalkSpeed = 0
+        hackHum.JumpPower = 0
+    end
+    local freezeHack = true
+    local freezeHackConn = RunService.Heartbeat:Connect(function()
+        if not freezeHack then return end
+        if hackRoot then
+            hackRoot.AssemblyLinearVelocity = Vector3.zero
+        end
+    end)
+
+    local function unfreezeHack()
+        freezeHack = false
+        freezeHackConn:Disconnect()
+        if hackHum then
+            hackHum.WalkSpeed = 16
+            hackHum.JumpPower = 50
+        end
+    end
+
     local lastLoggedPct = -1
 
     while isHacking and scriptEnabled and not gameOver do
@@ -863,6 +895,7 @@ local function hackPC(pcData)
             canAutoJump = false
             currentTrigger = nil
             isMoving = false
+            unfreezeHack()
             break
         end
 
@@ -873,6 +906,7 @@ local function hackPC(pcData)
             currentPC = nil
             canAutoJump = false
             currentTrigger = nil
+            unfreezeHack()
             return false
         end
 
@@ -886,6 +920,7 @@ local function hackPC(pcData)
                 skippedPCs[pcData.id] = true
                 log("PC" .. pcId .. ": skip (beast nearby)")
             end
+            unfreezeHack()
             escapeBeast()
             return false
         end
@@ -897,11 +932,13 @@ local function hackPC(pcData)
             currentPC = nil
             canAutoJump = false
             currentTrigger = nil
+            unfreezeHack()
             return false
         end
 
         if not pcData.computer or not pcData.computer.Parent then
             log("❌ PC" .. pcId .. ": disappeared from map!")
+            unfreezeHack()
             break
         end
 
@@ -949,12 +986,14 @@ local function hackPC(pcData)
             currentPC = nil
 
             allPCs = findAllPCs()
+            unfreezeHack()
             return true
         end
 
         lastProgress = prog
     end
 
+    unfreezeHack()
     isHacking = false
     currentPC = nil
     canAutoJump = false
@@ -1846,6 +1885,31 @@ local function mainLoop()
         altRoundStartTick = tick()
         savesThisRound = 0
         firstMoveOfRound = true
+
+        -- Auto-clear console mỗi 50 rounds để tránh memory buildup
+        if roundsPlayed % 50 == 0 then
+            logBuffer = {}
+            if consoleLogFn then
+                pcall(function()
+                    local player2 = game.Players.LocalPlayer
+                    local gui = player2:FindFirstChild("PlayerGui")
+                    if gui then
+                        local ag = gui:FindFirstChild("AutoHackGUI")
+                        if ag then
+                            local scroll = ag:FindFirstChild("ConsoleScroll", true)
+                            if scroll then
+                                for _, c in ipairs(scroll:GetChildren()) do
+                                    if c:IsA("TextLabel") then c:Destroy() end
+                                end
+                                scroll.CanvasSize = UDim2.new(0,0,0,0)
+                                log("🧹 Console cleared (round " .. roundsPlayed .. ")")
+                            end
+                        end
+                    end
+                end)
+            end
+        end
+
         log("=== ROUND " .. roundsPlayed .. " START | Extra=" .. tostring(hackExtraPC) .. " | Mode=" .. playerMode .. " | Status=" .. tostring(ReplicatedStorage:FindFirstChild("GameStatus") and ReplicatedStorage:FindFirstChild("GameStatus").Value or "?") .. " ===")
 
         -- Nếu là beast thì skip toàn bộ sur logic
@@ -2126,9 +2190,12 @@ local function mainLoop()
             log("⏱ Find Exit timeout or game ended, waiting for new round...")
         end
 
-        -- Chờ trận kết thúc hoàn toàn
+        -- Chờ về sảnh hoàn toàn trước khi bắt đầu round mới
+        updateStatus("Waiting for lobby...")
         local waitEnd = tick()
-        repeat task.wait(0.5) until not isGameActive() or (tick() - waitEnd > 30) or not scriptEnabled
+        repeat
+            task.wait(0.5)
+        until isInLobby() or (tick() - waitEnd > 60) or not scriptEnabled
         task.wait(2)
     end
 end
