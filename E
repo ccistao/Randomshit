@@ -88,12 +88,18 @@ local function log(msg)
     print("[FTF] " .. tostring(msg))
 end
 
+local _lastStatus = ""
 local function updateStatus(status)
+    local s = tostring(status)
     if statusLabel then
-        statusLabel.Text = "Status: " .. tostring(status)
+        statusLabel.Text = "Status: " .. s
     end
-    -- Không gọi log() ở đây để tránh duplicate trong console
-    print("[FTF] " .. tostring(status))
+    print("[FTF] " .. s)
+    -- Chỉ log vào console khi status thay đổi
+    if s ~= _lastStatus then
+        _lastStatus = s
+        -- bufferedLog sẽ được gọi sau khi override bên dưới
+    end
 end
 
 -- ===== LOG BUFFER (lưu log trước khi console khởi tạo) =====
@@ -118,11 +124,16 @@ log = function(msg)
 end
 
 updateStatus = function(s)
+    local str = tostring(s)
     if statusLabel then
-        statusLabel.Text = "Status: " .. tostring(s)
+        statusLabel.Text = "Status: " .. str
     end
-    print("[FTF] » " .. tostring(s))
-    bufferedLog(s, "status") -- chỉ 1 dòng status, không có normal duplicate
+    print("[FTF] » " .. str)
+    -- Chỉ ghi vào console khi thay đổi
+    if str ~= _lastStatus then
+        _lastStatus = str
+        bufferedLog(str, "status")
+    end
 end
 
 -- ==================== CHAR REFS ====================
@@ -306,15 +317,17 @@ end
 
 -- ==================== GAME ACTIVE CHECK ====================
 local function isGameActive()
-    if isInLobby() then return false end
     local gs = ReplicatedStorage:FindFirstChild("GameStatus")
-    if gs then
-        local txt = tostring(gs.Value):upper()
-        if txt:find("GAME OVER") or txt:find("BEAST LEFT")
-        or txt:find("BEF LAI") or txt:find("KET THUC")
-        or txt:find("TRO CHOI KET THUC") then
-            return false
-        end
+    local txt = gs and tostring(gs.Value):upper() or ""
+    -- HEAD START = game đang bắt đầu, luôn active dù position đâu
+    if txt:find("HEAD START") then return true end
+    -- Ngoài HEAD START thì check position
+    if isInLobby() then return false end
+    -- Explicit game over states
+    if txt:find("GAME OVER") or txt:find("BEAST LEFT")
+    or txt:find("BEF LAI") or txt:find("KET THUC")
+    or txt:find("TRO CHOI KET THUC") then
+        return false
     end
     return true
 end
@@ -1001,14 +1014,27 @@ local function autoExitUnified()
     end
 
     local function isExitOpened(exitData)
-        -- Method 1: transparency
-        local door = exitData.model:FindFirstChild("Door")
+        local model = exitData.model
+        -- Method 1: Door transparency
+        local door = model:FindFirstChild("Door")
         if door and door:IsA("BasePart") then
             if door.Transparency > 0.5 then return true end
-        end
-        -- Method 2: CanCollide off
-        if door and door:IsA("BasePart") then
             if not door.CanCollide then return true end
+        end
+        -- Method 2: Any part named Door/Gate/Exit in model
+        for _, part in ipairs(model:GetDescendants()) do
+            if part:IsA("BasePart") then
+                local n = part.Name:lower()
+                if (n:find("door") or n:find("gate") or n:find("open")) then
+                    if part.Transparency > 0.5 or not part.CanCollide then
+                        return true
+                    end
+                end
+            end
+        end
+        -- Method 3: ExitArea CanCollide off = door open
+        if exitData.area and exitData.area:IsA("BasePart") then
+            if not exitData.area.CanCollide then return true end
         end
         return false
     end
@@ -1049,29 +1075,30 @@ local function autoExitUnified()
                 break
             end
 
-            -- Check visual trước (cửa đã mở bởi ai đó)
+            -- Check visual mở cửa (ưu tiên nhất)
             if isExitOpened(exitData) then
                 log("🚪 Door opened! (visual check)")
                 return true, false
             end
 
-            -- Xác định ai đang mở: ưu tiên người khác nếu họ đứng gần trigger
+            -- Check progress
             local otherOpener = getPlayerOpeningDoor(exitData.trigger)
             local prog = 0
             if otherOpener then
-                -- Người khác đang mở -> đọc progress của họ, đứng đợi
                 prog = getActionProgress(otherOpener)
             else
-                -- Mình đang mở -> đọc progress của mình
                 prog = getActionProgress(player)
-                local pct = math.floor(prog * 100)
-                if pct > 0 and pct % 10 == 0 then
-                end
             end
 
             if prog >= 0.999 then
                 log("🚪 Door opened! (progress 100%)")
-                task.wait(0.3)
+                task.wait(0.2)
+                -- Double check visual
+                if isExitOpened(exitData) then
+                    return true, false
+                end
+                -- Nếu visual chưa update thì chờ thêm chút
+                task.wait(0.5)
                 return true, false
             end
         end
@@ -1119,20 +1146,28 @@ local function autoExitUnified()
             hum:ChangeState(Enum.HumanoidStateType.GettingUp)
         end
 
+        -- Spam remote + retry TP liên tục cho tới khi thoát
         local waitTime = 0
-        while waitTime < 15 do
+        while waitTime < 20 do
             task.wait(0.2)
             waitTime = waitTime + 0.2
-            -- Detect escaped qua flag hoặc bị TP về lobby
+
             if hasPlayerEscaped() or isInLobby() then
                 log("🎉 Escaped successfully!")
                 hasEscaped = true
                 return
             end
-            -- Retry TP vào area mỗi 2s nếu chưa escape
-            if waitTime % 2 < 0.2 then
-                log("🚪 Retrying TP into exit area...")
+
+            -- Spam FireServer để trigger escape
+            pcall(function()
+                local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
+                if r then r:FireServer("Input", "Action", true) end
+            end)
+
+            -- Retry TP vào area mỗi 1s
+            if waitTime % 1 < 0.2 then
                 root.CFrame = exitData.area.CFrame + Vector3.new(0, 2, 0)
+                root.AssemblyLinearVelocity = Vector3.zero
             end
         end
         log("🚪 Escape timeout, assuming escaped")
@@ -1260,13 +1295,26 @@ local function autoExitUnified()
                 local success = startOpening(targetExit.trigger)
                 if success then
                     local firing = true
+                    local lastLogProg = -1
                     task.spawn(function()
                         while firing do
                             task.wait(0.15)
                             pcall(function()
+                                local root2 = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+                                if root2 then
+                                    firetouchinterest(root2, targetExit.trigger, 0)
+                                    firetouchinterest(root2, targetExit.trigger, 1)
+                                end
                                 local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
                                 if r then r:FireServer("Input", "Action", true) end
                             end)
+                            -- Log ActionProgress mỗi 10%
+                            local prog = getActionProgress(player)
+                            local pct = math.floor(prog * 10) * 10
+                            if pct ~= lastLogProg and pct > 0 then
+                                lastLogProg = pct
+                                log("🚪 Exit progress: " .. pct .. "%")
+                            end
                         end
                     end)
                     local opened, beastInterrupted = waitForDoorOpen(targetExit, 20)
