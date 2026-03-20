@@ -2094,41 +2094,13 @@ local function mainLoop()
                 end
 
                 if isBeastNearby(30) and not isReturning and not isSaving then
-                    escapeBeast()
-                    skipCurrentPC = true
                     local _bDist2 = 0
                     pcall(function() local br2 = beast and beast.Character and (beast.Character:FindFirstChild("HumanoidRootPart") or beast.Character:FindFirstChild("Torso")) if br2 and rootPart then _bDist2 = math.floor((rootPart.Position - br2.Position).Magnitude) end end)
-                    log("👹 [MAIN] Beast cách " .. _bDist2 .. " studs khi đang ở PC" .. tostring(currentPC and currentPC.id or "?") .. " → dừng hack chờ beast rời", "warn")
-                    updateStatus("👹 Beast nearby, waiting to leave... (PC" .. tostring(currentPC and currentPC.id or "?") .. ")")
-                    local beastLeft = false
-                    local gameEndedDuringWait = false
-                    while scriptEnabled do
-                        if isSaving then
-                            while isSaving do task.wait(0.2) end
-                            skippedPCs = {}
-                        end
-                        if not isGameActive() or gameOver then
-                            gameEndedDuringWait = true
-                            break
-                        end
-                        -- FIX hackExtraPC: nếu hackExtra thì không bỏ qua dù Find Exit đã bắt đầu
-                        if isFindExitPhase() and not hackExtraPC then break end
-                        if not isBeastNearby(30) then
-                            beastLeft = true
-                            break
-                        end
-                        task.wait(0.2)
-                    end
-                    if beastLeft then
-                        skippedPCs = {}
-                    end
-                    if gameEndedDuringWait then
-                        allCompleted = true
-                        break
-                    end
+                    log("👹 [MAIN] Beast cách " .. _bDist2 .. " studs → skip PC, tween PC khác ngay", "warn")
+                    escapeBeast()
                     allCompleted = false
-                    hasSkippedPC = true -- PC bị skip do beast, cần retry
-                    break -- restart for loop từ đầu
+                    hasSkippedPC = true
+                    break -- restart for loop, tween sang PC khác ngay
                 else
                     skipCurrentPC = false
                 end
