@@ -5,6 +5,7 @@ local CurrentMap = ReplicatedStorage:WaitForChild("CurrentMap")
 local RunService = game:GetService("RunService")
 
 local scriptEnabled = false
+local scriptToken = 0  -- tăng mỗi lần bật, loop check token để thoát ngay khi tắt
 local hackExtraPC = false
 local gameOver = false
 
@@ -31,6 +32,8 @@ local firstMoveOfRound = true
 local character = nil
 local humanoid = nil
 local rootPart = nil
+local savedWalkSpeed = 16  -- lưu speed gốc trước khi script thay đổi
+local savedJumpPower = 50  -- lưu jump gốc trước khi script thay đổi
 
 local allPCs = {}
 local isSaving = false
@@ -95,49 +98,6 @@ local function safeFire(root, trigger, state)
     end
 end
 
--- ==================== SESSION FILE LOG ====================
-local SESSION_LOG_FILE = "ftf/session_log.txt"
-local sessionLogLines  = {}
-local MAX_SESSION_LINES = 200
-
-local function getTimestamp()
-    local t = os.date("*t")
-    return string.format("%02d:%02d:%02d", t.hour, t.min, t.sec)
-end
-
-local function sessionLog(msg)
-    local line = "[" .. getTimestamp() .. "] " .. tostring(msg)
-    table.insert(sessionLogLines, line)
-    if #sessionLogLines > MAX_SESSION_LINES then
-        table.remove(sessionLogLines, 1)
-    end
-end
-
--- Đọc log cũ NGAY KHI SCRIPT LOAD trước khi auto-save ghi đè
-local _oldSessionLog = ""
-pcall(function()
-    if readfile and isfile and isfile(SESSION_LOG_FILE) then
-        _oldSessionLog = readfile(SESSION_LOG_FILE) or ""
-    end
-end)
-
--- Ghi log ra file mỗi 1s
-task.spawn(function()
-    while true do
-        task.wait(1)
-        pcall(function()
-            if writefile and makefolder then
-                if not isfolder("ftf") then makefolder("ftf") end
-                writefile(SESSION_LOG_FILE, table.concat(sessionLogLines, "\n"))
-            end
-        end)
-    end
-end)
-
-
-
--- Hook vào log() để tự động ghi session log
-local _origLog = nil  -- sẽ set sau khi log() được define
 
 
 -- ==================== LOG ====================
@@ -158,7 +118,6 @@ end
 -- log: luôn tạo dòng mới trong console
 local function log(msg)
     bufferedLog(tostring(msg), "normal")
-    sessionLog(tostring(msg))
 end
 
 -- updateStatus: update label + chỉ log khi text thay đổi
@@ -179,6 +138,11 @@ local function updateCharacterReferences()
     character = player.Character or player.CharacterAdded:Wait()
     humanoid = character:WaitForChild("Humanoid")
     rootPart = character:WaitForChild("HumanoidRootPart")
+    -- Lưu speed/jump gốc của game
+    if humanoid then
+        savedWalkSpeed = humanoid.WalkSpeed
+        savedJumpPower = humanoid.JumpPower
+    end
 end
 
 
@@ -218,8 +182,8 @@ local function resetGameState()
     pcall(function()
         local hum = player.Character and player.Character:FindFirstChild("Humanoid")
         if hum then
-            hum.WalkSpeed = 16
-            hum.JumpPower = 50
+            hum.WalkSpeed = savedWalkSpeed
+            hum.JumpPower = savedJumpPower
         end
     end)
     updateStatus("Waiting for new game")
@@ -365,8 +329,8 @@ local function escapeBeast()
 end
 
 -- ==================== LOBBY DETECTION (position-based) ====================
-local LOBBY_MIN = Vector3.new(14, 5, -478)
-local LOBBY_MAX = Vector3.new(227, 40, -264)
+local LOBBY_MIN = Vector3.new(14, -5, -478)
+local LOBBY_MAX = Vector3.new(227, 50, -264)
 
 local function isInLobby()
     local char = player.Character
@@ -427,9 +391,11 @@ local function waitForGameActive()
     local timeout = 300
     local elapsed = 0
     local lastLoggedSec = -1
+    local myToken = scriptToken
     while elapsed < timeout do
         task.wait(0.5)
         elapsed = elapsed + 0.5
+        if not scriptEnabled or scriptToken ~= myToken then return false end
 
         if isInGame() then
             log("waitForGame: TP'd into map! Starting...")
@@ -707,18 +673,33 @@ local function hackPC(pcData)
                 hum:ChangeState(Enum.HumanoidStateType.Physics)
             end
             local noclipActive = true
-            local noclipConn = RunService.Stepped:Connect(function()
-                if not noclipActive then return end
-                local c = player.Character
-                if not c then return end
-                for _, part in pairs(c:GetDescendants()) do
-                    if part:IsA("BasePart") then part.CanCollide = false end
+            local noclipParts = {}
+            pcall(function()
+                for _, part in pairs(player.Character:GetDescendants()) do
+                    if part:IsA("BasePart") then table.insert(noclipParts, part) end
                 end
             end)
+            local noclipConn = RunService.Stepped:Connect(function()
+                if not noclipActive then return end
+                if not scriptEnabled then
+                    noclipActive = false
+                    pcall(function() noclipConn:Disconnect() end)
+                    return
+                end
+                for _, part in ipairs(noclipParts) do
+                    if part and part.Parent then part.CanCollide = false end
+                end
+            end)
+            local myTok = scriptToken
             local function moveToPos(targetPos, spd)
                 local STOP_DIST = math.max(0.5, spd * 0.05 * 0.8)
                 while true do
                     task.wait(0.05)
+                    if not scriptEnabled or scriptToken ~= myTok then
+                        noclipActive = false
+                        pcall(function() noclipConn:Disconnect() end)
+                        break
+                    end
                     if isSaving then break end
                     if gameOver or not isGameActive() then break end
                     if not rootPart or not rootPart.Parent then break end
@@ -752,7 +733,7 @@ local function hackPC(pcData)
         end
     end
 
-    -- ===== TWEEN THẲNG tới trigger (dùng khi thử trigger khác trong cùng PC) =====
+    -- ===== TWEEN THẲNG tới trigger =====
     local function moveStraightTo(trigger)
         if not rootPart then return end
         local char = player.Character
@@ -765,18 +746,33 @@ local function hackPC(pcData)
             hum:ChangeState(Enum.HumanoidStateType.Physics)
         end
         local noclipActive = true
+        local noclipParts2 = {}
+        pcall(function()
+            for _, part in pairs(player.Character:GetDescendants()) do
+                if part:IsA("BasePart") then table.insert(noclipParts2, part) end
+            end
+        end)
         local noclipConn = RunService.Stepped:Connect(function()
             if not noclipActive then return end
-            local c = player.Character
-            if not c then return end
-            for _, part in pairs(c:GetDescendants()) do
-                if part:IsA("BasePart") then part.CanCollide = false end
+            if not scriptEnabled then
+                noclipActive = false
+                pcall(function() noclipConn:Disconnect() end)
+                return
+            end
+            for _, part in ipairs(noclipParts2) do
+                if part and part.Parent then part.CanCollide = false end
             end
         end)
         local targetPos = Vector3.new(trigger.Position.X, trigger.Position.Y + 0.5, trigger.Position.Z)
         local STOP_DIST = math.max(0.5, tweenSpeed * 0.05 * 0.8)
+        local myTok2 = scriptToken
         while true do
             task.wait(0.05)
+            if not scriptEnabled or scriptToken ~= myTok2 then
+                noclipActive = false
+                pcall(function() noclipConn:Disconnect() end)
+                break
+            end
             if isSaving then break end
             if gameOver or not isGameActive() then break end
             if not rootPart or not rootPart.Parent then break end
@@ -928,17 +924,18 @@ local function hackPC(pcData)
         -- Restore từ character hiện tại (có thể đã respawn)
         local curHum = player.Character and player.Character:FindFirstChild("Humanoid")
         if curHum then
-            curHum.WalkSpeed = 16
-            curHum.JumpPower = 50
+            curHum.WalkSpeed = savedWalkSpeed
+            curHum.JumpPower = savedJumpPower
         end
         -- Cũng restore từ hackHum gốc nếu còn valid
         if hackHum and hackHum.Parent then
-            hackHum.WalkSpeed = 16
-            hackHum.JumpPower = 50
+            hackHum.WalkSpeed = savedWalkSpeed
+            hackHum.JumpPower = savedJumpPower
         end
     end
 
-    while isHacking and scriptEnabled and not gameOver do
+    local hackToken = scriptToken
+    while isHacking and scriptEnabled and scriptToken == hackToken and not gameOver do
         task.wait(0.05)
 
         -- Check game còn active không
@@ -1088,7 +1085,20 @@ local function autoExitUnified()
 
     local function canGoExit()
         -- Phải đang trong map mới được exit, tránh trigger khi đang ở sảnh
-        if isInLobby() then return false end
+        if isInLobby() then
+            local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+            if root then
+                local p = root.Position
+                log("[DEBUG] canGoExit bị block vì isInLobby=true | pos=(" .. math.floor(p.X) .. "," .. math.floor(p.Y) .. "," .. math.floor(p.Z) .. ")", "warn")
+            end
+            return false
+        end
+        -- Nếu vào được đây = ngoài box lobby → log để debug
+        local root2 = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        if root2 then
+            local p2 = root2.Position
+            log("[DEBUG] canGoExit=true | tọa độ NGOÀI box → (" .. math.floor(p2.X) .. "," .. math.floor(p2.Y) .. "," .. math.floor(p2.Z) .. ")")
+        end
         local gameStatus = ReplicatedStorage:FindFirstChild("GameStatus")
         if gameStatus then
             local statusText = tostring(gameStatus.Value):upper()
@@ -1741,9 +1751,28 @@ local function beastLoop()
         while hitTimer < 1.5 do
             if not target.Character then break end
             local h = target.Character:FindFirstChild("Humanoid")
-            -- Break ngay nếu target bị cage (PlatformStand hoặc Health = 0)
+            -- Break ngay nếu target bị cage
             if h and (h.PlatformStand or h.Health <= 0) then
                 log("👹 " .. target.Name .. " caged! Moving on...")
+                break
+            end
+            -- Check thêm CapturedTorso trong FreezePod để tránh loop hit sau khi cage
+            local targetCaged = false
+            pcall(function()
+                local mapV = ReplicatedStorage:FindFirstChild("CurrentMap")
+                mapV = mapV and mapV.Value
+                if not mapV then return end
+                local t3 = target.Character and (target.Character:FindFirstChild("UpperTorso") or target.Character:FindFirstChild("Torso"))
+                if not t3 then return end
+                for _, v in ipairs(mapV:GetChildren()) do
+                    if v.Name == "FreezePod" then
+                        local ct = v:FindFirstChild("CapturedTorso", true)
+                        if ct and ct.Value == t3 then targetCaged = true break end
+                    end
+                end
+            end)
+            if targetCaged then
+                log("👹 " .. target.Name .. " in FreezePod! Moving on...")
                 break
             end
             -- TP liên tục bám theo target
@@ -1856,7 +1885,7 @@ local function autoSaveLoop()
                             ct = v:FindFirstChild("CapturedTorso", true)
                             if ct and ct.Value == nil then
                                 savesThisRound = savesThisRound + 1
-                                log("✅ [SAVE] Đã giải cứu " .. capturedPlayer.Name .. "! Tổng saves ván này=" .. (savesThisRound+1))
+                                log("✅ [SAVE] Đã giải cứu " .. capturedPlayer.Name .. "! Tổng saves ván này=" .. savesThisRound)
                                 updateStatus("Saved! Returning to PC...")
                                 break
                             end
@@ -1930,6 +1959,22 @@ local function mainLoop()
             currentPC = nil
             canAutoJump = false
             hasEscaped = false
+            isMoving = false
+            -- Dừng velocity ngay
+            pcall(function()
+                local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+                if root then
+                    root.AssemblyLinearVelocity = Vector3.zero
+                    root.AssemblyAngularVelocity = Vector3.zero
+                end
+                local hum = player.Character and player.Character:FindFirstChild("Humanoid")
+                if hum then
+                    hum.WalkSpeed = savedWalkSpeed
+                    hum.JumpPower = savedJumpPower
+                    hum.PlatformStand = false
+                end
+            end)
+            updateStatus("Script OFF")
             task.wait(0.5)
             continue
         end
@@ -2199,16 +2244,23 @@ local function mainLoop()
                         log("👹 [MAIN] Còn " .. freeCount .. " PC free → tween ngay")
                         updateStatus("Beast nearby! Trying other PC...")
                     else
-                        -- Tất cả PC đều bị skip → chờ beast rời
-                        log("👹 [MAIN] Tất cả PC bị skip → chờ beast rời (>35 studs)")
-                        updateStatus("Beast blocking all PCs! Waiting...")
-                        while scriptEnabled and isGameActive() do
-                            if not isBeastNearby(35) then break end
-                            if isFindExitPhase() and not hackExtraPC then break end
-                            task.wait(0.3)
+                        -- Không còn PC free nào
+                        if hackExtraPC then
+                            -- hackExtra ON: chỉ còn PC extra bị beast canh → exit luôn
+                            log("👹 [MAIN] hackExtra: beast canh PC extra duy nhất → exit ngay", "warn")
+                            break
+                        else
+                            -- hackExtra OFF: chờ beast rời
+                            log("👹 [MAIN] Tất cả PC bị skip → chờ beast rời (>35 studs)")
+                            updateStatus("Beast blocking all PCs! Waiting...")
+                            while scriptEnabled and isGameActive() do
+                                if not isBeastNearby(35) then break end
+                                if isFindExitPhase() then break end
+                                task.wait(0.3)
+                            end
+                            skippedPCs = {}
+                            log("👹 [MAIN] Beast rời → retry")
                         end
-                        skippedPCs = {}
-                        log("👹 [MAIN] Beast rời → retry")
                     end
                 else
                     break
@@ -2879,6 +2931,7 @@ local function createGUI()
     consoleTitleBar.BackgroundColor3 = Color3.fromRGB(20, 60, 20)
     consoleTitleBar.BorderSizePixel = 0
     consoleTitleBar.ZIndex = 12
+    consoleTitleBar.Active = true
     Instance.new("UICorner", consoleTitleBar).CornerRadius = UDim.new(0, 8)
     local consoleTitleStroke = Instance.new("UIStroke", consoleTitleBar)
     consoleTitleStroke.Color = Color3.fromRGB(60, 180, 60)
@@ -2893,6 +2946,25 @@ local function createGUI()
     consoleTitleLbl.TextSize = 13
     consoleTitleLbl.Font = Enum.Font.GothamBold
     consoleTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    -- Nút reset vị trí console về mặc định
+    local consoleResetBtn = Instance.new("TextButton", consoleTitleBar)
+    consoleResetBtn.Size = UDim2.new(0, 26, 0, 18)
+    consoleResetBtn.Position = UDim2.new(1, -58, 0.5, -9)
+    consoleResetBtn.BackgroundColor3 = Color3.fromRGB(30, 60, 100)
+    consoleResetBtn.Text = "⌂"
+    consoleResetBtn.TextColor3 = Color3.fromRGB(100, 180, 255)
+    consoleResetBtn.TextSize = 12
+    consoleResetBtn.Font = Enum.Font.GothamBold
+    consoleResetBtn.BorderSizePixel = 0
+    Instance.new("UICorner", consoleResetBtn).CornerRadius = UDim.new(0, 4)
+    consoleResetBtn.MouseButton1Click:Connect(function()
+        local fx = frame.AbsolutePosition.X
+        local fy = frame.AbsolutePosition.Y + frame.AbsoluteSize.Y + 4
+        local sw = screenGui.AbsoluteSize
+        consolePanel.Position = UDim2.new(0, math.min(fx, sw.X - CONSOLE_W - 4), 0, fy)
+        savedConsolePos = nil  -- reset saved pos
+    end)
 
     local consoleClearBtn = Instance.new("TextButton", consoleTitleBar)
     consoleClearBtn.Size = UDim2.new(0, 26, 0, 18)
@@ -3020,14 +3092,7 @@ local function createGUI()
     end
     consoleBtn.MouseButton1Click:Connect(toggleConsole)
 
-    -- Console drag + frame drag được xử lý trong UIS.InputChanged bên dưới
-    local conDragging, conDragStart, conStartPos
-
-    consoleTitleBar.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            conDragging=false
-        end
-    end)
+    -- Console drag được xử lý trong InputEnded chung bên dưới
 
     local TWEEN_OPEN  = TweenInfo.new(0.35, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
     local TWEEN_CLOSE = TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
@@ -3187,9 +3252,11 @@ local function createGUI()
         if conDragging and conDragStart then
             local sw = screenGui.AbsoluteSize
             local d = p - conDragStart
+            local maxX = math.max(0, sw.X - consolePanel.AbsoluteSize.X)
+            local maxY = math.max(0, sw.Y - consolePanel.AbsoluteSize.Y)
             consolePanel.Position = UDim2.fromOffset(
-                math.clamp(conStartPos.X + d.X, 0, sw.X - consolePanel.AbsoluteSize.X),
-                math.clamp(conStartPos.Y + d.Y, 0, sw.Y - consolePanel.AbsoluteSize.Y)
+                math.clamp(conStartPos.X + d.X, 0, maxX),
+                math.clamp(conStartPos.Y + d.Y, 0, maxY)
             )
         end
     end)
@@ -3267,7 +3334,11 @@ local function createGUI()
         scriptEnabled = not scriptEnabled
         toggleButton.BackgroundColor3 = scriptEnabled and Color3.fromRGB(40,190,40) or Color3.fromRGB(200,50,50)
         toggleButton.Text = scriptEnabled and "ON" or "OFF"
-        if scriptEnabled then hasEscaped = false end
+        if scriptEnabled then
+            hasEscaped = false
+            scriptToken = scriptToken + 1  -- token mới, loop cũ sẽ tự thoát
+        end
+        updateStatus(scriptEnabled and "Starting..." or "Script OFF")
     end)
 
     -- Apply loaded config to UI
@@ -3480,21 +3551,6 @@ local function createGUI()
                         Body=HttpSvc:JSONEncode({content=content1})})
                 end)
 
-                -- Tin 2: last 50 log lines
-                pcall(function()
-                    local lines = sessionLogLines
-                    local startIdx = math.max(1, #lines - 49)
-                    local last50 = {}
-                    for i = startIdx, #lines do table.insert(last50, lines[i]) end
-                    local logText = table.concat(last50, "\n")
-                    if #logText > 1800 then logText = "..." .. logText:sub(-1800) end
-                    local content2 = "📋 **Last 50 Actions Before Disconnect**"
-                        .. "\n**Player:** " .. player.Name
-                        .. "\n```\n" .. logText .. "\n```"
-                    request({Url=webhookUrl, Method="POST",
-                        Headers={["Content-Type"]="application/json"},
-                        Body=HttpSvc:JSONEncode({content=content2})})
-                end)
                 return -- thoát loop sau khi gửi
             end
         end
@@ -3537,40 +3593,37 @@ end
 updateCharacterReferences()
 createGUI()
 
--- Gửi log session cũ nếu có (sau createGUI để webhookUrl đã được load)
+-- Visualize lobby box để debug (tự xóa sau 60s)
 task.spawn(function()
-    if _oldSessionLog == "" then return end
-    task.wait(2) -- chờ createGUI apply config xong
-    -- Chờ thêm để GUI load và user có thể nhập webhook
-    local wUrl = ""
-    for i = 1, 15 do
-        wUrl = _G.ftfWebhookUrl or ""
-        if wUrl ~= "" and wUrl ~= nil then break end
-        task.wait(1)
-    end
-    if not wUrl or wUrl == "" then
-        print("[SESSION] No webhook URL after 15s, skip")
-        return
-    end
-    local pingStr = (_G.ftfPingDiscon and _G.ftfPingUserId and _G.ftfPingUserId ~= "")
-        and ("<@" .. _G.ftfPingUserId .. "> ") or ""
-    local logText = #_oldSessionLog > 1800 and ("..." .. _oldSessionLog:sub(-1800)) or _oldSessionLog
-    local content = pingStr .. "📋 **[FTF] Log session trước (trước khi bị kick)**"
-        .. "\n**Player:** " .. player.Name
-        .. "\n```\n" .. logText .. "\n```"
-    local ok, err = pcall(function()
-        request({Url=wUrl, Method="POST",
-            Headers={["Content-Type"]="application/json"},
-            Body=game:GetService("HttpService"):JSONEncode({content=content})})
+    pcall(function()
+        local center = (LOBBY_MIN + LOBBY_MAX) / 2
+        local size   = LOBBY_MAX - LOBBY_MIN
+        local box = Instance.new("Part")
+        box.Name             = "FTF_LobbyBox_Debug"
+        box.Size             = size
+        box.CFrame           = CFrame.new(center)
+        box.Anchored         = true
+        box.CanCollide       = false
+        box.Transparency     = 0.85
+        box.BrickColor       = BrickColor.new("Bright blue")
+        box.Material         = Enum.Material.Neon
+        box.Parent           = workspace
+        local sel = Instance.new("SelectionBox")
+        sel.Adornee          = box
+        sel.Color3           = Color3.fromRGB(0, 150, 255)
+        sel.LineThickness    = 0.06
+        sel.SurfaceTransparency = 0.9
+        sel.Parent           = workspace
+        log("[DEBUG] Lobby box hiện (xanh) | MIN=" .. tostring(LOBBY_MIN) .. " MAX=" .. tostring(LOBBY_MAX))
+        task.delay(60, function()
+            if box and box.Parent then box:Destroy() end
+            if sel and sel.Parent then sel:Destroy() end
+            log("[DEBUG] Lobby box đã ẩn")
+        end)
     end)
-    if ok then
-        print("[SESSION] Old log sent to Discord!")
-        _oldSessionLog = ""
-        pcall(function() writefile(SESSION_LOG_FILE, "") end)
-    else
-        print("[SESSION] Failed to send: " .. tostring(err))
-    end
 end)
+
+
 
 antiAFK()
 findBeast()
