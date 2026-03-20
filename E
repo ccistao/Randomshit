@@ -273,7 +273,7 @@ local function findBeast()
                     if isBeast(p) then
                         beast = p
                         foundBeast = true
-                        beastNearby = isBeastNearby(30)
+                        pcall(function() beastNearby = isBeastNearby(30) end)
                         log("👹 [BEAST] Tìm thấy beast: " .. p.Name .. " | isBeast=true")
                         break
                     end
