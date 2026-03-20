@@ -2404,6 +2404,18 @@ local function createGUI()
     titleLabel.Font = Enum.Font.GothamBold
     titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 
+    -- Hide button (ẩn UI thành icon nhỏ)
+    local hideBtn = Instance.new("TextButton", titleBar)
+    hideBtn.Size = UDim2.new(0, 26, 0, 26)
+    hideBtn.Position = UDim2.new(1, -87, 0.5, -13)
+    hideBtn.BackgroundColor3 = Color3.fromRGB(50, 40, 70)
+    hideBtn.Text = "—"
+    hideBtn.TextColor3 = Color3.fromRGB(180, 160, 220)
+    hideBtn.TextSize = 14
+    hideBtn.Font = Enum.Font.GothamBold
+    hideBtn.BorderSizePixel = 0
+    Instance.new("UICorner", hideBtn).CornerRadius = UDim.new(0, 6)
+
     local consoleBtn = Instance.new("TextButton", titleBar)
     consoleBtn.Size = UDim2.new(0, 26, 0, 26)
     consoleBtn.Position = UDim2.new(1, -58, 0.5, -13)
@@ -3149,6 +3161,78 @@ local function createGUI()
 
     gearBtn.MouseButton1Click:Connect(toggleSettings)
 
+    -- ===== HIDE UI (thu gọn thành icon nhỏ) =====
+    local uiHidden = false
+    local hiddenIcon = Instance.new("TextButton", screenGui)
+    hiddenIcon.Size = UDim2.new(0, 44, 0, 44)
+    hiddenIcon.Position = frame.Position
+    hiddenIcon.BackgroundColor3 = Color3.fromRGB(18, 18, 28)
+    hiddenIcon.Text = "⚡"
+    hiddenIcon.TextColor3 = Color3.fromRGB(100, 220, 100)
+    hiddenIcon.TextSize = 20
+    hiddenIcon.Font = Enum.Font.GothamBold
+    hiddenIcon.BorderSizePixel = 0
+    hiddenIcon.Visible = false
+    hiddenIcon.ZIndex = 20
+    Instance.new("UICorner", hiddenIcon).CornerRadius = UDim.new(0, 10)
+    local hiddenStroke = Instance.new("UIStroke", hiddenIcon)
+    hiddenStroke.Color = Color3.fromRGB(70, 70, 100)
+    hiddenStroke.Thickness = 1.5
+
+    -- Drag icon nhỏ
+    local iconDragging, iconDragStart, iconStartPos
+    local iconTouchId = nil
+    hiddenIcon.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            if iconTouchId ~= nil and i.UserInputType == Enum.UserInputType.Touch then return end
+            iconTouchId = i
+            iconDragging = true
+            iconDragStart = Vector2.new(i.Position.X, i.Position.Y)
+            iconStartPos = Vector2.new(hiddenIcon.AbsolutePosition.X, hiddenIcon.AbsolutePosition.Y)
+            i.Changed:Connect(function()
+                if i.UserInputState == Enum.UserInputState.End then
+                    iconDragging = false
+                    iconTouchId = nil
+                end
+            end)
+        end
+    end)
+    hiddenIcon.InputChanged:Connect(function(i)
+        if iconDragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local d = Vector2.new(i.Position.X, i.Position.Y) - iconDragStart
+            hiddenIcon.Position = UDim2.fromOffset(iconStartPos.X + d.X, iconStartPos.Y + d.Y)
+        end
+    end)
+
+    local iconMoved = false
+    hiddenIcon.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            iconMoved = false
+        end
+    end)
+    hiddenIcon.InputChanged:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch then
+            if iconDragging then iconMoved = true end
+        end
+    end)
+    hiddenIcon.MouseButton1Click:Connect(function()
+        if iconMoved then return end  -- drag thì không trigger click
+        -- Hiện lại UI
+        uiHidden = false
+        hiddenIcon.Visible = false
+        frame.Visible = true
+    end)
+
+    hideBtn.MouseButton1Click:Connect(function()
+        uiHidden = true
+        hiddenIcon.Position = UDim2.fromOffset(frame.AbsolutePosition.X, frame.AbsolutePosition.Y)
+        frame.Visible = false
+        if consolePanel.Visible then
+            consolePanel.Visible = false
+        end
+        hiddenIcon.Visible = true
+    end)
+
     -- ===== SLIDER + DRAG INPUT (Heartbeat-based for smooth mobile) =====
     local UIS = game:GetService("UserInputService")
     local speedDrag, cageDrag, intervalDrag = false, false, false
@@ -3156,8 +3240,13 @@ local function createGUI()
     local conDragging, conDragStart, conStartPos
     local touchPos = Vector2.new(0, 0)
 
-    -- Track touch/mouse position - chỉ theo dõi 1 ngón tay (touch ID đầu tiên)
-    local activeTouchId = nil -- lock vào 1 touch duy nhất
+    -- Smart drag: phân biệt click vs drag bằng ngưỡng di chuyển
+    local DRAG_THRESHOLD = 6  -- pixels, dưới ngưỡng = click, trên = drag
+    local dragConfirmed = false   -- true khi đã vượt ngưỡng → là drag
+    local conDragConfirmed = false
+
+    -- Lock 1 ngón tay duy nhất, bỏ qua ngón thứ 2+
+    local activeTouchId = nil
 
     local function isMine(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1
@@ -3165,7 +3254,7 @@ local function createGUI()
             return true
         end
         if i.UserInputType == Enum.UserInputType.Touch then
-            return activeTouchId == nil or activeTouchId == i
+            return activeTouchId == i
         end
         return false
     end
@@ -3175,6 +3264,17 @@ local function createGUI()
         if i.UserInputType == Enum.UserInputType.MouseMovement
         or i.UserInputType == Enum.UserInputType.Touch then
             touchPos = Vector2.new(i.Position.X, i.Position.Y)
+            -- Confirm drag khi vượt ngưỡng
+            if dragging and not dragConfirmed and dragStart then
+                if (touchPos - dragStart).Magnitude > DRAG_THRESHOLD then
+                    dragConfirmed = true
+                end
+            end
+            if conDragging and not conDragConfirmed and conDragStart then
+                if (touchPos - conDragStart).Magnitude > DRAG_THRESHOLD then
+                    conDragConfirmed = true
+                end
+            end
         end
     end)
 
@@ -3183,19 +3283,22 @@ local function createGUI()
         or (i.UserInputType == Enum.UserInputType.Touch and i == activeTouchId) then
             speedDrag=false; cageDrag=false; intervalDrag=false
             dragging=false; conDragging=false
+            dragConfirmed=false; conDragConfirmed=false
             activeTouchId = nil
         end
     end)
 
     local function beginDrag(i)
-        -- Chỉ nhận ngón tay đầu tiên, bỏ qua ngón sau
+        -- Bỏ qua mọi ngón tay sau ngón đầu tiên
         if i.UserInputType == Enum.UserInputType.Touch then
-            if activeTouchId ~= nil then return false end
+            if activeTouchId ~= nil then return false end  -- đã có ngón tay khác
             activeTouchId = i
         elseif i.UserInputType ~= Enum.UserInputType.MouseButton1 then
             return false
         end
         touchPos = Vector2.new(i.Position.X, i.Position.Y)
+        dragConfirmed = false
+        conDragConfirmed = false
         return true
     end
 
@@ -3241,22 +3344,18 @@ local function createGUI()
         if intervalDrag then
             setInterval(1 + math.clamp((p.X - intervalBg.AbsolutePosition.X) / math.max(1, intervalBg.AbsoluteSize.X), 0, 1) * 59)
         end
-        if dragging and dragStart then
-            local sw = screenGui.AbsoluteSize
+        if dragging and dragConfirmed and dragStart then
             local d = p - dragStart
             frame.Position = UDim2.fromOffset(
-                math.clamp(startPos.X + d.X, 0, sw.X - frame.AbsoluteSize.X),
-                math.clamp(startPos.Y + d.Y, 0, sw.Y - frame.AbsoluteSize.Y)
+                startPos.X + d.X,
+                startPos.Y + d.Y
             )
         end
-        if conDragging and conDragStart then
-            local sw = screenGui.AbsoluteSize
+        if conDragging and conDragConfirmed and conDragStart then
             local d = p - conDragStart
-            local maxX = math.max(0, sw.X - consolePanel.AbsoluteSize.X)
-            local maxY = math.max(0, sw.Y - consolePanel.AbsoluteSize.Y)
             consolePanel.Position = UDim2.fromOffset(
-                math.clamp(conStartPos.X + d.X, 0, maxX),
-                math.clamp(conStartPos.Y + d.Y, 0, maxY)
+                conStartPos.X + d.X,
+                conStartPos.Y + d.Y
             )
         end
     end)
