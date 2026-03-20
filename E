@@ -826,8 +826,8 @@ local function hackPC(pcData)
     local isFirstTrigger = true
     for _, trigger in ipairs(pcData.triggers) do
         if isSaving then return false end
-        -- Nếu beast gần thì không thử trigger tiếp, return ngay
-        if isBeastNearby(30) then
+        -- Nếu beast gần thì không thử trigger tiếp, return ngay (bỏ qua nếu đang return sau save)
+        if isBeastNearby(30) and not isReturning then
             log("[PC" .. pcId .. "] Beast gần khi chọn trigger → return ngay", "warn")
             return false
         end
@@ -947,7 +947,7 @@ local function hackPC(pcData)
             return false
         end
 
-        -- Beast check (bỏ qua nếu đang save)
+        -- Beast check (bỏ qua nếu đang save hoặc đang return về PC sau save)
         if isBeastNearby(30) and not isSaving and not isReturning then
             isHacking = false
             currentPC = nil
