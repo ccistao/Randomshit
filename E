@@ -3409,36 +3409,41 @@ local function createGUI()
         game.Close:Connect(function()
             if webhookUrl == "" then return end
 
-            -- Gửi kick/disconnect basic info
-            sendKickWebhook("Client closed / disconnected", false)
+            local HttpSvc = game:GetService("HttpService")
+            local pingStr = (pingDisconEnabled and pingUserId ~= "") and ("<@" .. pingUserId .. "> ") or ""
 
-            -- Gửi 50 dòng log cuối để debug
-            task.wait(0.3)
+            -- Tin 1: basic kick/disconnect info (đồng bộ, không task.wait)
+            local elapsed = tick() - scriptStartTime
+            local credits = getCredits()
+            local delta   = (credits and creditsAtStart) and (credits - creditsAtStart) or 0
+            local content1 = pingStr .. "🔌 **DISCONNECTED**"
+                .. "\n━━━━━━━━━━━━━━━━━━━━"
+                .. "\n👤 **Player:** " .. player.Name
+                .. "\n📋 **Reason:** Client closed / disconnected"
+                .. "\n⏱ **Uptime:** " .. formatUptime(elapsed)
+                .. "\n🔄 **Rounds:** " .. tostring(roundsPlayed)
+                .. "\n💰 **Credits:** " .. tostring(credits or "?") .. "C"
+                .. "\n📈 **Earned:** +" .. tostring(delta) .. "C"
+            pcall(function()
+                request({Url=webhookUrl, Method="POST",
+                    Headers={["Content-Type"]="application/json"},
+                    Body=HttpSvc:JSONEncode({content=content1})})
+            end)
+
+            -- Tin 2: last 50 log lines (đồng bộ)
             pcall(function()
                 local lines = sessionLogLines
-                local start = math.max(1, #lines - 49)
+                local startIdx = math.max(1, #lines - 49)
                 local last50 = {}
-                for i = start, #lines do
-                    table.insert(last50, lines[i])
-                end
+                for i = startIdx, #lines do table.insert(last50, lines[i]) end
                 local logText = table.concat(last50, "\n")
-                if #logText > 1800 then
-                    logText = "..." .. logText:sub(-1800)
-                end
-
-                local pingStr = ""
-                if pingDisconEnabled and pingUserId ~= "" then
-                    pingStr = "<@" .. pingUserId .. "> "
-                end
-
-                local content = pingStr .. "📋 **Last 50 Actions Before Disconnect**"
+                if #logText > 1800 then logText = "..." .. logText:sub(-1800) end
+                local content2 = "📋 **Last 50 Actions Before Disconnect**"
                     .. "\n**Player:** " .. player.Name
                     .. "\n```\n" .. logText .. "\n```"
-
-                local body = game:GetService("HttpService"):JSONEncode({content = content})
-                if request then
-                    request({Url=webhookUrl, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
-                end
+                request({Url=webhookUrl, Method="POST",
+                    Headers={["Content-Type"]="application/json"},
+                    Body=HttpSvc:JSONEncode({content=content2})})
             end)
         end)
     end)
