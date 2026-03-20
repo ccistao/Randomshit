@@ -219,10 +219,10 @@ local function findBeast()
             task.wait(0.1)
 
             if not scriptEnabled then continue end
-            -- Update beastNearby flag tại đây thay vì mỗi loop tự check
-            beastNearby = isBeastNearby(30)
 
             if foundBeast then
+                -- Update flag ngay sau khi xác nhận beast
+                beastNearby = isBeastNearby(30)
                 if not beast or not Players:FindFirstChild(beast.Name) or not isBeast(beast) then
                     log("👹 [BEAST] Beast " .. (beast and beast.Name or "?") .. " đã rời/đổi → reset state", "warn")
                     beast = nil
@@ -273,6 +273,7 @@ local function findBeast()
                     if isBeast(p) then
                         beast = p
                         foundBeast = true
+                        beastNearby = isBeastNearby(30)
                         log("👹 [BEAST] Tìm thấy beast: " .. p.Name .. " | isBeast=true")
                         break
                     end
@@ -3808,4 +3809,3 @@ findBeast()
 task.spawn(mainLoop)
 task.spawn(beastLoop)
 task.spawn(autoSaveLoop)
-print("ok")
