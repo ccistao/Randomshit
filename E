@@ -2125,6 +2125,7 @@ local function mainLoop()
                     -- silent skip
                 elseif skippedPCs[pcId] then
                     hasSkippedPC = true
+                    allCompleted = false  -- còn PC chưa hack (bị skip), chưa xong
                 else
                     -- Nếu autoSaveLoop đang xử lý hackPC thì chờ
                     if isSaving or isHacking then
@@ -2154,10 +2155,29 @@ local function mainLoop()
                     if not hackedPCs[id] then remainingCount += 1 end
                 end
                 if remainingCount > 0 then
-                    -- Còn PC chưa hack → clear skip list để retry PC khác ngay
-                    log("👹 [MAIN] Còn " .. remainingCount .. " PC bị skip → clear + retry ngay")
-                    updateStatus("Beast nearby! Trying other PC...")
-                    skippedPCs = {}  -- clear để for loop chọn PC khác
+                    -- Đếm PC nào chưa hack VÀ chưa bị skip (có thể tween ngay)
+                    local freeCount = 0
+                    for _, pcData in ipairs(allPCs) do
+                        if not hackedPCs[pcData.id] and not skippedPCs[pcData.id] then
+                            freeCount += 1
+                        end
+                    end
+                    if freeCount > 0 then
+                        -- Còn PC khác free → tween sang ngay, không chờ
+                        log("👹 [MAIN] Còn " .. freeCount .. " PC free → tween ngay")
+                        updateStatus("Beast nearby! Trying other PC...")
+                    else
+                        -- Tất cả PC đều bị skip → chờ beast rời
+                        log("👹 [MAIN] Tất cả PC bị skip → chờ beast rời (>35 studs)")
+                        updateStatus("Beast blocking all PCs! Waiting...")
+                        while scriptEnabled and isGameActive() do
+                            if not isBeastNearby(35) then break end
+                            if isFindExitPhase() and not hackExtraPC then break end
+                            task.wait(0.3)
+                        end
+                        skippedPCs = {}
+                        log("👹 [MAIN] Beast rời → retry")
+                    end
                 else
                     break
                 end
