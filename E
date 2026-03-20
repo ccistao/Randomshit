@@ -95,27 +95,6 @@ local function safeFire(root, trigger, state)
     end
 end
 
--- ==================== LOG ====================
--- ===== LOG BUFFER =====
-local logBuffer = {}
-local MAX_BUFFER = 200
-local consoleLogFn = nil
-
-local function bufferedLog(msg, logType)
-    if consoleLogFn then
-        consoleLogFn(msg, logType)
-    else
-        table.insert(logBuffer, {msg = tostring(msg), logType = logType or "normal"})
-        if #logBuffer > MAX_BUFFER then table.remove(logBuffer, 1) end
-    end
-end
-
--- log: luôn tạo dòng mới trong console
-local function log(msg)
-    bufferedLog(tostring(msg), "normal")
-    sessionLog(tostring(msg))  -- ghi vào session file log
-end
-
 -- ==================== SESSION FILE LOG ====================
 local SESSION_LOG_FILE = "ftf/session_log.txt"
 local sessionLogLines  = {}
@@ -143,6 +122,28 @@ end
 
 -- Hook vào log() để tự động ghi session log
 local _origLog = nil  -- sẽ set sau khi log() được define
+
+
+-- ==================== LOG ====================
+-- ===== LOG BUFFER =====
+local logBuffer = {}
+local MAX_BUFFER = 200
+local consoleLogFn = nil
+
+local function bufferedLog(msg, logType)
+    if consoleLogFn then
+        consoleLogFn(msg, logType)
+    else
+        table.insert(logBuffer, {msg = tostring(msg), logType = logType or "normal"})
+        if #logBuffer > MAX_BUFFER then table.remove(logBuffer, 1) end
+    end
+end
+
+-- log: luôn tạo dòng mới trong console
+local function log(msg)
+    bufferedLog(tostring(msg), "normal")
+    sessionLog(tostring(msg))
+end
 
 -- updateStatus: update label + chỉ log khi text thay đổi
 local _lastStatus = ""
