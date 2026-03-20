@@ -826,6 +826,11 @@ local function hackPC(pcData)
     local isFirstTrigger = true
     for _, trigger in ipairs(pcData.triggers) do
         if isSaving then return false end
+        -- Nếu beast gần thì không thử trigger tiếp, return ngay
+        if isBeastNearby(30) then
+            log("[PC" .. pcId .. "] Beast gần khi chọn trigger → return ngay", "warn")
+            return false
+        end
         if isFirstTrigger then
             isFirstTrigger = false
             moveTo(trigger)       -- U-shape khi tới PC từ xa
@@ -1423,6 +1428,7 @@ local function autoExitUnified()
                     elseif opened then
                         escape(targetExit)
                         lastExitUsed = targetExit.model
+                        if hasEscaped then break end
                     else
                         log("⏱ Door timeout, switching to other exit...")
                     end
@@ -2146,25 +2152,9 @@ local function mainLoop()
                     if not hackedPCs[id] then remainingCount += 1 end
                 end
                 if remainingCount > 0 then
-                    updateStatus("Skipped " .. remainingCount .. " PC(s), waiting beast to leave...")
-                    local beastGone = false
-                    -- Chạy trốn beast ngay
-                    if isBeastNearby(35) then
-                        escapeBeast()
-                    end
-                    while scriptEnabled and isGameActive() and not gameOver do
-                        if not isBeastNearby(35) then
-                            skippedPCs = {}
-                            log("👹 Beast left! Retrying skipped PCs...")
-                            beastGone = true
-                            break
-                        end
-                        if isFindExitPhase() and not hackExtraPC then break end
-                        task.wait(0.5)
-                    end
-                    if beastGone then
-                        totalAttempts = 0
-                    end
+                    -- Không chờ beast rời, tween sang PC khác ngay
+                    log("👹 [MAIN] Còn " .. remainingCount .. " PC bị skip → tween PC khác ngay")
+                    updateStatus("Beast nearby! Trying other PC...")
                 else
                     break
                 end
