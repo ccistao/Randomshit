@@ -1070,6 +1070,8 @@ local function autoExitUnified()
     end
 
     local function canGoExit()
+        -- Phải đang trong map mới được exit, tránh trigger khi đang ở sảnh
+        if isInLobby() then return false end
         local gameStatus = ReplicatedStorage:FindFirstChild("GameStatus")
         if gameStatus then
             local statusText = tostring(gameStatus.Value):upper()
@@ -2152,9 +2154,10 @@ local function mainLoop()
                     if not hackedPCs[id] then remainingCount += 1 end
                 end
                 if remainingCount > 0 then
-                    -- Không chờ beast rời, tween sang PC khác ngay
-                    log("👹 [MAIN] Còn " .. remainingCount .. " PC bị skip → tween PC khác ngay")
+                    -- Còn PC chưa hack → clear skip list để retry PC khác ngay
+                    log("👹 [MAIN] Còn " .. remainingCount .. " PC bị skip → clear + retry ngay")
                     updateStatus("Beast nearby! Trying other PC...")
+                    skippedPCs = {}  -- clear để for loop chọn PC khác
                 else
                     break
                 end
