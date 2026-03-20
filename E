@@ -347,8 +347,8 @@ local function escapeBeast()
 end
 
 -- ==================== LOBBY DETECTION (position-based) ====================
-local LOBBY_MIN = Vector3.new(-21, -40, -512)
-local LOBBY_MAX = Vector3.new(413, 80, -253)
+local LOBBY_MIN = Vector3.new(14, 5, -478)
+local LOBBY_MAX = Vector3.new(227, 40, -264)
 
 local function isInLobby()
     local char = player.Character
