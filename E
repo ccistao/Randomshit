@@ -16,6 +16,7 @@ local isHacking = false
 local hackedPCs = {}
 local beast = nil
 local foundBeast = false
+local beastNearby = false  -- flag update bởi findBeast tracker, đọc bởi các loop khác
 local skipCurrentPC = false
 local hasEscaped = false
 local canAutoJump = false
@@ -215,9 +216,11 @@ local function findBeast()
 
     task.spawn(function()
         while true do
-            task.wait(0.05)
+            task.wait(0.1)
 
             if not scriptEnabled then continue end
+            -- Update beastNearby flag tại đây thay vì mỗi loop tự check
+            beastNearby = isBeastNearby(30)
 
             if foundBeast then
                 if not beast or not Players:FindFirstChild(beast.Name) or not isBeast(beast) then
@@ -254,10 +257,14 @@ local function findBeast()
                     local gameStillActive = statusText:find("HACK") or statusText:find("HEAD START") or statusText:find("FIND")
                     if gameStillActive and not statusText:find("BEAST") and not statusText:find("BEF") then
                         log("Beast changed, game still active -> reset")
+                        scriptToken = scriptToken + 1
+                        task.wait(0.15)
                         gameOver = false
                         resetGameState()
+                        firstMoveOfRound = false  -- giữ tween, không TP thẳng giữa ván
                     else
                         log("Game over -> waiting for new round")
+                        scriptToken = scriptToken + 1 -- kill loops luôn
                         -- gameOver giữ = true, mainLoop sẽ tự reset khi vào round mới
                     end
                 end
@@ -611,34 +618,38 @@ local function isCoHacking()
     return false
 end
 
-RunService.Heartbeat:Connect(function(dt)
-    local char = player.Character
-    if not char then return end
-    humanoid = char:FindFirstChild("Humanoid")
-    rootPart = char:FindFirstChild("HumanoidRootPart")
-
-    if gameOver then
-        canAutoJump = false
-        jumpTimer = 0
-        return
+-- Update character refs khi đổi (tách khỏi Heartbeat)
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        local char = player.Character
+        if char then
+            local r = char:FindFirstChild("HumanoidRootPart")
+            if r and r ~= rootPart then
+                humanoid = char:FindFirstChild("Humanoid")
+                rootPart = r
+            end
+        end
     end
+end)
 
-    if canAutoJump and humanoid and rootPart and currentTrigger then
-        if isCoHacking() then
-            jumpTimer = 0
-            return
-        end
-        jumpTimer += dt
-        if jumpTimer >= jumpInterval then
-            pcall(function()
-                rootPart.CFrame = CFrame.new(rootPart.CFrame.Position + Vector3.new(0, 7, 0))
-            end)
-            task.wait(0.07)
-            pcall(function()
-                rootPart.CFrame = currentTrigger.CFrame + Vector3.new(0, 0.5, 0)
-            end)
-            jumpTimer = 0
-        end
+-- AutoJump loop riêng (không dùng Heartbeat để tránh task.wait trong callback)
+task.spawn(function()
+    while true do
+        task.wait(jumpInterval)
+        if not canAutoJump or gameOver or not currentTrigger then continue end
+        if isCoHacking() then continue end
+        local localRoot = rootPart
+        if not localRoot or not localRoot.Parent then continue end
+        pcall(function()
+            localRoot.CFrame = CFrame.new(localRoot.CFrame.Position + Vector3.new(0, 7, 0))
+        end)
+        task.wait(0.07)
+        pcall(function()
+            if currentTrigger and currentTrigger.Parent then
+                localRoot.CFrame = currentTrigger.CFrame + Vector3.new(0, 0.5, 0)
+            end
+        end)
     end
 end)
 
@@ -648,6 +659,7 @@ local function hackPC(pcData)
         log("hackPC: invalid pcData")
         return false
     end
+    if gameOver or not scriptEnabled then return false end
 
     local pcId = tostring(pcData.id)
     local pcName = pcData.computer.Name or "Unknown"
@@ -673,28 +685,27 @@ local function hackPC(pcData)
                 hum:ChangeState(Enum.HumanoidStateType.Physics)
             end
             local noclipActive = true
-            local noclipParts = {}
-            pcall(function()
-                for _, part in pairs(player.Character:GetDescendants()) do
-                    if part:IsA("BasePart") then table.insert(noclipParts, part) end
-                end
-            end)
-            local noclipConn = RunService.Stepped:Connect(function()
-                if not noclipActive then return end
-                if not scriptEnabled then
+            local noclipConn = RunService.Heartbeat:Connect(function()
+                if not noclipActive or not scriptEnabled then
                     noclipActive = false
-                    pcall(function() noclipConn:Disconnect() end)
                     return
                 end
-                for _, part in ipairs(noclipParts) do
-                    if part and part.Parent then part.CanCollide = false end
+                local c = player.Character
+                if not c then return end
+                for _, p in pairs(c:GetChildren()) do
+                    if p:IsA("BasePart") then p.CanCollide = false end
+                    if p:IsA("Model") then
+                        for _, pp in pairs(p:GetChildren()) do
+                            if pp:IsA("BasePart") then pp.CanCollide = false end
+                        end
+                    end
                 end
             end)
             local myTok = scriptToken
             local function moveToPos(targetPos, spd)
                 local STOP_DIST = math.max(0.5, spd * 0.05 * 0.8)
                 while true do
-                    task.wait(0.05)
+                    task.wait(0.1)
                     if not scriptEnabled or scriptToken ~= myTok then
                         noclipActive = false
                         pcall(function() noclipConn:Disconnect() end)
@@ -702,6 +713,12 @@ local function hackPC(pcData)
                     end
                     if isSaving then break end
                     if gameOver or not isGameActive() then break end
+                    -- Thấy exit phase → hủy tween ngay
+                    if isFindExitPhase() and not hackExtraPC then
+                        noclipActive = false
+                        pcall(function() noclipConn:Disconnect() end)
+                        break
+                    end
                     if not rootPart or not rootPart.Parent then break end
                     local diff = targetPos - rootPart.Position
                     if diff.Magnitude <= STOP_DIST then
@@ -746,28 +763,27 @@ local function hackPC(pcData)
             hum:ChangeState(Enum.HumanoidStateType.Physics)
         end
         local noclipActive = true
-        local noclipParts2 = {}
-        pcall(function()
-            for _, part in pairs(player.Character:GetDescendants()) do
-                if part:IsA("BasePart") then table.insert(noclipParts2, part) end
-            end
-        end)
-        local noclipConn = RunService.Stepped:Connect(function()
-            if not noclipActive then return end
-            if not scriptEnabled then
+        local noclipConn = RunService.Heartbeat:Connect(function()
+            if not noclipActive or not scriptEnabled then
                 noclipActive = false
-                pcall(function() noclipConn:Disconnect() end)
                 return
             end
-            for _, part in ipairs(noclipParts2) do
-                if part and part.Parent then part.CanCollide = false end
+            local c = player.Character
+            if not c then return end
+            for _, p in pairs(c:GetChildren()) do
+                if p:IsA("BasePart") then p.CanCollide = false end
+                if p:IsA("Model") then
+                    for _, pp in pairs(p:GetChildren()) do
+                        if pp:IsA("BasePart") then pp.CanCollide = false end
+                    end
+                end
             end
         end)
         local targetPos = Vector3.new(trigger.Position.X, trigger.Position.Y + 0.5, trigger.Position.Z)
         local STOP_DIST = math.max(0.5, tweenSpeed * 0.05 * 0.8)
         local myTok2 = scriptToken
         while true do
-            task.wait(0.05)
+            task.wait(0.1)
             if not scriptEnabled or scriptToken ~= myTok2 then
                 noclipActive = false
                 pcall(function() noclipConn:Disconnect() end)
@@ -775,6 +791,12 @@ local function hackPC(pcData)
             end
             if isSaving then break end
             if gameOver or not isGameActive() then break end
+            -- Thấy exit phase → hủy tween ngay
+            if isFindExitPhase() and not hackExtraPC then
+                noclipActive = false
+                pcall(function() noclipConn:Disconnect() end)
+                break
+            end
             if not rootPart or not rootPart.Parent then break end
             local diff = targetPos - rootPart.Position
             if diff.Magnitude <= STOP_DIST then
@@ -839,8 +861,9 @@ local function hackPC(pcData)
     local isFirstTrigger = true
     for _, trigger in ipairs(pcData.triggers) do
         if isSaving then return false end
+        if gameOver or not scriptEnabled then return false end
         -- Nếu beast gần thì không thử trigger tiếp, return ngay (bỏ qua nếu đang return sau save)
-        if isBeastNearby(30) and not isReturning then
+        if beastNearby and not isReturning then
             log("[PC" .. pcId .. "] Beast gần khi chọn trigger → return ngay", "warn")
             return false
         end
@@ -936,7 +959,7 @@ local function hackPC(pcData)
 
     local hackToken = scriptToken
     while isHacking and scriptEnabled and scriptToken == hackToken and not gameOver do
-        task.wait(0.05)
+        task.wait(0.1)
 
         -- Check game còn active không
         if not isGameActive() then
@@ -961,8 +984,8 @@ local function hackPC(pcData)
             return false
         end
 
-        -- Beast check (bỏ qua nếu đang save hoặc đang return về PC sau save)
-        if isBeastNearby(30) and not isSaving and not isReturning then
+        -- Beast check dùng flag thay vì tính distance
+        if beastNearby and not isSaving and not isReturning then
             isHacking = false
             currentPC = nil
             canAutoJump = false
@@ -1548,6 +1571,8 @@ local function getBeastNearestSurvivor(excludeName)
             local hum = p.Character:FindFirstChild("Humanoid")
             local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
             if hum and torso then
+                -- Skip nếu đã bị cage (PlatformStand = true hoặc Health = 0)
+                if hum.PlatformStand or hum.Health <= 0 then continue end
                 local captured = false
                 local map = ReplicatedStorage:FindFirstChild("CurrentMap")
                 map = map and map.Value
@@ -1656,12 +1681,16 @@ local function beastLoop()
 
             -- Noclip + pin position
             local noclipActive = true
+            local noclipParts3 = {}
+            pcall(function()
+                for _, p in pairs(player.Character:GetDescendants()) do
+                    if p:IsA("BasePart") then table.insert(noclipParts3, p) end
+                end
+            end)
             local noclipConn = RunService.Stepped:Connect(function()
                 if not noclipActive then return end
-                local c = player.Character
-                if not c then return end
-                for _, p in pairs(c:GetDescendants()) do
-                    if p:IsA("BasePart") then p.CanCollide = false end
+                for _, p in ipairs(noclipParts3) do
+                    if p and p.Parent then p.CanCollide = false end
                 end
             end)
             local freezeActive = true
@@ -1732,8 +1761,10 @@ local function beastLoop()
 
         if not target or not target.Character then
             updateStatus("Beast: All captured!")
-            task.wait(0.5)
-            continue
+            log("👹 [BEAST] Tất cả đã bị cage → dừng beastLoop đến ván sau")
+            -- Chờ game kết thúc, không hit nữa
+            repeat task.wait(0.5) until not isGameActive() or not scriptEnabled
+            break
         end
 
         local torso = target.Character:FindFirstChild("UpperTorso") or target.Character:FindFirstChild("Torso")
@@ -1851,12 +1882,16 @@ local function autoSaveLoop()
                             hum:ChangeState(Enum.HumanoidStateType.Physics)
                         end
                         local noclipActive = true
+                        local noclipParts4 = {}
+                        pcall(function()
+                            for _, part in pairs(player.Character:GetDescendants()) do
+                                if part:IsA("BasePart") then table.insert(noclipParts4, part) end
+                            end
+                        end)
                         local noclipConn = RunService.Stepped:Connect(function()
                             if not noclipActive then return end
-                            local c = player.Character
-                            if not c then return end
-                            for _, part in pairs(c:GetDescendants()) do
-                                if part:IsA("BasePart") then part.CanCollide = false end
+                            for _, part in ipairs(noclipParts4) do
+                                if part and part.Parent then part.CanCollide = false end
                             end
                         end)
 
@@ -1911,7 +1946,6 @@ local function autoSaveLoop()
                         isHacking = false
                         currentTrigger = nil
                         skippedPCs = {}
-                        allPCs = findAllPCs()
 
                         if not isGameActive() or gameOver then break end
 
@@ -2178,7 +2212,7 @@ local function mainLoop()
                     break
                 end
 
-                if isBeastNearby(30) and not isReturning and not isSaving then
+                if beastNearby and not isReturning and not isSaving then
                     local _bDist2 = 0
                     pcall(function() local br2 = beast and beast.Character and (beast.Character:FindFirstChild("HumanoidRootPart") or beast.Character:FindFirstChild("Torso")) if br2 and rootPart then _bDist2 = math.floor((rootPart.Position - br2.Position).Magnitude) end end)
                     log("👹 [MAIN] Beast cách " .. _bDist2 .. " studs → skip PC, tween PC khác ngay", "warn")
@@ -2215,7 +2249,15 @@ local function mainLoop()
                         hackedPCs[pcId] = true
                     else
                         allCompleted = false
+                        local gs_pre = ReplicatedStorage:FindFirstChild("GameStatus")
+                        log("[MAIN] Chuẩn bị hackPC" .. tostring(pcData.id) .. " | phase=" .. tostring(gs_pre and gs_pre.Value or "?") .. " | findExit=" .. tostring(isFindExitPhase()))
                         hackPC(pcData)
+                        task.wait(0.3)
+                        if isFindExitPhase() and not hackExtraPC then
+                            log("🚪 Exit phase sau hack PC" .. tostring(pcData.id) .. " → exit ngay!")
+                            allCompleted = true
+                            break
+                        end
                     end
                 end
             end
@@ -2240,9 +2282,22 @@ local function mainLoop()
                         end
                     end
                     if freeCount > 0 then
-                        -- Còn PC khác free → tween sang ngay, không chờ
+                        -- Còn PC khác free → tìm và hackPC đó ngay luôn, không restart for loop
                         log("👹 [MAIN] Còn " .. freeCount .. " PC free → tween ngay")
                         updateStatus("Beast nearby! Trying other PC...")
+                        for _, nextPC in ipairs(allPCs) do
+                            if not hackedPCs[nextPC.id] and not skippedPCs[nextPC.id] then
+                                if not beastNearby or isReturning or isSaving then
+                                    allCompleted = false
+                                    hackPC(nextPC)
+                                    task.wait(0.3)
+                                    if isFindExitPhase() and not hackExtraPC then
+                                        allCompleted = true
+                                    end
+                                end
+                                break
+                            end
+                        end
                     else
                         -- Không còn PC free nào
                         if hackExtraPC then
@@ -3179,57 +3234,81 @@ local function createGUI()
     hiddenStroke.Color = Color3.fromRGB(70, 70, 100)
     hiddenStroke.Thickness = 1.5
 
-    -- Drag icon nhỏ
-    local iconDragging, iconDragStart, iconStartPos
-    local iconTouchId = nil
-    hiddenIcon.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            if iconTouchId ~= nil and i.UserInputType == Enum.UserInputType.Touch then return end
-            iconTouchId = i
-            iconDragging = true
-            iconDragStart = Vector2.new(i.Position.X, i.Position.Y)
-            iconStartPos = Vector2.new(hiddenIcon.AbsolutePosition.X, hiddenIcon.AbsolutePosition.Y)
-            i.Changed:Connect(function()
-                if i.UserInputState == Enum.UserInputState.End then
-                    iconDragging = false
-                    iconTouchId = nil
-                end
-            end)
+    -- Icon drag dùng UIS global (mượt, không bị ngắt khi kéo nhanh)
+    local iconDragging = false
+    local iconDragStart = Vector2.new(0,0)
+    local iconStartPos = Vector2.new(0,0)
+    local iconMoved = false
+    local iconActiveTouchId = nil
+    local savedIconPos = nil  -- lưu vị trí icon giữa các lần ẩn/hiện
+
+    local function iconIsMine(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or i.UserInputType == Enum.UserInputType.MouseMovement then return true end
+        if i.UserInputType == Enum.UserInputType.Touch then
+            return iconActiveTouchId == nil or iconActiveTouchId == i
         end
+        return false
+    end
+
+    hiddenIcon.InputBegan:Connect(function(i)
+        if i.UserInputType ~= Enum.UserInputType.MouseButton1
+        and i.UserInputType ~= Enum.UserInputType.Touch then return end
+        if i.UserInputType == Enum.UserInputType.Touch then
+            if iconActiveTouchId ~= nil then return end
+            iconActiveTouchId = i
+        end
+        iconDragging = true
+        iconMoved = false
+        iconDragStart = Vector2.new(i.Position.X, i.Position.Y)
+        iconStartPos = Vector2.new(hiddenIcon.AbsolutePosition.X, hiddenIcon.AbsolutePosition.Y)
     end)
-    hiddenIcon.InputChanged:Connect(function(i)
-        if iconDragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-            local d = Vector2.new(i.Position.X, i.Position.Y) - iconDragStart
-            hiddenIcon.Position = UDim2.fromOffset(iconStartPos.X + d.X, iconStartPos.Y + d.Y)
+
+    -- Track via UIS để không bị ngắt khi ngón tay ra ngoài element
+    local _UIS = game:GetService("UserInputService")
+    _UIS.InputChanged:Connect(function(i)
+        if not iconDragging then return end
+        if not iconIsMine(i) then return end
+        if i.UserInputType == Enum.UserInputType.MouseMovement
+        or i.UserInputType == Enum.UserInputType.Touch then
+            local p = Vector2.new(i.Position.X, i.Position.Y)
+            local d = p - iconDragStart
+            if d.Magnitude > 4 then iconMoved = true end
+            if iconMoved then
+                hiddenIcon.Position = UDim2.fromOffset(iconStartPos.X + d.X, iconStartPos.Y + d.Y)
+            end
         end
     end)
 
-    local iconMoved = false
-    hiddenIcon.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            iconMoved = false
+    _UIS.InputEnded:Connect(function(i)
+        if not iconDragging then return end
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or (i.UserInputType == Enum.UserInputType.Touch and i == iconActiveTouchId) then
+            iconDragging = false
+            iconActiveTouchId = nil
+            -- Nếu click (không drag) → hiện lại UI
+            if not iconMoved then
+                savedIconPos = Vector2.new(hiddenIcon.AbsolutePosition.X, hiddenIcon.AbsolutePosition.Y)
+                uiHidden = false
+                hiddenIcon.Visible = false
+                frame.Visible = true
+            else
+                -- Lưu vị trí mới sau khi drag
+                savedIconPos = Vector2.new(hiddenIcon.AbsolutePosition.X, hiddenIcon.AbsolutePosition.Y)
+            end
         end
-    end)
-    hiddenIcon.InputChanged:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch then
-            if iconDragging then iconMoved = true end
-        end
-    end)
-    hiddenIcon.MouseButton1Click:Connect(function()
-        if iconMoved then return end  -- drag thì không trigger click
-        -- Hiện lại UI
-        uiHidden = false
-        hiddenIcon.Visible = false
-        frame.Visible = true
     end)
 
     hideBtn.MouseButton1Click:Connect(function()
         uiHidden = true
-        hiddenIcon.Position = UDim2.fromOffset(frame.AbsolutePosition.X, frame.AbsolutePosition.Y)
-        frame.Visible = false
-        if consolePanel.Visible then
-            consolePanel.Visible = false
+        -- Spawn icon tại vị trí đã lưu hoặc góc trên frame
+        if savedIconPos then
+            hiddenIcon.Position = UDim2.fromOffset(savedIconPos.X, savedIconPos.Y)
+        else
+            hiddenIcon.Position = UDim2.fromOffset(frame.AbsolutePosition.X, frame.AbsolutePosition.Y)
         end
+        frame.Visible = false
+        if consolePanel.Visible then consolePanel.Visible = false end
         hiddenIcon.Visible = true
     end)
 
