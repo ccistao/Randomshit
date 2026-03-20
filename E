@@ -95,6 +95,49 @@ local function safeFire(root, trigger, state)
     end
 end
 
+-- ==================== SESSION FILE LOG ====================
+local SESSION_LOG_FILE = "ftf/session_log.txt"
+local sessionLogLines  = {}
+local MAX_SESSION_LINES = 200
+
+local function getTimestamp()
+    local t = os.date("*t")
+    return string.format("%02d:%02d:%02d", t.hour, t.min, t.sec)
+end
+
+local function sessionLog(msg)
+    local line = "[" .. getTimestamp() .. "] " .. tostring(msg)
+    table.insert(sessionLogLines, line)
+    if #sessionLogLines > MAX_SESSION_LINES then
+        table.remove(sessionLogLines, 1)
+    end
+end
+
+-- Đọc log cũ NGAY KHI SCRIPT LOAD trước khi auto-save ghi đè
+local _oldSessionLog = ""
+pcall(function()
+    if readfile and isfile and isfile(SESSION_LOG_FILE) then
+        _oldSessionLog = readfile(SESSION_LOG_FILE) or ""
+    end
+end)
+
+-- Ghi log ra file mỗi 1s
+task.spawn(function()
+    while true do
+        task.wait(1)
+        pcall(function()
+            if writefile and makefolder then
+                if not isfolder("ftf") then makefolder("ftf") end
+                writefile(SESSION_LOG_FILE, table.concat(sessionLogLines, "\n"))
+            end
+        end)
+    end
+end)
+
+
+
+-- Hook vào log() để tự động ghi session log
+local _origLog = nil  -- sẽ set sau khi log() được define
 
 
 -- ==================== LOG ====================
@@ -115,6 +158,7 @@ end
 -- log: luôn tạo dòng mới trong console
 local function log(msg)
     bufferedLog(tostring(msg), "normal")
+    sessionLog(tostring(msg))
 end
 
 -- updateStatus: update label + chỉ log khi text thay đổi
@@ -160,6 +204,7 @@ local function resetGameState()
     isReturning = false
     isSaving = false
     coHackProgressCache = {}
+    allPCs = {}  -- clear PC list cũ
 
     -- Clear TempFloor_FTF parts nếu còn sót
     pcall(function()
@@ -1902,7 +1947,6 @@ local function mainLoop()
         firstMoveOfRound = true
 
         -- Chờ map load xong và PCs xuất hiện trước khi bắt đầu
-        -- Fix lag: tránh tween tới tọa độ PC từ ván cũ
         local mapWait = 0
         while mapWait < 15 do
             local pcs = findAllPCs()
@@ -3436,6 +3480,21 @@ local function createGUI()
                         Body=HttpSvc:JSONEncode({content=content1})})
                 end)
 
+                -- Tin 2: last 50 log lines
+                pcall(function()
+                    local lines = sessionLogLines
+                    local startIdx = math.max(1, #lines - 49)
+                    local last50 = {}
+                    for i = startIdx, #lines do table.insert(last50, lines[i]) end
+                    local logText = table.concat(last50, "\n")
+                    if #logText > 1800 then logText = "..." .. logText:sub(-1800) end
+                    local content2 = "📋 **Last 50 Actions Before Disconnect**"
+                        .. "\n**Player:** " .. player.Name
+                        .. "\n```\n" .. logText .. "\n```"
+                    request({Url=webhookUrl, Method="POST",
+                        Headers={["Content-Type"]="application/json"},
+                        Body=HttpSvc:JSONEncode({content=content2})})
+                end)
                 return -- thoát loop sau khi gửi
             end
         end
@@ -3478,7 +3537,40 @@ end
 updateCharacterReferences()
 createGUI()
 
-
+-- Gửi log session cũ nếu có (sau createGUI để webhookUrl đã được load)
+task.spawn(function()
+    if _oldSessionLog == "" then return end
+    task.wait(2) -- chờ createGUI apply config xong
+    -- Chờ thêm để GUI load và user có thể nhập webhook
+    local wUrl = ""
+    for i = 1, 15 do
+        wUrl = _G.ftfWebhookUrl or ""
+        if wUrl ~= "" and wUrl ~= nil then break end
+        task.wait(1)
+    end
+    if not wUrl or wUrl == "" then
+        print("[SESSION] No webhook URL after 15s, skip")
+        return
+    end
+    local pingStr = (_G.ftfPingDiscon and _G.ftfPingUserId and _G.ftfPingUserId ~= "")
+        and ("<@" .. _G.ftfPingUserId .. "> ") or ""
+    local logText = #_oldSessionLog > 1800 and ("..." .. _oldSessionLog:sub(-1800)) or _oldSessionLog
+    local content = pingStr .. "📋 **[FTF] Log session trước (trước khi bị kick)**"
+        .. "\n**Player:** " .. player.Name
+        .. "\n```\n" .. logText .. "\n```"
+    local ok, err = pcall(function()
+        request({Url=wUrl, Method="POST",
+            Headers={["Content-Type"]="application/json"},
+            Body=game:GetService("HttpService"):JSONEncode({content=content})})
+    end)
+    if ok then
+        print("[SESSION] Old log sent to Discord!")
+        _oldSessionLog = ""
+        pcall(function() writefile(SESSION_LOG_FILE, "") end)
+    else
+        print("[SESSION] Failed to send: " .. tostring(err))
+    end
+end)
 
 antiAFK()
 findBeast()
