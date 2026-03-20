@@ -95,33 +95,6 @@ local function safeFire(root, trigger, state)
     end
 end
 
--- ==================== SESSION FILE LOG ====================
-local SESSION_LOG_FILE = "ftf/session_log.txt"
-local sessionLogLines  = {}
-local MAX_SESSION_LINES = 200  -- giữ 200 dòng gần nhất trong memory
-
-local function getTimestamp()
-    local t = os.date("*t")
-    return string.format("%02d:%02d:%02d", t.hour, t.min, t.sec)
-end
-
-local function sessionLog(msg)
-    local line = "[" .. getTimestamp() .. "] " .. tostring(msg)
-    table.insert(sessionLogLines, line)
-    if #sessionLogLines > MAX_SESSION_LINES then
-        table.remove(sessionLogLines, 1)
-    end
-    -- Ghi ra file liên tục để có data kể cả khi crash đột ngột
-    pcall(function()
-        if writefile and makefolder then
-            if not isfolder("ftf") then makefolder("ftf") end
-            writefile(SESSION_LOG_FILE, table.concat(sessionLogLines, "\n"))
-        end
-    end)
-end
-
--- Hook vào log() để tự động ghi session log
-local _origLog = nil  -- sẽ set sau khi log() được define
 
 
 -- ==================== LOG ====================
@@ -142,7 +115,6 @@ end
 -- log: luôn tạo dòng mới trong console
 local function log(msg)
     bufferedLog(tostring(msg), "normal")
-    sessionLog(tostring(msg))
 end
 
 -- updateStatus: update label + chỉ log khi text thay đổi
@@ -1929,6 +1901,22 @@ local function mainLoop()
         savesThisRound = 0
         firstMoveOfRound = true
 
+        -- Chờ map load xong và PCs xuất hiện trước khi bắt đầu
+        -- Fix lag: tránh tween tới tọa độ PC từ ván cũ
+        local mapWait = 0
+        while mapWait < 15 do
+            local pcs = findAllPCs()
+            if #pcs > 0 then
+                log("[ROUND] Map loaded, found " .. #pcs .. " PCs → bắt đầu")
+                break
+            end
+            task.wait(0.5)
+            mapWait = mapWait + 0.5
+        end
+        if mapWait >= 15 then
+            log("[ROUND] Timeout chờ PC spawn (15s) → tiếp tục anyway", "warn")
+        end
+
         -- Auto-clear console mỗi 50 rounds để tránh memory buildup
         if roundsPlayed % 50 == 0 then
             logBuffer = {}
@@ -3417,46 +3405,52 @@ local function createGUI()
         end)
     end)
 
-    -- Disconnect detection + gửi last session logs
+    -- Disconnect/Kick detection bằng cách monitor player.Parent
+    -- game.Close và Kicked event không reliable trên mobile executor
+    task.spawn(function()
+        -- Chờ script ổn định trước
+        task.wait(5)
+        while true do
+            task.wait(0.5)
+            -- Khi player bị kick/disconnect, player.Parent = nil
+            if player.Parent == nil then
+                if webhookUrl == "" then return end
+
+                local HttpSvc = game:GetService("HttpService")
+                local pingStr = (pingDisconEnabled and pingUserId ~= "") and ("<@" .. pingUserId .. "> ") or ""
+                local elapsed = tick() - scriptStartTime
+                local credits = getCredits()
+                local delta   = (credits and creditsAtStart) and (credits - creditsAtStart) or 0
+
+                -- Tin 1: disconnect info
+                pcall(function()
+                    local content1 = pingStr .. "🔌 **KICKED / DISCONNECTED**"
+                        .. "\n━━━━━━━━━━━━━━━━━━━━"
+                        .. "\n👤 **Player:** " .. player.Name
+                        .. "\n⏱ **Uptime:** " .. formatUptime(elapsed)
+                        .. "\n🔄 **Rounds:** " .. tostring(roundsPlayed)
+                        .. "\n💰 **Credits:** " .. tostring(credits or "?") .. "C"
+                        .. "\n📈 **Earned:** +" .. tostring(delta) .. "C"
+                    request({Url=webhookUrl, Method="POST",
+                        Headers={["Content-Type"]="application/json"},
+                        Body=HttpSvc:JSONEncode({content=content1})})
+                end)
+
+                return -- thoát loop sau khi gửi
+            end
+        end
+    end)
+
+    -- Fallback: game.Close (backup nếu executor support)
     pcall(function()
         game.Close:Connect(function()
             if webhookUrl == "" then return end
-
             local HttpSvc = game:GetService("HttpService")
             local pingStr = (pingDisconEnabled and pingUserId ~= "") and ("<@" .. pingUserId .. "> ") or ""
-
-            -- Tin 1: basic kick/disconnect info (đồng bộ, không task.wait)
-            local elapsed = tick() - scriptStartTime
-            local credits = getCredits()
-            local delta   = (credits and creditsAtStart) and (credits - creditsAtStart) or 0
-            local content1 = pingStr .. "🔌 **DISCONNECTED**"
-                .. "\n━━━━━━━━━━━━━━━━━━━━"
-                .. "\n👤 **Player:** " .. player.Name
-                .. "\n📋 **Reason:** Client closed / disconnected"
-                .. "\n⏱ **Uptime:** " .. formatUptime(elapsed)
-                .. "\n🔄 **Rounds:** " .. tostring(roundsPlayed)
-                .. "\n💰 **Credits:** " .. tostring(credits or "?") .. "C"
-                .. "\n📈 **Earned:** +" .. tostring(delta) .. "C"
             pcall(function()
                 request({Url=webhookUrl, Method="POST",
                     Headers={["Content-Type"]="application/json"},
-                    Body=HttpSvc:JSONEncode({content=content1})})
-            end)
-
-            -- Tin 2: last 50 log lines (đồng bộ)
-            pcall(function()
-                local lines = sessionLogLines
-                local startIdx = math.max(1, #lines - 49)
-                local last50 = {}
-                for i = startIdx, #lines do table.insert(last50, lines[i]) end
-                local logText = table.concat(last50, "\n")
-                if #logText > 1800 then logText = "..." .. logText:sub(-1800) end
-                local content2 = "📋 **Last 50 Actions Before Disconnect**"
-                    .. "\n**Player:** " .. player.Name
-                    .. "\n```\n" .. logText .. "\n```"
-                request({Url=webhookUrl, Method="POST",
-                    Headers={["Content-Type"]="application/json"},
-                    Body=HttpSvc:JSONEncode({content=content2})})
+                    Body=HttpSvc:JSONEncode({content=pingStr .. "🔌 **game.Close fired** - " .. player.Name})})
             end)
         end)
     end)
@@ -3483,6 +3477,9 @@ end
 -- ==================== INIT ====================
 updateCharacterReferences()
 createGUI()
+
+
+
 antiAFK()
 findBeast()
 task.spawn(mainLoop)
