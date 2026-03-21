@@ -216,9 +216,7 @@ local function findBeast()
 
     task.spawn(function()
         while true do
-            task.wait(0.1)
-
-            if not scriptEnabled then continue end
+            task.wait(0.05)
 
             if foundBeast then
                 -- Update flag chỉ khi có đủ refs
@@ -228,7 +226,7 @@ local function findBeast()
                             or beast.Character:FindFirstChild("UpperTorso")
                             or beast.Character:FindFirstChild("Torso")
                         if br then
-                            beastNearby = (rootPart.Position - br.Position).Magnitude <= 30
+                            beastNearby = (rootPart.Position - br.Position).Magnitude <= 32
                         else
                             beastNearby = false
                         end
@@ -676,21 +674,22 @@ local function hackPC(pcData)
     local pcName = pcData.computer.Name or "Unknown"
 
     -- ===== SHARED TWEEN HELPER =====
+    -- returns true = tới đích, false = bị interrupt
     local function tweenTo(targetPos, spd, myTok)
         local STOP_DIST = math.max(0.5, spd * 0.05 * 0.8)
         while true do
             task.wait(0.05)
-            if not scriptEnabled or scriptToken ~= myTok then return end
-            if isSaving then return end
-            if gameOver or not isGameActive() then return end
-            if isFindExitPhase() and not hackExtraPC then return end
-            if not rootPart or not rootPart.Parent then return end
+            if not scriptEnabled or scriptToken ~= myTok then return false end
+            if isSaving then return false end
+            if gameOver or not isGameActive() then return false end
+            if isFindExitPhase() and not hackExtraPC then return false end
+            if not rootPart or not rootPart.Parent then return false end
             local diff = targetPos - rootPart.Position
             if diff.Magnitude <= STOP_DIST then
                 rootPart.CFrame = CFrame.new(targetPos)
                 rootPart.AssemblyLinearVelocity = Vector3.zero
                 rootPart.AssemblyAngularVelocity = Vector3.zero
-                return
+                return true
             end
             rootPart.AssemblyLinearVelocity = diff.Unit * spd
             rootPart.AssemblyAngularVelocity = Vector3.zero
@@ -740,9 +739,11 @@ local function hackPC(pcData)
             local posDown  = Vector3.new(myPos.X, myPos.Y - 50, myPos.Z)
             local posAcross= Vector3.new(trigger.Position.X, myPos.Y - 50, trigger.Position.Z)
             local posUp    = Vector3.new(trigger.Position.X, trigger.Position.Y + 0.5, trigger.Position.Z)
-            tweenTo(posDown,   tweenSpeed,                     myTok)
-            tweenTo(posAcross, math.max(10, tweenSpeed * 0.7), myTok)
-            tweenTo(posUp,     tweenSpeed,                     myTok)
+            if tweenTo(posDown,   tweenSpeed,                     myTok) then
+                if tweenTo(posAcross, math.max(10, tweenSpeed * 0.7), myTok) then
+                    tweenTo(posUp, tweenSpeed, myTok)
+                end
+            end
             noclipActive = false
             noclipConn:Disconnect()
             workspace.Gravity = savedGravity
@@ -871,6 +872,8 @@ local function hackPC(pcData)
         while spamTime < 1 do
             task.wait(0.1)
             spamTime = spamTime + 0.1
+            -- Beast tới gần → thoát ngay, không chờ hết 1s
+            if beastNearby then break end
             pcall(function()
                 local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
                 if r then r:FireServer("Input", "Action", true) end
@@ -1427,33 +1430,17 @@ local function autoExitUnified()
                     firing = false
                     if beastInterrupted then
                         log("👹 [EXIT] Beast vào lúc đang mở cửa! Tìm exit khác...", "warn")
-                        -- FIX Bug2: TP cao lên exit khác để tránh bị đánh
+                        -- Đổi sang exit khác mở tiếp, không TP 35 studs
                         local safeExit = nil
                         for _, e in ipairs(exits) do
                             if e.model ~= targetExit.model then safeExit = e break end
                         end
                         if safeExit then
-                            local _c = player.Character
-                            local _r = _c and _c:FindFirstChild("HumanoidRootPart")
-                            if _r then
-                                _r.CFrame = CFrame.new(_r.Position.X, _r.Position.Y + 35, _r.Position.Z)
-                                log("[EXIT] TP lên cao 35 studs để tránh beast")
-                            else
-                                log("[EXIT] Không tìm được rootPart để TP tránh beast!", "error")
-                            end
+                            targetExit = safeExit
+                            lastExitUsed = nil
+                            log("[EXIT] Chuyển sang exit: " .. safeExit.trigger.Name)
                         else
                             log("[EXIT] Không có exit thứ 2 để chuyển sang!", "error")
-                        end
-                        -- Chờ beast đi xa hẳn rồi mới retry
-                        local bw = 0
-                        while isBeastNearby(45) and scriptEnabled and not hasEscaped and bw < 15 do
-                            task.wait(0.3)
-                            bw = bw + 0.3
-                        end
-                        if bw >= 15 then
-                            log("[EXIT] Chờ beast 15s vẫn chưa rời → tiếp tục anyway", "warn")
-                        else
-                            log("[EXIT] Beast đã rời sau " .. string.format("%.1f", bw) .. "s → retry")
                         end
                     elseif opened then
                         escape(targetExit)
@@ -1930,6 +1917,8 @@ local function autoSaveLoop()
                         if returnPC then
                             currentPC = returnPC
                             isHacking = true
+                            -- Tắt beast check cho đến khi TP về PC xong
+                            isReturning = true
                             if wasHacking then
                                 log("🔄 Was hacking → TP back to PC" .. tostring(returnPC.id) .. "...")
                                 updateStatus("🔄 TP back to PC " .. tostring(returnPC.id) .. "...")
@@ -2199,6 +2188,8 @@ local function mainLoop()
                         skippedPCs[pcData.id] = true
                     end
                     escapeBeast()
+                    -- Wait nhỏ để tránh loop quá nhanh khi beast còn gần → CPU spike
+                    task.wait(0.5)
                     allCompleted = false
                     hasSkippedPC = true
                     break -- restart for loop, tween sang PC khác ngay
