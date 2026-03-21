@@ -678,7 +678,7 @@ local function hackPC(pcData)
     local function tweenTo(targetPos, spd, myTok)
         local STOP_DIST = math.max(0.5, spd * 0.05 * 0.8)
         while true do
-            task.wait(0.05)
+            task.wait()
             if not scriptEnabled or scriptToken ~= myTok then return false end
             if isSaving then return false end
             if gameOver or not isGameActive() then return false end
@@ -736,12 +736,13 @@ local function hackPC(pcData)
             workspace.Gravity = 0
             local myTok = scriptToken
             local myPos    = rootPart.Position
+            local fastSpeed = math.max(tweenSpeed, 60) -- down/across nhanh hơn để không bị hit
             local posDown  = Vector3.new(myPos.X, myPos.Y - 50, myPos.Z)
             local posAcross= Vector3.new(trigger.Position.X, myPos.Y - 50, trigger.Position.Z)
             local posUp    = Vector3.new(trigger.Position.X, trigger.Position.Y + 0.5, trigger.Position.Z)
-            local ok1 = tweenTo(posDown, tweenSpeed, myTok)
+            local ok1 = tweenTo(posDown, fastSpeed, myTok)
             if ok1 then
-                local ok2 = tweenTo(posAcross, math.max(10, tweenSpeed * 0.7), myTok)
+                local ok2 = tweenTo(posAcross, fastSpeed, myTok)
                 if ok2 then
                     tweenTo(posUp, tweenSpeed, myTok)
                 end
@@ -1732,10 +1733,10 @@ local function beastLoop()
 
         if not target or not target.Character then
             updateStatus("Beast: All captured!")
-            log("👹 [BEAST] Tất cả đã bị cage → dừng beastLoop đến ván sau")
-            -- Chờ game kết thúc, không hit nữa
+            log("👹 [BEAST] Tất cả đã bị cage → chờ ván sau")
+            -- Chờ game kết thúc rồi continue, không break
             repeat task.wait(0.5) until not isGameActive() or not scriptEnabled
-            break
+            continue
         end
 
         local torso = target.Character:FindFirstChild("UpperTorso") or target.Character:FindFirstChild("Torso")
@@ -3809,4 +3810,3 @@ log("[DEBUG] isBeastNearby type=" .. type(isBeastNearby))
 task.spawn(mainLoop)
 task.spawn(beastLoop)
 task.spawn(autoSaveLoop)
-print("kilongu")
