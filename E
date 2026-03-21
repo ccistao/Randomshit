@@ -979,6 +979,7 @@ local function hackPC(pcData)
             currentPC = nil
             canAutoJump = false
             skipCurrentPC = true
+            isMoving = false  -- clear để moveTo tiếp theo không bị block
             if pcData.id then
                 skippedPCs[pcData.id] = true
                 local _bd = 0
@@ -3789,4 +3790,3 @@ log("[DEBUG] isBeastNearby type=" .. type(isBeastNearby))
 task.spawn(mainLoop)
 task.spawn(beastLoop)
 task.spawn(autoSaveLoop)
-print("ok")
