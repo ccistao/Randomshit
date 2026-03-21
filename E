@@ -736,13 +736,12 @@ local function hackPC(pcData)
             workspace.Gravity = 0
             local myTok = scriptToken
             local myPos    = rootPart.Position
-            local fastSpeed = math.max(tweenSpeed, 60) -- down/across nhanh hơn để không bị hit
             local posDown  = Vector3.new(myPos.X, myPos.Y - 50, myPos.Z)
             local posAcross= Vector3.new(trigger.Position.X, myPos.Y - 50, trigger.Position.Z)
             local posUp    = Vector3.new(trigger.Position.X, trigger.Position.Y + 0.5, trigger.Position.Z)
-            local ok1 = tweenTo(posDown, fastSpeed, myTok)
+            local ok1 = tweenTo(posDown, tweenSpeed * 1.1, myTok)
             if ok1 then
-                local ok2 = tweenTo(posAcross, fastSpeed, myTok)
+                local ok2 = tweenTo(posAcross, tweenSpeed * 1.1, myTok)
                 if ok2 then
                     tweenTo(posUp, tweenSpeed, myTok)
                 end
@@ -3810,3 +3809,22 @@ log("[DEBUG] isBeastNearby type=" .. type(isBeastNearby))
 task.spawn(mainLoop)
 task.spawn(beastLoop)
 task.spawn(autoSaveLoop)
+
+-- ==================== NO FOG ====================
+pcall(function()
+    local lighting = game:GetService("Lighting")
+    lighting.FogEnd = 100000
+    lighting.FogStart = 100000
+    -- Xóa hết Atmosphere và FogEffect
+    for _, v in ipairs(lighting:GetChildren()) do
+        if v:IsA("Atmosphere") or v:IsA("FogEffect") then
+            v:Destroy()
+        end
+    end
+    -- Monitor nếu game add lại
+    lighting.ChildAdded:Connect(function(child)
+        if child:IsA("Atmosphere") or child:IsA("FogEffect") then
+            child:Destroy()
+        end
+    end)
+end)
