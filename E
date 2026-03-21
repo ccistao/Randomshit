@@ -705,9 +705,9 @@ local function hackPC(pcData)
 
         if firstMoveOfRound or isReturning then
             firstMoveOfRound = false
-            isReturning = false
             log("[MOVE] TP thẳng đến PC" .. pcId .. " | lý do: " .. (isReturning and "vừa save" or "first move đầu ván"))
             rootPart.CFrame = trigger.CFrame + Vector3.new(0, 0.5, 0)
+            isReturning = false  -- clear sau khi đã TP xong, beast check bật lại từ đây
             task.wait(0.1)
         else
             while isMoving do task.wait(0.1) end
@@ -852,6 +852,14 @@ local function hackPC(pcData)
         else
             moveStraightTo(trigger) -- Tween thẳng khi thử trigger khác trong cùng PC
         end
+        -- Check lại screen sau khi tween tới (player khác có thể done trong lúc mình đang đi)
+        if isScreenGreen() then
+            log("✅ [PC" .. pcId .. "] Screen xanh sau tween → skip")
+            hackedPCs[pcData.id] = true
+            isMoving = false
+            canAutoJump = false
+            return true
+        end
         if isSaving then
             isMoving = false
             return false
@@ -966,7 +974,7 @@ local function hackPC(pcData)
         end
 
         -- Beast check dùng flag thay vì tính distance
-        if beastNearby and not isSaving then
+        if beastNearby and not isSaving and not isReturning then
             isHacking = false
             currentPC = nil
             canAutoJump = false
@@ -2179,7 +2187,7 @@ local function mainLoop()
                     break
                 end
 
-                if beastNearby and not isSaving then
+                if beastNearby and not isSaving and not isReturning then
                     local _bDist2 = 0
                     pcall(function() local br2 = beast and beast.Character and (beast.Character:FindFirstChild("HumanoidRootPart") or beast.Character:FindFirstChild("Torso")) if br2 and rootPart then _bDist2 = math.floor((rootPart.Position - br2.Position).Magnitude) end end)
                     log("👹 [MAIN] Beast cách " .. _bDist2 .. " studs → skip PC, tween PC khác ngay", "warn")
@@ -2225,7 +2233,6 @@ local function mainLoop()
                         local gs_pre = ReplicatedStorage:FindFirstChild("GameStatus")
                         log("[MAIN] Chuẩn bị hackPC" .. tostring(pcData.id) .. " | phase=" .. tostring(gs_pre and gs_pre.Value or "?") .. " | findExit=" .. tostring(isFindExitPhase()))
                         hackPC(pcData)
-                        task.wait(0.3)
                         if isFindExitPhase() and not hackExtraPC then
                             log("🚪 Exit phase sau hack PC" .. tostring(pcData.id) .. " → exit ngay!")
                             allCompleted = true
@@ -3782,3 +3789,4 @@ log("[DEBUG] isBeastNearby type=" .. type(isBeastNearby))
 task.spawn(mainLoop)
 task.spawn(beastLoop)
 task.spawn(autoSaveLoop)
+print("ok")
