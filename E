@@ -841,11 +841,6 @@ local function hackPC(pcData)
     for _, trigger in ipairs(pcData.triggers) do
         if isSaving then return false end
         if gameOver or not scriptEnabled then return false end
-        -- Nếu beast gần thì không thử trigger tiếp, return ngay (bỏ qua nếu đang return sau save)
-        if beastNearby then
-            log("[PC" .. pcId .. "] Beast gần khi chọn trigger → return ngay", "warn")
-            return false
-        end
         if isFirstTrigger then
             isFirstTrigger = false
             moveTo(trigger)       -- U-shape khi tới PC từ xa
@@ -3802,4 +3797,4 @@ log("[DEBUG] isBeastNearby type=" .. type(isBeastNearby))
 task.spawn(mainLoop)
 task.spawn(beastLoop)
 task.spawn(autoSaveLoop)
-print("kilongu1")
+print("kilongu2")
