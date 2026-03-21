@@ -676,7 +676,6 @@ local function hackPC(pcData)
     local pcName = pcData.computer.Name or "Unknown"
 
     -- ===== SHARED TWEEN HELPER =====
-    -- Set gravity = 0 trước khi tween, restore sau → không cần Heartbeat counter gravity
     local function tweenTo(targetPos, spd, myTok)
         local STOP_DIST = math.max(0.5, spd * 0.05 * 0.8)
         while true do
@@ -695,18 +694,6 @@ local function hackPC(pcData)
             end
             rootPart.AssemblyLinearVelocity = diff.Unit * spd
             rootPart.AssemblyAngularVelocity = Vector3.zero
-        end
-    end
-
-    local function doNoclip(char)
-        if not char then return end
-        for _, p in pairs(char:GetChildren()) do
-            if p:IsA("BasePart") then p.CanCollide = false end
-            if p:IsA("Model") then
-                for _, pp in pairs(p:GetChildren()) do
-                    if pp:IsA("BasePart") then pp.CanCollide = false end
-                end
-            end
         end
     end
 
@@ -730,9 +717,24 @@ local function hackPC(pcData)
                 hum.PlatformStand = true
                 hum:ChangeState(Enum.HumanoidStateType.Physics)
             end
-            doNoclip(char)
+            -- Noclip Heartbeat: Roblox reset CanCollide mỗi frame nên phải loop
+            -- Gravity dùng workspace.Gravity=0 thay vì counter trong loop → nhẹ hơn
+            local noclipActive = true
+            local noclipConn = RunService.Heartbeat:Connect(function()
+                if not noclipActive then return end
+                local c = player.Character
+                if not c then return end
+                for _, p in pairs(c:GetChildren()) do
+                    if p:IsA("BasePart") then p.CanCollide = false end
+                    if p:IsA("Model") then
+                        for _, pp in pairs(p:GetChildren()) do
+                            if pp:IsA("BasePart") then pp.CanCollide = false end
+                        end
+                    end
+                end
+            end)
             local savedGravity = workspace.Gravity
-            workspace.Gravity = 0  -- tắt gravity 1 lần, không cần loop counter
+            workspace.Gravity = 0
             local myTok = scriptToken
             local myPos    = rootPart.Position
             local posDown  = Vector3.new(myPos.X, myPos.Y - 50, myPos.Z)
@@ -741,7 +743,9 @@ local function hackPC(pcData)
             tweenTo(posDown,   tweenSpeed,                     myTok)
             tweenTo(posAcross, math.max(10, tweenSpeed * 0.7), myTok)
             tweenTo(posUp,     tweenSpeed,                     myTok)
-            workspace.Gravity = savedGravity  -- restore
+            noclipActive = false
+            noclipConn:Disconnect()
+            workspace.Gravity = savedGravity
             if hum then
                 hum.PlatformStand = false
                 hum:ChangeState(Enum.HumanoidStateType.GettingUp)
@@ -762,12 +766,27 @@ local function hackPC(pcData)
             hum.PlatformStand = true
             hum:ChangeState(Enum.HumanoidStateType.Physics)
         end
-        doNoclip(char)
+        local noclipActive = true
+        local noclipConn = RunService.Heartbeat:Connect(function()
+            if not noclipActive then return end
+            local c = player.Character
+            if not c then return end
+            for _, p in pairs(c:GetChildren()) do
+                if p:IsA("BasePart") then p.CanCollide = false end
+                if p:IsA("Model") then
+                    for _, pp in pairs(p:GetChildren()) do
+                        if pp:IsA("BasePart") then pp.CanCollide = false end
+                    end
+                end
+            end
+        end)
         local savedGravity = workspace.Gravity
         workspace.Gravity = 0
         local myTok2 = scriptToken
         local targetPos = Vector3.new(trigger.Position.X, trigger.Position.Y + 0.5, trigger.Position.Z)
         tweenTo(targetPos, tweenSpeed, myTok2)
+        noclipActive = false
+        noclipConn:Disconnect()
         workspace.Gravity = savedGravity
         if hum then
             hum.PlatformStand = false
