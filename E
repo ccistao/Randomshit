@@ -739,8 +739,10 @@ local function hackPC(pcData)
             local posDown  = Vector3.new(myPos.X, myPos.Y - 50, myPos.Z)
             local posAcross= Vector3.new(trigger.Position.X, myPos.Y - 50, trigger.Position.Z)
             local posUp    = Vector3.new(trigger.Position.X, trigger.Position.Y + 0.5, trigger.Position.Z)
-            if tweenTo(posDown,   tweenSpeed,                     myTok) then
-                if tweenTo(posAcross, math.max(10, tweenSpeed * 0.7), myTok) then
+            local ok1 = tweenTo(posDown, tweenSpeed, myTok)
+            if ok1 then
+                local ok2 = tweenTo(posAcross, math.max(10, tweenSpeed * 0.7), myTok)
+                if ok2 then
                     tweenTo(posUp, tweenSpeed, myTok)
                 end
             end
@@ -1746,8 +1748,9 @@ local function beastLoop()
         -- TP sát target
         root.CFrame = CFrame.new(torso.Position + Vector3.new(0, 0, 0.5))
 
-        -- Spam hit nhanh nhất có thể
+        -- Spam hit nhanh nhất có thể, timeout 2s nếu không ragdoll
         local hitTimer = 0
+        local ragdollTimer = 0
         while hitTimer < 1.5 do
             if not target.Character then break end
             local h = target.Character:FindFirstChild("Humanoid")
@@ -1782,6 +1785,15 @@ local function beastLoop()
             remote:FireServer("HammerHit", torso)
             task.wait(0.05)
             hitTimer = hitTimer + 0.05
+            -- Timeout 2s không ragdoll → bỏ qua, tìm người khác
+            ragdollTimer = ragdollTimer + 0.05
+            if ragdollTimer >= 2 then
+                local hCheck = target.Character and target.Character:FindFirstChild("Humanoid")
+                if hCheck and not hCheck.PlatformStand then
+                    log("👹 " .. target.Name .. " không ragdoll sau 2s → skip")
+                    break
+                end
+            end
         end
     end
 end
@@ -3797,4 +3809,4 @@ log("[DEBUG] isBeastNearby type=" .. type(isBeastNearby))
 task.spawn(mainLoop)
 task.spawn(beastLoop)
 task.spawn(autoSaveLoop)
-print("kilongu2")
+print("kilongu")
