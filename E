@@ -222,9 +222,18 @@ local function findBeast()
 
             if foundBeast then
                 -- Update flag chỉ khi có đủ refs
-                if beast and beast.Character and rootPart then
-                    beastNearby = isBeastNearby(30)
-                end
+                pcall(function()
+                    if beast and beast.Character and rootPart then
+                        local br = beast.Character:FindFirstChild("HumanoidRootPart")
+                            or beast.Character:FindFirstChild("UpperTorso")
+                            or beast.Character:FindFirstChild("Torso")
+                        if br then
+                            beastNearby = (rootPart.Position - br.Position).Magnitude <= 30
+                        else
+                            beastNearby = false
+                        end
+                    end
+                end)
                 if not beast or not Players:FindFirstChild(beast.Name) or not isBeast(beast) then
                     log("👹 [BEAST] Beast " .. (beast and beast.Name or "?") .. " đã rời/đổi → reset state", "warn")
                     beast = nil
@@ -666,7 +675,42 @@ local function hackPC(pcData)
     local pcId = tostring(pcData.id)
     local pcName = pcData.computer.Name or "Unknown"
 
-    -- ===== HELPER: move tới 1 trigger =====
+    -- ===== SHARED TWEEN HELPER =====
+    -- Set gravity = 0 trước khi tween, restore sau → không cần Heartbeat counter gravity
+    local function tweenTo(targetPos, spd, myTok)
+        local STOP_DIST = math.max(0.5, spd * 0.05 * 0.8)
+        while true do
+            task.wait(0.05)
+            if not scriptEnabled or scriptToken ~= myTok then return end
+            if isSaving then return end
+            if gameOver or not isGameActive() then return end
+            if isFindExitPhase() and not hackExtraPC then return end
+            if not rootPart or not rootPart.Parent then return end
+            local diff = targetPos - rootPart.Position
+            if diff.Magnitude <= STOP_DIST then
+                rootPart.CFrame = CFrame.new(targetPos)
+                rootPart.AssemblyLinearVelocity = Vector3.zero
+                rootPart.AssemblyAngularVelocity = Vector3.zero
+                return
+            end
+            rootPart.AssemblyLinearVelocity = diff.Unit * spd
+            rootPart.AssemblyAngularVelocity = Vector3.zero
+        end
+    end
+
+    local function doNoclip(char)
+        if not char then return end
+        for _, p in pairs(char:GetChildren()) do
+            if p:IsA("BasePart") then p.CanCollide = false end
+            if p:IsA("Model") then
+                for _, pp in pairs(p:GetChildren()) do
+                    if pp:IsA("BasePart") then pp.CanCollide = false end
+                end
+            end
+        end
+    end
+
+    -- ===== HELPER: move tới 1 trigger (U-shape) =====
     local function moveTo(trigger)
         if not rootPart then return end
         local char = player.Character
@@ -675,7 +719,7 @@ local function hackPC(pcData)
 
         if firstMoveOfRound or isReturning then
             firstMoveOfRound = false
-            isReturning = false -- clear ngay sau khi TP về, không để ảnh hưởng PC khác
+            isReturning = false
             log("[MOVE] TP thẳng đến PC" .. pcId .. " | lý do: " .. (isReturning and "vừa save" or "first move đầu ván"))
             rootPart.CFrame = trigger.CFrame + Vector3.new(0, 0.5, 0)
             task.wait(0.1)
@@ -686,64 +730,18 @@ local function hackPC(pcData)
                 hum.PlatformStand = true
                 hum:ChangeState(Enum.HumanoidStateType.Physics)
             end
-            local noclipActive = true
-            local noclipConn = RunService.Heartbeat:Connect(function()
-                if not noclipActive or not scriptEnabled then
-                    noclipActive = false
-                    return
-                end
-                local c = player.Character
-                if not c then return end
-                for _, p in pairs(c:GetChildren()) do
-                    if p:IsA("BasePart") then p.CanCollide = false end
-                    if p:IsA("Model") then
-                        for _, pp in pairs(p:GetChildren()) do
-                            if pp:IsA("BasePart") then pp.CanCollide = false end
-                        end
-                    end
-                end
-            end)
+            doNoclip(char)
+            local savedGravity = workspace.Gravity
+            workspace.Gravity = 0  -- tắt gravity 1 lần, không cần loop counter
             local myTok = scriptToken
-            local function moveToPos(targetPos, spd)
-                local STOP_DIST = math.max(0.5, spd * 0.05 * 0.8)
-                while true do
-                    task.wait(0.1)
-                    if not scriptEnabled or scriptToken ~= myTok then
-                        noclipActive = false
-                        pcall(function() noclipConn:Disconnect() end)
-                        break
-                    end
-                    if isSaving then break end
-                    if gameOver or not isGameActive() then break end
-                    -- Thấy exit phase → hủy tween ngay
-                    if isFindExitPhase() and not hackExtraPC then
-                        noclipActive = false
-                        pcall(function() noclipConn:Disconnect() end)
-                        break
-                    end
-                    if not rootPart or not rootPart.Parent then break end
-                    local diff = targetPos - rootPart.Position
-                    if diff.Magnitude <= STOP_DIST then
-                        rootPart.CFrame = CFrame.new(targetPos)
-                        rootPart.AssemblyLinearVelocity = Vector3.zero
-                        rootPart.AssemblyAngularVelocity = Vector3.zero
-                        break
-                    end
-                    rootPart.AssemblyLinearVelocity = diff.Unit * spd
-                    rootPart.AssemblyAngularVelocity = Vector3.zero
-                end
-            end
             local myPos    = rootPart.Position
             local posDown  = Vector3.new(myPos.X, myPos.Y - 50, myPos.Z)
             local posAcross= Vector3.new(trigger.Position.X, myPos.Y - 50, trigger.Position.Z)
             local posUp    = Vector3.new(trigger.Position.X, trigger.Position.Y + 0.5, trigger.Position.Z)
-            moveToPos(posDown, tweenSpeed)
-            task.wait(0.05)
-            moveToPos(posAcross, math.max(10, tweenSpeed * 0.7))
-            task.wait(0.05)
-            moveToPos(posUp, tweenSpeed)
-            noclipActive = false
-            noclipConn:Disconnect()
+            tweenTo(posDown,   tweenSpeed,                     myTok)
+            tweenTo(posAcross, math.max(10, tweenSpeed * 0.7), myTok)
+            tweenTo(posUp,     tweenSpeed,                     myTok)
+            workspace.Gravity = savedGravity  -- restore
             if hum then
                 hum.PlatformStand = false
                 hum:ChangeState(Enum.HumanoidStateType.GettingUp)
@@ -764,54 +762,13 @@ local function hackPC(pcData)
             hum.PlatformStand = true
             hum:ChangeState(Enum.HumanoidStateType.Physics)
         end
-        local noclipActive = true
-        local noclipConn = RunService.Heartbeat:Connect(function()
-            if not noclipActive or not scriptEnabled then
-                noclipActive = false
-                return
-            end
-            local c = player.Character
-            if not c then return end
-            for _, p in pairs(c:GetChildren()) do
-                if p:IsA("BasePart") then p.CanCollide = false end
-                if p:IsA("Model") then
-                    for _, pp in pairs(p:GetChildren()) do
-                        if pp:IsA("BasePart") then pp.CanCollide = false end
-                    end
-                end
-            end
-        end)
-        local targetPos = Vector3.new(trigger.Position.X, trigger.Position.Y + 0.5, trigger.Position.Z)
-        local STOP_DIST = math.max(0.5, tweenSpeed * 0.05 * 0.8)
+        doNoclip(char)
+        local savedGravity = workspace.Gravity
+        workspace.Gravity = 0
         local myTok2 = scriptToken
-        while true do
-            task.wait(0.1)
-            if not scriptEnabled or scriptToken ~= myTok2 then
-                noclipActive = false
-                pcall(function() noclipConn:Disconnect() end)
-                break
-            end
-            if isSaving then break end
-            if gameOver or not isGameActive() then break end
-            -- Thấy exit phase → hủy tween ngay
-            if isFindExitPhase() and not hackExtraPC then
-                noclipActive = false
-                pcall(function() noclipConn:Disconnect() end)
-                break
-            end
-            if not rootPart or not rootPart.Parent then break end
-            local diff = targetPos - rootPart.Position
-            if diff.Magnitude <= STOP_DIST then
-                rootPart.CFrame = CFrame.new(targetPos)
-                rootPart.AssemblyLinearVelocity = Vector3.zero
-                rootPart.AssemblyAngularVelocity = Vector3.zero
-                break
-            end
-            rootPart.AssemblyLinearVelocity = diff.Unit * tweenSpeed
-            rootPart.AssemblyAngularVelocity = Vector3.zero
-        end
-        noclipActive = false
-        noclipConn:Disconnect()
+        local targetPos = Vector3.new(trigger.Position.X, trigger.Position.Y + 0.5, trigger.Position.Z)
+        tweenTo(targetPos, tweenSpeed, myTok2)
+        workspace.Gravity = savedGravity
         if hum then
             hum.PlatformStand = false
             hum:ChangeState(Enum.HumanoidStateType.GettingUp)
@@ -865,7 +822,7 @@ local function hackPC(pcData)
         if isSaving then return false end
         if gameOver or not scriptEnabled then return false end
         -- Nếu beast gần thì không thử trigger tiếp, return ngay (bỏ qua nếu đang return sau save)
-        if beastNearby and not isReturning then
+        if beastNearby then
             log("[PC" .. pcId .. "] Beast gần khi chọn trigger → return ngay", "warn")
             return false
         end
@@ -987,7 +944,7 @@ local function hackPC(pcData)
         end
 
         -- Beast check dùng flag thay vì tính distance
-        if beastNearby and not isSaving and not isReturning then
+        if beastNearby and not isSaving then
             isHacking = false
             currentPC = nil
             canAutoJump = false
@@ -2214,10 +2171,14 @@ local function mainLoop()
                     break
                 end
 
-                if beastNearby and not isReturning and not isSaving then
+                if beastNearby and not isSaving then
                     local _bDist2 = 0
                     pcall(function() local br2 = beast and beast.Character and (beast.Character:FindFirstChild("HumanoidRootPart") or beast.Character:FindFirstChild("Torso")) if br2 and rootPart then _bDist2 = math.floor((rootPart.Position - br2.Position).Magnitude) end end)
                     log("👹 [MAIN] Beast cách " .. _bDist2 .. " studs → skip PC, tween PC khác ngay", "warn")
+                    -- FIX: thêm pcData vào skippedPCs để freeCount tính đúng
+                    if pcData and pcData.id then
+                        skippedPCs[pcData.id] = true
+                    end
                     escapeBeast()
                     allCompleted = false
                     hasSkippedPC = true
@@ -3807,6 +3768,7 @@ end)
 
 antiAFK()
 findBeast()
+log("[DEBUG] isBeastNearby type=" .. type(isBeastNearby))
 task.spawn(mainLoop)
 task.spawn(beastLoop)
 task.spawn(autoSaveLoop)
