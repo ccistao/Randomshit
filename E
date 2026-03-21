@@ -182,7 +182,7 @@ local function resetGameState()
     -- Safety: đảm bảo nhân vật không bị freeze từ round trước
     pcall(function()
         local hum = player.Character and player.Character:FindFirstChild("Humanoid")
-        if hum then
+        if hum and not isSelfBeast() then
             hum.WalkSpeed = savedWalkSpeed
             hum.JumpPower = savedJumpPower
         end
@@ -1979,8 +1979,11 @@ local function mainLoop()
                 end
                 local hum = player.Character and player.Character:FindFirstChild("Humanoid")
                 if hum then
-                    hum.WalkSpeed = savedWalkSpeed
-                    hum.JumpPower = savedJumpPower
+                    -- Không restore speed nếu đang là beast (sẽ override skill tăng tốc)
+                    if not isSelfBeast() then
+                        hum.WalkSpeed = savedWalkSpeed
+                        hum.JumpPower = savedJumpPower
+                    end
                     hum.PlatformStand = false
                 end
             end)
@@ -2263,18 +2266,15 @@ local function mainLoop()
                         end
                     end
                     if freeCount > 0 then
-                        -- Còn PC khác free → tìm và hackPC đó ngay luôn, không restart for loop
+                        -- Còn PC khác free → tween ngay bất kể beast còn gần không
                         log("👹 [MAIN] Còn " .. freeCount .. " PC free → tween ngay")
                         updateStatus("Beast nearby! Trying other PC...")
                         for _, nextPC in ipairs(allPCs) do
                             if not hackedPCs[nextPC.id] and not skippedPCs[nextPC.id] then
-                                if not beastNearby or isReturning or isSaving then
-                                    allCompleted = false
-                                    hackPC(nextPC)
-                                    task.wait(0.3)
-                                    if isFindExitPhase() and not hackExtraPC then
-                                        allCompleted = true
-                                    end
+                                allCompleted = false
+                                hackPC(nextPC)
+                                if isFindExitPhase() and not hackExtraPC then
+                                    allCompleted = true
                                 end
                                 break
                             end
@@ -3498,6 +3498,18 @@ local function createGUI()
             scriptToken = scriptToken + 1  -- token mới, loop cũ sẽ tự thoát
         end
         updateStatus(scriptEnabled and "Starting..." or "Script OFF")
+        if scriptEnabled then
+            -- Update status ngay dựa trên state thực tế
+            task.spawn(function()
+                task.wait(0.3)
+                if not scriptEnabled then return end
+                if isInGame() then
+                    updateStatus("In game - scanning...")
+                elseif isInLobby() then
+                    updateStatus("Waiting for game...")
+                end
+            end)
+        end
     end)
 
     -- Apply loaded config to UI
@@ -3790,3 +3802,4 @@ log("[DEBUG] isBeastNearby type=" .. type(isBeastNearby))
 task.spawn(mainLoop)
 task.spawn(beastLoop)
 task.spawn(autoSaveLoop)
+print("kilongu1")
