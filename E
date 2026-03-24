@@ -362,16 +362,30 @@ local function isScreenGreen(pcData)
     return false
 end
 
-local function isCoHacking()
-    if not currentPC then return false end
-    for _, other in ipairs(Players:GetPlayers()) do
-        if other ~= player and other.Character then
-            local root = other.Character:FindFirstChild("HumanoidRootPart")
-            if not root then continue end
-            -- Check gần trigger <7 studs
+-- coHackActive: tracker riêng chạy mỗi 0.2s
+-- Đủ 2 điều kiện: (1) gần trigger <7 studs VÀ (2) ActionProgress đang tăng
+local coHackActive = false
+
+task.spawn(function()
+    while true do
+        task.wait(0.2)
+        if not scriptEnabled or not currentPC or not isHacking then
+            coHackActive = false
+            coHackProgressCache = {}
+            continue
+        end
+        local found = false
+        for _, other in ipairs(Players:GetPlayers()) do
+            if other == player or not other.Character then continue end
+            local otherRoot = other.Character:FindFirstChild("HumanoidRootPart")
+            if not otherRoot then
+                coHackProgressCache[other.Name] = nil
+                continue
+            end
+            -- Điều kiện 1: gần trigger <7 studs
             local isNear = false
             for _, trigger in ipairs(currentPC.triggers) do
-                if (root.Position - trigger.Position).Magnitude <= 7 then
+                if (otherRoot.Position - trigger.Position).Magnitude <= 7 then
                     isNear = true; break
                 end
             end
@@ -379,17 +393,23 @@ local function isCoHacking()
                 coHackProgressCache[other.Name] = nil
                 continue
             end
-            -- Check ActionProgress đang tăng
+            -- Điều kiện 2: ActionProgress đang tăng
             local tps = other:FindFirstChild("TempPlayerStatsModule")
             local ap  = tps and tps:FindFirstChild("ActionProgress")
             if not ap then continue end
             local cur  = ap.Value
             local last = coHackProgressCache[other.Name]
             coHackProgressCache[other.Name] = cur
-            if last and cur > last and cur > 0.01 then return true end
+            if last ~= nil and cur > last + 0.001 then
+                found = true; break
+            end
         end
+        coHackActive = found
     end
-    return false
+end)
+
+local function isCoHacking()
+    return coHackActive
 end
 
 local function getPCNearPlayer(targetPlayer)
@@ -634,38 +654,45 @@ local function hackPC(pcData, myTok, isFirstMove)
     currentPC  = pcData
     updateStatus("Hacking PC " .. pcId)
 
-    -- Freeze character khi hack: PlatformStand + pin velocity mỗi frame
+    -- Freeze character khi hack: BodyPosition + BodyGyro (chống joystick di chuyển)
     local hackChar = player.Character
     local hackHum  = hackChar and hackChar:FindFirstChild("Humanoid")
     local hackRoot = hackChar and hackChar:FindFirstChild("HumanoidRootPart")
-    if hackHum then
-        hackHum.PlatformStand = true
-        hackHum:ChangeState(Enum.HumanoidStateType.Physics)
+
+    local _bpos, _bgyr
+    if hackRoot and hackRoot.Parent then
+        pcall(function()
+            _bpos = Instance.new("BodyPosition")
+            _bpos.Name     = "HackFreeze_Pos"
+            _bpos.Position = hackRoot.Position
+            _bpos.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+            _bpos.D        = 1000
+            _bpos.P        = 50000
+            _bpos.Parent   = hackRoot
+
+            _bgyr = Instance.new("BodyGyro")
+            _bgyr.Name      = "HackFreeze_Gyro"
+            _bgyr.CFrame    = hackRoot.CFrame
+            _bgyr.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
+            _bgyr.D         = 1000
+            _bgyr.P         = 50000
+            _bgyr.Parent    = hackRoot
+        end)
     end
 
-    local freezeHack = true
-    local freezeHackConn = RunService.Heartbeat:Connect(function()
-        if not freezeHack or not scriptEnabled then return end
-        if not isHacking then freezeHack = false return end
-        if isMoving then return end
-        if hackRoot and hackRoot.Parent then
-            hackRoot.AssemblyLinearVelocity = Vector3.zero
-            hackRoot.AssemblyAngularVelocity = Vector3.zero
-        end
-    end)
-
     local function unfreezeHack()
-        freezeHack = false
-        pcall(function() freezeHackConn:Disconnect() end)
-        local curHum = player.Character and player.Character:FindFirstChild("Humanoid")
-        if curHum then
-            curHum.PlatformStand = false
-            curHum:ChangeState(Enum.HumanoidStateType.GettingUp)
-        end
-        if hackHum and hackHum.Parent then
-            hackHum.PlatformStand = false
-            hackHum:ChangeState(Enum.HumanoidStateType.GettingUp)
-        end
+        pcall(function() if _bpos and _bpos.Parent then _bpos:Destroy() end end)
+        pcall(function() if _bgyr and _bgyr.Parent then _bgyr:Destroy() end end)
+        -- Cleanup nếu còn sót trong character hiện tại
+        pcall(function()
+            local cur = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+            if cur then
+                local p = cur:FindFirstChild("HackFreeze_Pos")
+                local g = cur:FindFirstChild("HackFreeze_Gyro")
+                if p then p:Destroy() end
+                if g then g:Destroy() end
+            end
+        end)
     end
 
     local hackTok = myTok
@@ -760,7 +787,17 @@ task.spawn(function()
         task.wait(jumpInterval)
         if not scriptEnabled then continue end
         if not canAutoJump or gameOver or not currentTrigger then continue end
-        if isCoHacking() then continue end
+        if isCoHacking() then
+            -- Có người hack chung → KHÔNG jump, chỉ pin lại vị trí trigger
+            local localRoot = rootPart
+            if localRoot and localRoot.Parent and currentTrigger and currentTrigger.Parent then
+                pcall(function()
+                    localRoot.CFrame = currentTrigger.CFrame + Vector3.new(0, 0.5, 0)
+                    localRoot.AssemblyLinearVelocity = Vector3.zero
+                end)
+            end
+            continue
+        end
         local localRoot = rootPart
         if not localRoot or not localRoot.Parent then continue end
         pcall(function()
@@ -1124,14 +1161,14 @@ local function autoSaveLoop()
 
                 -- Return về PC cũ (isReturning vẫn = true → moveTo sẽ TP thẳng)
                 if returnPC then
-                    currentPC  = returnPC
-                    isHacking  = true
                     log("🔄 Return về PC" .. tostring(returnPC.id))
                     updateStatus("Returning to PC " .. tostring(returnPC.id) .. "...")
+                    local retTok = scriptToken
                     task.spawn(function()
-                        if isGameActive() and not gameOver then
-                            hackPC(returnPC, scriptToken, true)
-                        end
+                        task.wait(0.1)  -- nhường thread để beastNearby không trigger ngay
+                        if not isGameActive() or gameOver then isReturning = false return end
+                        isReturning = true  -- giữ flag đến khi hackPC bắt đầu
+                        hackPC(returnPC, retTok, true)
                         isReturning = false
                         isHacking   = false
                     end)
@@ -1727,15 +1764,19 @@ local function mainLoop()
                         if hackExtraPC then
                             log("👹 hackExtra: beast canh PC extra → exit"); break
                         else
-                            log("👹 Tất cả PC bị skip → chờ beast rời")
-                            updateStatus("Beast blocking all PCs!")
-                            while scriptEnabled and isGameActive() do
-                                if not isBeastNearby(35) then break end
+                            -- Reset toàn bộ skippedPCs, chỉ giữ PC đã done thật
+                            -- rồi retry ngay thay vì đứng chờ beast rời
+                            log("👹 Tất cả PC bị skip → reset list và retry PC chưa done")
+                            updateStatus("All PCs blocked! Resetting...")
+                            local newSkipped = {}
+                            -- Chờ ngắn để beast di chuyển, không đứng yên mãi
+                            local waitT = 0
+                            while waitT < 2 and scriptEnabled and isGameActive() do
                                 if isFindExitPhase() then break end
-                                task.wait(0.3)
+                                task.wait(0.3); waitT += 0.3
                             end
-                            skippedPCs = {}
-                            log("👹 Beast rời → retry")
+                            skippedPCs = newSkipped  -- clear hoàn toàn
+                            log("👹 Reset skip list → hack lại PC chưa done")
                         end
                     end
                 else
