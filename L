@@ -1,0 +1,278 @@
+local player = game.Players.LocalPlayer
+local runService = game:GetService("RunService")
+local userInputService = game:GetService("UserInputService")
+local tweenService = game:GetService("TweenService")
+
+local isBlinking = false
+local fakeChar = nil
+local connection = nil
+local startCFrame = nil
+local customKey = nil -- keybind tùy chỉnh
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "Blink_V5_Mobile"
+screenGui.Parent = player:WaitForChild("PlayerGui")
+screenGui.ResetOnSpawn = false
+
+-- ============================================================
+-- BUTTON CHÍNH
+-- ============================================================
+local button = Instance.new("TextButton")
+button.Size = UDim2.new(0, 120, 0, 54)
+button.Position = UDim2.new(0.5, -60, 0.2, 0)
+button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+button.Text = "BLINK: OFF"
+button.TextColor3 = Color3.fromRGB(255, 255, 255)
+button.Font = Enum.Font.GothamBold
+button.TextSize = 16
+button.ClipsDescendants = true
+button.AutoButtonColor = false
+button.Parent = screenGui
+Instance.new("UICorner", button).CornerRadius = UDim.new(0, 14)
+
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(0, 170, 255)
+stroke.Thickness = 1.5
+stroke.Transparency = 0.7
+stroke.Parent = button
+
+-- ============================================================
+-- KEYBIND INPUT (ngay dưới button)
+-- ============================================================
+local keyFrame = Instance.new("Frame")
+keyFrame.Size = UDim2.new(0, 120, 0, 32)
+keyFrame.Position = UDim2.new(0.5, -60, 0.2, 62) -- ngay dưới button
+keyFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+keyFrame.BorderSizePixel = 0
+keyFrame.Parent = screenGui
+Instance.new("UICorner", keyFrame).CornerRadius = UDim.new(0, 10)
+
+local keyStroke = Instance.new("UIStroke")
+keyStroke.Color = Color3.fromRGB(0, 170, 255)
+keyStroke.Thickness = 1.5
+keyStroke.Transparency = 0.7
+keyStroke.Parent = keyFrame
+
+local keyBox = Instance.new("TextBox")
+keyBox.Size = UDim2.new(0.55, 0, 1, 0)
+keyBox.Position = UDim2.new(0, 8, 0, 0)
+keyBox.BackgroundTransparency = 1
+keyBox.Text = ""
+keyBox.PlaceholderText = "Key..."
+keyBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+keyBox.PlaceholderColor3 = Color3.fromRGB(130, 130, 130)
+keyBox.Font = Enum.Font.GothamBold
+keyBox.TextSize = 13
+keyBox.MaxVisibleGraphemes = 1
+keyBox.ClearTextOnFocus = true
+keyBox.Parent = keyFrame
+
+local applyBtn = Instance.new("TextButton")
+applyBtn.Size = UDim2.new(0.4, -4, 0.7, 0)
+applyBtn.Position = UDim2.new(0.6, 0, 0.15, 0)
+applyBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+applyBtn.Text = "SET"
+applyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+applyBtn.Font = Enum.Font.GothamBold
+applyBtn.TextSize = 11
+applyBtn.AutoButtonColor = false
+applyBtn.Parent = keyFrame
+Instance.new("UICorner", applyBtn).CornerRadius = UDim.new(0, 6)
+
+-- Apply keybind khi nhấn SET
+applyBtn.MouseButton1Click:Connect(function()
+    local txt = keyBox.Text:upper():sub(1, 1)
+    if txt ~= "" then
+        local ok, enum = pcall(function()
+            return Enum.KeyCode[txt]
+        end)
+        if ok and enum then
+            customKey = enum
+            keyBox.Text = txt
+            keyStroke.Color = Color3.fromRGB(0, 255, 100)
+            tweenService:Create(applyBtn, TweenInfo.new(0.15), {
+                BackgroundColor3 = Color3.fromRGB(0, 200, 80)
+            }):Play()
+            task.delay(0.8, function()
+                tweenService:Create(applyBtn, TweenInfo.new(0.15), {
+                    BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+                }):Play()
+                keyStroke.Color = Color3.fromRGB(0, 170, 255)
+            end)
+        else
+            keyBox.Text = "?"
+        end
+    end
+end)
+
+-- Lắng nghe keybind toàn màn hình
+userInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if customKey and input.KeyCode == customKey then
+        toggleBlink()
+    end
+end)
+
+-- ============================================================
+-- DRAG + TAP sync vị trí keyFrame theo button
+-- ============================================================
+local dragging = false
+local didDrag = false
+local dragInput = nil
+local dragStartPos = nil
+local buttonStartPos = nil
+local DRAG_THRESHOLD = 12
+
+local function syncKeyFrame()
+    keyFrame.Position = UDim2.new(
+        0, button.Position.X.Offset,
+        0, button.Position.Y.Offset + 62
+    )
+end
+
+local function clampPosition(pos)
+    local guiSize = screenGui.AbsoluteSize
+    local bSize = button.AbsoluteSize
+    local x = math.clamp(pos.X.Offset, 0, guiSize.X - bSize.X)
+    local y = math.clamp(pos.Y.Offset, 0, guiSize.Y - bSize.Y)
+    return UDim2.new(0, x, 0, y)
+end
+
+local function onPressDown()
+    tweenService:Create(button, TweenInfo.new(0.08, Enum.EasingStyle.Quad), {
+        Size = UDim2.new(0, 112, 0, 48),
+        BackgroundTransparency = 0.15,
+    }):Play()
+end
+
+local function onPressUp()
+    tweenService:Create(button, TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 120, 0, 54),
+        BackgroundTransparency = 0,
+    }):Play()
+end
+
+button.InputBegan:Connect(function(input)
+    if input.UserInputType ~= Enum.UserInputType.Touch
+    and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+    dragging = true
+    didDrag = false
+    dragInput = input
+    dragStartPos = input.Position
+    buttonStartPos = UDim2.new(0, button.AbsolutePosition.X, 0, button.AbsolutePosition.Y)
+    button.Position = buttonStartPos
+    onPressDown()
+end)
+
+userInputService.InputChanged:Connect(function(input)
+    if not dragging or input ~= dragInput then return end
+    local delta = input.Position - dragStartPos
+    if not didDrag and (math.abs(delta.X) > DRAG_THRESHOLD or math.abs(delta.Y) > DRAG_THRESHOLD) then
+        didDrag = true
+    end
+    if didDrag then
+        local newPos = UDim2.new(0, buttonStartPos.X.Offset + delta.X, 0, buttonStartPos.Y.Offset + delta.Y)
+        button.Position = clampPosition(newPos)
+        syncKeyFrame()
+    end
+end)
+
+userInputService.InputEnded:Connect(function(input)
+    if not dragging or input ~= dragInput then return end
+    dragging = false
+    onPressUp()
+    if not didDrag then
+        toggleBlink()
+    end
+end)
+
+-- ============================================================
+-- HÀM BLINK
+-- ============================================================
+function toggleBlink()
+    local realChar = player.Character
+    if not realChar or not realChar:FindFirstChild("HumanoidRootPart") then return end
+    local realRoot = realChar.HumanoidRootPart
+    local realHum = realChar:FindFirstChildOfClass("Humanoid")
+
+    isBlinking = not isBlinking
+
+    if isBlinking then
+        tweenService:Create(button, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+        }):Play()
+        stroke.Transparency = 0.2
+        button.Text = "BLINK: ON"
+
+        startCFrame = realRoot.CFrame
+        realChar.Archivable = true
+        fakeChar = realChar:Clone()
+        fakeChar.Parent = workspace
+
+        local fakeHum = fakeChar:FindFirstChildOfClass("Humanoid")
+        if fakeHum and realHum then
+            pcall(function()
+                fakeHum:ApplyDescription(realHum:GetAppliedDescription())
+            end)
+        end
+
+        for _, p in pairs(fakeChar:GetDescendants()) do
+            if p:IsA("BasePart") then
+                p.Anchored = false
+                p.CanCollide = false
+                p.Transparency = (p.Name == "HumanoidRootPart") and 1 or 0
+            elseif p:IsA("SelectionBox") or p:IsA("SelectionPartLasso") then
+                p:Destroy()
+            end
+        end
+
+        local fakeRoot = fakeChar:FindFirstChild("HumanoidRootPart")
+        if fakeRoot then fakeRoot.CanCollide = true end
+
+        realRoot.Anchored = true
+        workspace.CurrentCamera.CameraSubject = fakeHum
+
+        local jointMap = {}
+        for _, realJoint in pairs(realChar:GetDescendants()) do
+            if realJoint:IsA("Motor6D") then
+                local fakePart = fakeChar:FindFirstChild(realJoint.Parent.Name, true)
+                if fakePart then
+                    local fakeJoint = fakePart:FindFirstChild(realJoint.Name)
+                    if fakeJoint and fakeJoint:IsA("Motor6D") then
+                        jointMap[realJoint] = fakeJoint
+                    end
+                end
+            end
+        end
+
+        connection = runService.RenderStepped:Connect(function()
+            if not fakeChar or not fakeHum then return end
+            realRoot.CFrame = startCFrame
+            fakeHum:Move(realHum.MoveDirection, false)
+            if realHum.Jump then fakeHum.Jump = true end
+            for realJoint, fakeJoint in pairs(jointMap) do
+                if realJoint.Parent and fakeJoint.Parent then
+                    fakeJoint.C0 = realJoint.C0
+                    fakeJoint.C1 = realJoint.C1
+                end
+            end
+        end)
+
+    else
+        tweenService:Create(button, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        }):Play()
+        stroke.Transparency = 0.7
+        button.Text = "BLINK: OFF"
+
+        if connection then connection:Disconnect() end
+        realRoot.Anchored = false
+
+        if fakeChar and fakeChar:FindFirstChild("HumanoidRootPart") then
+            realRoot.CFrame = fakeChar.HumanoidRootPart.CFrame
+            fakeChar:Destroy()
+            fakeChar = nil
+            workspace.CurrentCamera.CameraSubject = realHum
+        end
+    end
+end
