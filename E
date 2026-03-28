@@ -426,19 +426,27 @@ task.spawn(function()
         if isCoHacking() then continue end
         local localRoot = rootPart
         if not localRoot or not localRoot.Parent then continue end
+
         local bp = localRoot:FindFirstChild("HackFreeze_Pos")
         local bg = localRoot:FindFirstChild("HackFreeze_Gyro")
         if bp then bp.MaxForce = Vector3.zero end
         if bg then bg.MaxTorque = Vector3.zero end
+
+        local savedTrigger = currentTrigger
+
         pcall(function()
             localRoot.CFrame = CFrame.new(localRoot.CFrame.Position + Vector3.new(0, 7, 0))
         end)
         task.wait(0.07)
+
         pcall(function()
-            if currentTrigger and currentTrigger.Parent then
-                localRoot.CFrame = currentTrigger.CFrame + Vector3.new(0, 0.5, 0)
+            if savedTrigger and savedTrigger.Parent
+            and currentTrigger == savedTrigger  -- ← check này là chìa khóa
+            and canAutoJump then
+                localRoot.CFrame = savedTrigger.CFrame + Vector3.new(0, 0.5, 0)
             end
         end)
+
         if bp and bp.Parent then bp.Position = localRoot.Position; bp.MaxForce = Vector3.new(1e6,1e6,1e6) end
         if bg and bg.Parent then bg.CFrame = localRoot.CFrame; bg.MaxTorque = Vector3.new(1e6,1e6,1e6) end
     end
