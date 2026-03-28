@@ -507,7 +507,7 @@ local function moveTo(trigger, myTok, isFirst)
     local hum = char:FindFirstChild("Humanoid")
 
     -- FIX RETURN BUG: Giữ nguyên isReturning = true để an toàn
-    if isFirst or isReturning then
+    if isFirst then
         log("[MOVE] TP thẳng" .. (isReturning and " (sau save)" or " (đầu ván)"))
         rootPart.CFrame = trigger.CFrame + Vector3.new(0, 0.5, 0)
         task.wait(0.1)
@@ -1727,8 +1727,8 @@ local function mainLoop()
                 elseif skippedPCs[pcId] then
                     hasSkippedPC = true; allCompleted = false
                 else
-                    if isSaving or isHacking then
-                        while (isSaving or isHacking) and isGameActive() and scriptEnabled do task.wait(0.2) end
+                    if isSaving or isHacking or isReturning then
+                        while (isSaving or isHacking or isReturning) and isGameActive() and scriptEnabled do task.wait(0.2) end
                     end
                     if getPCProgress(pcData) >= 1 then
                         hackedPCs[pcId] = true
