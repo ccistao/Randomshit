@@ -1,47 +1,36 @@
--- ============================================================
--- AUTO FARM FTF v3 - State Machine Rewrite (Fixed Logic)
--- All features preserved from v2
--- ============================================================
-local Players           = game:GetService("Players")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService        = game:GetService("RunService")
-local player            = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local player = Players.LocalPlayer
 
--- ============================================================
--- STATE MACHINE
--- ============================================================
 local STATE = "off"
 local function setState(s) STATE = s end
 local function isState(s) return STATE == s end
 
 local scriptEnabled = false
-local scriptToken   = 0
+local scriptToken = 0
 
--- ============================================================
--- CONFIG
--- ============================================================
 local CONFIG_FILE = "ftf_config.json"
-
-local tweenSpeed        = 30
-local hackExtraPC       = false
-local altCageDelay      = 60
-local playerMode        = "main"  -- "main" | "alt"
-local followTargetName  = ""
+local tweenSpeed = 30
+local hackExtraPC = false
+local altCageDelay = 60
+local playerMode = "main"
+local followTargetName = ""
 local altRoundStartTick = 0
-local altWasRescued     = false
+local altWasRescued = false
 
 local function saveConfig()
     pcall(function()
         local HttpService = game:GetService("HttpService")
         writefile(CONFIG_FILE, HttpService:JSONEncode({
-            tweenSpeed      = tweenSpeed,
-            webhookUrl      = _G.ftfWebhookUrl      or "",
+            tweenSpeed = tweenSpeed,
+            webhookUrl = _G.ftfWebhookUrl or "",
             webhookInterval = _G.ftfWebhookInterval or 5,
-            hackExtraPC     = _G.ftfHackExtraPC     or false,
-            altCageDelay    = altCageDelay,
-            autoSendEnabled = _G.ftfAutoSend        or false,
-            pingDisconEnabled = _G.ftfPingDiscon    or false,
-            pingUserId      = _G.ftfPingUserId      or "",
+            hackExtraPC = _G.ftfHackExtraPC or false,
+            altCageDelay = altCageDelay,
+            autoSendEnabled = _G.ftfAutoSend or false,
+            pingDisconEnabled = _G.ftfPingDiscon or false,
+            pingUserId = _G.ftfPingUserId or "",
         }))
     end)
 end
@@ -52,31 +41,28 @@ local function loadConfig()
         local HttpService = game:GetService("HttpService")
         local ok, cfg = pcall(function() return HttpService:JSONDecode(readfile(CONFIG_FILE)) end)
         if not ok or not cfg then return end
-        if cfg.tweenSpeed      then tweenSpeed      = math.clamp(cfg.tweenSpeed, 10, 45) end
-        if cfg.altCageDelay    then altCageDelay    = math.clamp(cfg.altCageDelay, 10, 300) end
-        _G.ftfWebhookUrl      = cfg.webhookUrl      or ""
+        if cfg.tweenSpeed then tweenSpeed = math.clamp(cfg.tweenSpeed, 10, 45) end
+        if cfg.altCageDelay then altCageDelay = math.clamp(cfg.altCageDelay, 10, 300) end
+        _G.ftfWebhookUrl = cfg.webhookUrl or ""
         _G.ftfWebhookInterval = cfg.webhookInterval or 5
-        _G.ftfAutoSend        = cfg.autoSendEnabled or false
-        _G.ftfHackExtraPC     = cfg.hackExtraPC     or false
-        _G.ftfPingDiscon      = cfg.pingDisconEnabled or false
-        _G.ftfPingUserId      = cfg.pingUserId      or ""
+        _G.ftfAutoSend = cfg.autoSendEnabled or false
+        _G.ftfHackExtraPC = cfg.hackExtraPC or false
+        _G.ftfPingDiscon = cfg.pingDisconEnabled or false
+        _G.ftfPingUserId = cfg.pingUserId or ""
         hackExtraPC = _G.ftfHackExtraPC
     end)
 end
 
 loadConfig()
 
--- ============================================================
--- CHARACTER REFS
--- ============================================================
-local character     = nil
-local humanoid      = nil
-local rootPart      = nil
+local character = nil
+local humanoid = nil
+local rootPart = nil
 
 local function updateCharacterReferences()
     character = player.Character or player.CharacterAdded:Wait()
-    humanoid  = character:WaitForChild("Humanoid")
-    rootPart  = character:WaitForChild("HumanoidRootPart")
+    humanoid = character:WaitForChild("Humanoid")
+    rootPart = character:WaitForChild("HumanoidRootPart")
 end
 
 task.spawn(function()
@@ -94,11 +80,8 @@ task.spawn(function()
     end
 end)
 
--- ============================================================
--- LOGGING
--- ============================================================
-local logBuffer    = {}
-local MAX_BUFFER   = 200
+local logBuffer = {}
+local MAX_BUFFER = 200
 local consoleLogFn = nil
 
 local function bufferedLog(msg, logType)
@@ -125,9 +108,6 @@ local function updateStatus(s)
     end
 end
 
--- ============================================================
--- HELPERS: GAME STATE
--- ============================================================
 local LOBBY_MIN = Vector3.new(14, -5, -478)
 local LOBBY_MAX = Vector3.new(227, 50, -264)
 
@@ -145,14 +125,14 @@ end
 local function isInGame() return not isInLobby() end
 
 local function isFindExitPhase()
-    local gs  = ReplicatedStorage:FindFirstChild("GameStatus")
+    local gs = ReplicatedStorage:FindFirstChild("GameStatus")
     local txt = gs and tostring(gs.Value):upper() or ""
     if txt:find("FIND") and txt:find("EXIT") then return true end
     local found = false
     pcall(function()
-        local pg  = player:FindFirstChild("PlayerGui")
-        local sg  = pg  and pg:FindFirstChild("ScreenGui")
-        local gif = sg  and sg:FindFirstChild("GameInfoFrame")
+        local pg = player:FindFirstChild("PlayerGui")
+        local sg = pg and pg:FindFirstChild("ScreenGui")
+        local gif = sg and sg:FindFirstChild("GameInfoFrame")
         local gsb = gif and gif:FindFirstChild("GameStatusBox")
         if gsb then
             local t = gsb.Text:upper()
@@ -163,12 +143,12 @@ local function isFindExitPhase()
 end
 
 local function isGameActive()
-    local gs  = ReplicatedStorage:FindFirstChild("GameStatus")
+    local gs = ReplicatedStorage:FindFirstChild("GameStatus")
     local txt = gs and tostring(gs.Value):upper() or ""
     if txt:find("HEAD START") then return true end
     if isInLobby() then return false end
     if txt:find("GAME OVER") or txt:find("BEAST LEFT")
-    or txt:find("BEF LAI")   or txt:find("KET THUC")
+    or txt:find("BEF LAI") or txt:find("KET THUC")
     or txt:find("TRO CHOI KET THUC") then return false end
     return true
 end
@@ -187,11 +167,8 @@ local function getPlayerActionProgress()
     return p and (p:IsA("IntValue") or p:IsA("NumberValue")) and p.Value or 0
 end
 
--- ============================================================
--- HELPERS: BEAST
--- ============================================================
-local beast       = nil
-local foundBeast  = false
+local beast = nil
+local foundBeast = false
 local beastNearby = false
 
 local function isBeast(p)
@@ -239,8 +216,8 @@ task.spawn(function()
             pcall(function()
                 if beast and beast.Character and rootPart then
                     local br = beast.Character:FindFirstChild("HumanoidRootPart")
-                          or  beast.Character:FindFirstChild("UpperTorso")
-                          or  beast.Character:FindFirstChild("Torso")
+                          or beast.Character:FindFirstChild("UpperTorso")
+                          or beast.Character:FindFirstChild("Torso")
                     beastNearby = br and (rootPart.Position - br.Position).Magnitude <= 32 or false
                 end
             end)
@@ -273,10 +250,7 @@ task.spawn(function()
     end
 end)
 
--- ============================================================
--- HELPERS: PC
--- ============================================================
-local allPCs    = {}
+local allPCs = {}
 local hackedPCs = {}
 local skippedPCs = {}
 
@@ -342,35 +316,23 @@ local function isScreenGreen(pcData)
     return false
 end
 
--- ============================================================
--- COHACK TRACKER (FIXED LOGIC)
--- Distance (8 studs) + ActionProgress + Buffer chống Lag
--- ============================================================
 local coHackActive = false
 local coHackTimeout = 0
 
 task.spawn(function()
     while true do
         task.wait(0.3)
-        
         if not currentPC then
             coHackActive = false
             continue
         end
-        
         local currentlyFound = false
-        
         for _, other in ipairs(Players:GetPlayers()) do
             if other == player or not other.Character then continue end
-            
-            -- Bỏ qua nếu là Beast
             local st = other:FindFirstChild("TempPlayerStatsModule")
             if st and st:FindFirstChild("IsBeast") and st.IsBeast.Value == true then continue end
-
             local otherRoot = other.Character:FindFirstChild("HumanoidRootPart")
             if not otherRoot then continue end
-            
-            -- Kiểm tra khoảng cách 8 studs quanh PC
             local isNear = false
             for _, trigger in ipairs(currentPC.triggers) do
                 if (otherRoot.Position - trigger.Position).Magnitude <= 8 then
@@ -378,20 +340,16 @@ task.spawn(function()
                     break
                 end
             end
-            
-            -- Chỉ set found nếu đứng gần VÀ có ActionProgress thực sự > 0
             if isNear then
                 local ap = st and st:FindFirstChild("ActionProgress")
                 local cur = ap and (type(ap.Value) == "number" and ap.Value or 0) or 0
-                
                 if cur > 0.001 then
                     currentlyFound = true
-                    coHackTimeout = tick() + 2 -- Buffer 2 giây để chống flicker giật mạng
+                    coHackTimeout = tick() + 2
                     break
                 end
             end
         end
-        
         if currentlyFound or tick() < coHackTimeout then
             coHackActive = true
         else
@@ -404,20 +362,14 @@ local function isCoHacking()
     return coHackActive
 end
 
--- ============================================================
--- TWEEN ENGINE
--- ============================================================
-local isMoving     = false
-currentPC    = nil
+local isMoving = false
+currentPC = nil
 local currentTrigger = nil
-local canAutoJump  = false
-local isHacking    = false
-local isSaving     = false
-local isReturning  = false
+local canAutoJump = false
+local isHacking = false
+local isSaving = false
+local isReturning = false
 
--- ============================================================
--- AUTO JUMP LOOP
--- ============================================================
 local jumpInterval = 4
 task.spawn(function()
     while true do
@@ -426,27 +378,22 @@ task.spawn(function()
         if isCoHacking() then continue end
         local localRoot = rootPart
         if not localRoot or not localRoot.Parent then continue end
-
         local bp = localRoot:FindFirstChild("HackFreeze_Pos")
         local bg = localRoot:FindFirstChild("HackFreeze_Gyro")
         if bp then bp.MaxForce = Vector3.zero end
         if bg then bg.MaxTorque = Vector3.zero end
-
         local savedTrigger = currentTrigger
-
         pcall(function()
             localRoot.CFrame = CFrame.new(localRoot.CFrame.Position + Vector3.new(0, 7, 0))
         end)
         task.wait(0.07)
-
         pcall(function()
             if savedTrigger and savedTrigger.Parent
-            and currentTrigger == savedTrigger  -- ← check này là chìa khóa
+            and currentTrigger == savedTrigger
             and canAutoJump then
                 localRoot.CFrame = savedTrigger.CFrame + Vector3.new(0, 0.5, 0)
             end
         end)
-
         if bp and bp.Parent then bp.Position = localRoot.Position; bp.MaxForce = Vector3.new(1e6,1e6,1e6) end
         if bg and bg.Parent then bg.CFrame = localRoot.CFrame; bg.MaxTorque = Vector3.new(1e6,1e6,1e6) end
     end
@@ -457,6 +404,7 @@ local function safeFire(root, trigger, state)
         firetouchinterest(root, trigger, state)
     end)
 end
+
 local function tweenTo(targetPos, spd, myTok)
     local STOP_DIST = 1.0
     while true do
@@ -505,34 +453,27 @@ local function moveTo(trigger, myTok, isFirst)
     local char = player.Character
     if not char then return end
     local hum = char:FindFirstChild("Humanoid")
-
-    -- FIX RETURN BUG: Giữ nguyên isReturning = true để an toàn
     if isFirst then
         log("[MOVE] TP thẳng" .. (isReturning and " (sau save)" or " (đầu ván)"))
         rootPart.CFrame = trigger.CFrame + Vector3.new(0, 0.5, 0)
         task.wait(0.1)
         return
     end
-
     while isMoving do task.wait(0.1) end
     isMoving = true
     if hum then hum.PlatformStand = true hum:ChangeState(Enum.HumanoidStateType.Physics) end
-
     local stopNoclip = startNoclip()
     local savedG = workspace.Gravity
     workspace.Gravity = 0
-
-    local myY  = rootPart.Position.Y
+    local myY = rootPart.Position.Y
     local tgtY = trigger.Position.Y + 0.5
     local downY = math.min(myY - 50, tgtY - 10)
-    local spd   = tweenSpeed
-
+    local spd = tweenSpeed
     local ok1 = tweenTo(Vector3.new(rootPart.Position.X, downY, rootPart.Position.Z), spd * 1.1, myTok)
     if ok1 then
         local ok2 = tweenTo(Vector3.new(trigger.Position.X, downY, trigger.Position.Z), spd * 1.1, myTok)
         if ok2 then tweenTo(Vector3.new(trigger.Position.X, tgtY, trigger.Position.Z), spd, myTok) end
     end
-
     stopNoclip()
     workspace.Gravity = savedG
     if hum then hum.PlatformStand = false hum:ChangeState(Enum.HumanoidStateType.GettingUp) end
@@ -544,11 +485,9 @@ local function moveStraightTo(trigger, myTok)
     local char = player.Character
     if not char then return end
     local hum = char:FindFirstChild("Humanoid")
-
     while isMoving do task.wait(0.1) end
     isMoving = true
     if hum then hum.PlatformStand = true hum:ChangeState(Enum.HumanoidStateType.Physics) end
-
     local stopNoclip = startNoclip()
     local savedG = workspace.Gravity
     workspace.Gravity = 0
@@ -559,20 +498,15 @@ local function moveStraightTo(trigger, myTok)
     isMoving = false
 end
 
--- ============================================================
--- HACK PC
--- ============================================================
 local gameOver = false
 
 local function hackPC(pcData, myTok, isFirstMove)
     if not pcData or not scriptEnabled or scriptToken ~= myTok then return false end
     if gameOver or not isGameActive() then return false end
     if isFindExitPhase() and not hackExtraPC then return false end
-
-    local pcId   = tostring(pcData.id)
+    local pcId = tostring(pcData.id)
     local pcName = pcData.computer.Name or "?"
     currentPC = pcData
-
     if isScreenGreen(pcData) then
         log("✅ [PC" .. pcId .. "] Screen đã xanh → skip")
         hackedPCs[pcData.id] = true
@@ -584,33 +518,26 @@ local function hackPC(pcData, myTok, isFirstMove)
         return true
     end
     if isFindExitPhase() and not hackExtraPC then return false end
-
     log("[PC" .. pcId .. "] Bắt đầu hack | triggers=" .. #pcData.triggers)
-
     local chosenTrigger = nil
     local isFirst = isFirstMove or false
-
     for i, trigger in ipairs(pcData.triggers) do
         if not scriptEnabled or scriptToken ~= myTok then return false end
         if isSaving then return false end
         if isFindExitPhase() and not hackExtraPC then return false end
-
         if i == 1 then
             moveTo(trigger, myTok, isFirst)
         else
             moveStraightTo(trigger, myTok)
         end
-
         if isScreenGreen(pcData) then
             log("✅ [PC" .. pcId .. "] Screen xanh sau tween → skip")
             hackedPCs[pcData.id] = true
             isMoving = false; canAutoJump = false
             return true
         end
-
         currentTrigger = trigger
-        canAutoJump    = true
-
+        canAutoJump = true
         local progressBefore = getPlayerActionProgress()
         pcall(function()
             if trigger and rootPart then
@@ -619,7 +546,6 @@ local function hackPC(pcData, myTok, isFirstMove)
                 safeFire(rootPart, trigger, 1)
             end
         end)
-
         local spamTime = 0
         while spamTime < 1 do
             task.wait(0.1); spamTime += 0.1
@@ -632,7 +558,6 @@ local function hackPC(pcData, myTok, isFirstMove)
                 if r then r:FireServer("Input", "Action", true) end
             end)
         end
-
         local progressAfter = getPlayerActionProgress()
         if progressAfter > progressBefore + 0.001 then
             chosenTrigger = trigger
@@ -644,7 +569,6 @@ local function hackPC(pcData, myTok, isFirstMove)
             currentTrigger = nil
         end
     end
-
     if not chosenTrigger then
         if beastNearby and not isReturning then
             log("👹 PC" .. pcId .. ": trigger fail do beast → skip")
@@ -655,35 +579,30 @@ local function hackPC(pcData, myTok, isFirstMove)
         isMoving = false; canAutoJump = false; currentTrigger = nil
         return false
     end
-
     setState("hacking")
-    isHacking  = true
-    currentPC  = pcData
+    isHacking = true
+    currentPC = pcData
     updateStatus("Hacking PC " .. pcId)
-
     local hackChar = player.Character
-    local hackHum  = hackChar and hackChar:FindFirstChild("Humanoid")
+    local hackHum = hackChar and hackChar:FindFirstChild("Humanoid")
     local hackRoot = hackChar and hackChar:FindFirstChild("HumanoidRootPart")
-
     local _bpos, _bgyr
     if hackRoot and hackRoot.Parent then
         pcall(function()
             _bpos = Instance.new("BodyPosition")
-            _bpos.Name     = "HackFreeze_Pos"
+            _bpos.Name = "HackFreeze_Pos"
             _bpos.Position = hackRoot.Position
             _bpos.MaxForce = Vector3.new(1e6, 1e6, 1e6)
             _bpos.D = 1000; _bpos.P = 50000
             _bpos.Parent = hackRoot
-
             _bgyr = Instance.new("BodyGyro")
-            _bgyr.Name      = "HackFreeze_Gyro"
-            _bgyr.CFrame    = hackRoot.CFrame
+            _bgyr.Name = "HackFreeze_Gyro"
+            _bgyr.CFrame = hackRoot.CFrame
             _bgyr.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
             _bgyr.D = 1000; _bgyr.P = 50000
             _bgyr.Parent = hackRoot
         end)
     end
-
     local freezeActive = true
     local freezeConn = RunService.Heartbeat:Connect(function()
         if not freezeActive then return end
@@ -693,14 +612,12 @@ local function hackPC(pcData, myTok, isFirstMove)
             hackRoot.AssemblyLinearVelocity = Vector3.zero
         end
     end)
-
     local function unfreezeHack()
         freezeActive = false
         pcall(function() freezeConn:Disconnect() end)
         pcall(function() if _bpos and _bpos.Parent then _bpos:Destroy() end end)
         pcall(function() if _bgyr and _bgyr.Parent then _bgyr:Destroy() end end)
     end
-
     local hackTok = myTok
     while isHacking and scriptEnabled and scriptToken == hackTok and not gameOver do
         task.wait(0.1)
@@ -744,7 +661,6 @@ local function hackPC(pcData, myTok, isFirstMove)
             log("❌ PC" .. pcId .. ": disappeared!")
             unfreezeHack(); break
         end
-
         pcall(function()
             local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
             if r then r:FireServer("Input", "Action", true) end
@@ -756,7 +672,6 @@ local function hackPC(pcData, myTok, isFirstMove)
                 if r then r:FireServer("SkillCheck", true) end
             end)
         end
-
         if isScreenGreen(pcData) or getPCProgress(pcData) >= 0.999 then
             log("✅ [PC" .. pcId .. "] Hack xong!")
             updateStatus("Done PC " .. pcId)
@@ -773,16 +688,12 @@ local function hackPC(pcData, myTok, isFirstMove)
             return true
         end
     end
-
     unfreezeHack()
     isHacking = false; currentPC = nil; canAutoJump = false; currentTrigger = nil
     if STATE == "hacking" then setState("moving") end
     return false
 end
 
--- ============================================================
--- ACTION BOX HOOK
--- ============================================================
 task.spawn(function()
     local playerGui = player:WaitForChild("PlayerGui")
     local function onActionBoxVisible(ab)
@@ -809,9 +720,6 @@ task.spawn(function()
     bindToScreenGui(sg)
 end)
 
--- ============================================================
--- NEVER FAIL HOOK
--- ============================================================
 task.spawn(function()
     local remote = ReplicatedStorage:WaitForChild("RemoteEvent", 10)
     if not remote then log("❌ NeverFail: RemoteEvent not found!") return end
@@ -824,24 +732,19 @@ task.spawn(function()
     end
 end)
 
--- ============================================================
--- AUTO EXIT
--- ============================================================
 local hasEscaped = false
 
 local function autoExitUnified()
     setState("exiting")
     updateStatus("Auto Exit started!")
-
     local char = player.Character
-    local hum  = char and char:FindFirstChild("Humanoid")
+    local hum = char and char:FindFirstChild("Humanoid")
     if hum then
         log("🚪 Jump to cancel PC hack...")
         isHacking = false; canAutoJump = false; currentTrigger = nil
         hum:ChangeState(Enum.HumanoidStateType.Jumping)
         task.wait(0.2)
     end
-
     local function findExits()
         local exits = {}
         local map = ReplicatedStorage:FindFirstChild("CurrentMap")
@@ -856,7 +759,6 @@ local function autoExitUnified()
         end
         return exits
     end
-
     local function tpFront(trigger)
         local c = player.Character; if not c then return end
         local r = c:FindFirstChild("HumanoidRootPart"); if not r then return end
@@ -866,13 +768,11 @@ local function autoExitUnified()
         r.CFrame = CFrame.new(trigger.Position.X, trigger.Position.Y + 2.5, trigger.Position.Z)
         task.delay(0.5, function() if r then r.CanCollide = true end end)
     end
-
     local function getActionProgress(plr)
         local tps = plr:FindFirstChild("TempPlayerStatsModule")
-        local ap  = tps and tps:FindFirstChild("ActionProgress")
+        local ap = tps and tps:FindFirstChild("ActionProgress")
         return ap and ap.Value or 0
     end
-
     local function getPlayerOpeningDoor(trigger)
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= player and p.Character then
@@ -882,7 +782,6 @@ local function autoExitUnified()
         end
         return nil
     end
-
     local function waitForDoorOpen(exitData, timeoutSecs)
         timeoutSecs = timeoutSecs or 20
         local waited = 0; local beastInterrupted = false
@@ -903,13 +802,11 @@ local function autoExitUnified()
         end
         return false, beastInterrupted
     end
-
     local function escape(exitData)
         local c = player.Character; if not c then return end
         local r = c:FindFirstChild("HumanoidRootPart"); if not r then return end
         if not exitData.area then return end
         local hum = c:FindFirstChild("Humanoid")
-
         log("[ESCAPE] Bắt đầu thoát! TP xuống -80 để trigger server...")
         local myPos = r.Position
         r.CFrame = CFrame.new(myPos.X, myPos.Y - 80, myPos.Z)
@@ -927,14 +824,12 @@ local function autoExitUnified()
         end)
         task.wait(1.5)
         fzActive = false; fzConn:Disconnect()
-
         r.CFrame = exitData.area.CFrame + Vector3.new(0, 2, 0)
         task.wait(0.3)
         if hum then
             hum.PlatformStand = false
             hum:ChangeState(Enum.HumanoidStateType.GettingUp)
         end
-
         local waitTime = 0
         while waitTime < 20 do
             task.wait(0.2); waitTime += 0.2
@@ -954,24 +849,20 @@ local function autoExitUnified()
         log("⏱ [ESCAPE] Timeout 20s → coi như đã thoát")
         hasEscaped = true
     end
-
     local lastExitUsed = nil
     local exits = findExits()
     local maxWait = 0
-
     while scriptEnabled and not hasEscaped and maxWait < 60 do
         task.wait(0.3); maxWait += 0.3
         if not isGameActive() and not isFindExitPhase() then break end
         exits = findExits()
         if #exits == 0 then continue end
-
         local targetExit = exits[1]
         if lastExitUsed and #exits > 1 then
             for _, e in ipairs(exits) do
                 if e.model ~= lastExitUsed then targetExit = e break end
             end
         end
-
         local otherOpener = getPlayerOpeningDoor(targetExit.trigger)
         if otherOpener then
             log("🤝 " .. otherOpener.Name .. " đang mở cửa...")
@@ -1027,11 +918,8 @@ local function autoExitUnified()
     end
 end
 
--- ============================================================
--- AUTO SAVE (SURVIVOR)
--- ============================================================
 local savesThisRound = 0
-local maxSaves       = 1
+local maxSaves = 1
 
 local function autoSaveLoop()
     while true do
@@ -1040,19 +928,16 @@ local function autoSaveLoop()
         if savesThisRound >= maxSaves then continue end
         if isSaving then continue end 
         if roundsPlayed == 0 or not isGameActive() then continue end
-
         local map = ReplicatedStorage:FindFirstChild("CurrentMap")
         map = map and map.Value
         if not map then continue end
         local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
         if not root then continue end
-
         for _, v in ipairs(map:GetChildren()) do
             if v.Name == "FreezePod" then
-                local ct      = v:FindFirstChild("CapturedTorso", true)
+                local ct = v:FindFirstChild("CapturedTorso", true)
                 local trigger = v:FindFirstChild("PodTrigger", true)
                 if not (ct and ct.Value ~= nil and trigger) then continue end
-
                 local capturedPlayer = nil
                 for _, p in ipairs(Players:GetPlayers()) do
                     if p ~= player and p.Character then
@@ -1061,33 +946,29 @@ local function autoSaveLoop()
                     end
                 end
                 if not capturedPlayer then continue end
-
-                isSaving       = true
-                isReturning    = true  
-                isMoving       = true
+                isSaving = true
+                isReturning = true  
+                isMoving = true
                 local savedCanJump = canAutoJump
                 canAutoJump = false
                 log("🚑 [SAVE] " .. capturedPlayer.Name)
                 updateStatus("Saving: " .. capturedPlayer.Name)
-
-                local wasHacking     = isHacking
-                local returnTrigger  = currentTrigger
-                local returnPC       = currentPC
+                local wasHacking = isHacking
+                local wasAtTrigger = (currentTrigger ~= nil)  -- đang đứng hack hay đang tween?
+                local returnTrigger = currentTrigger
+                local returnPC = currentPC
                 if not returnTrigger and returnPC and returnPC.triggers and #returnPC.triggers > 0 then
                     returnTrigger = returnPC.triggers[1]
                 end
-
                 local cageCenter = v:GetModelCFrame().Position
                 local dirIn = (cageCenter - trigger.Position)
                 if dirIn.Magnitude > 0 then dirIn = dirIn.Unit * 3 else dirIn = Vector3.zero end
                 local savePos = Vector3.new(trigger.Position.X + dirIn.X, trigger.Position.Y, trigger.Position.Z + dirIn.Z)
-
                 local char = player.Character
-                local hum  = char and char:FindFirstChild("Humanoid")
+                local hum = char and char:FindFirstChild("Humanoid")
                 if hum then hum.PlatformStand = true hum:ChangeState(Enum.HumanoidStateType.Physics) end
-
                 local ncActive = true
-                local ncParts  = {}
+                local ncParts = {}
                 pcall(function()
                     for _, p in pairs(player.Character:GetDescendants()) do
                         if p:IsA("BasePart") then table.insert(ncParts, p) end
@@ -1097,12 +978,10 @@ local function autoSaveLoop()
                     if not ncActive or not scriptEnabled then return end
                     for _, p in ipairs(ncParts) do if p and p.Parent then p.CanCollide = false end end
                 end)
-
                 root.CFrame = CFrame.new(savePos)
                 root.AssemblyLinearVelocity = Vector3.zero
                 root.AssemblyAngularVelocity = Vector3.zero
                 task.wait(0.15)
-
                 local fzActive = true
                 local fzConn = RunService.Heartbeat:Connect(function()
                     if not fzActive or not scriptEnabled then return end
@@ -1112,7 +991,6 @@ local function autoSaveLoop()
                         root.AssemblyAngularVelocity = Vector3.zero
                     end)
                 end)
-
                 local t = 0
                 while t < 3 do
                     pcall(function()
@@ -1131,23 +1009,19 @@ local function autoSaveLoop()
                     end
                     task.wait(0.15); t += 0.18
                 end
-
                 fzActive = false; fzConn:Disconnect()
                 ncActive = false; ncConn:Disconnect()
                 if hum then hum.PlatformStand = false hum:ChangeState(Enum.HumanoidStateType.GettingUp) end
-
-                canAutoJump  = savedCanJump
-                isSaving     = false
-                isMoving     = false
+                canAutoJump = savedCanJump
+                isSaving = false
+                isMoving = false
                 currentTrigger = nil
-                skippedPCs   = {}
-
+                skippedPCs = {}
                 if not isGameActive() or gameOver then
                     isHacking = false
                     isReturning = false
                     break
                 end
-
                 if returnPC then
                     log("🔄 Return về PC" .. tostring(returnPC.id) .. " | wasHacking=" .. tostring(wasHacking))
                     local retTok = scriptToken
@@ -1157,11 +1031,12 @@ local function autoSaveLoop()
                         if not isGameActive() or gameOver then
                             isHacking = false; isReturning = false; return
                         end
-                        -- Buff ẩn 4s an toàn để lọt vào hack PC mà không bị Beast đuổi ngay lập tức
                         task.delay(4, function() isReturning = false end)
-                        hackPC(returnPC, retTok, true)
+                        -- wasAtTrigger=true (đang đứng hack) → TP thẳng về
+                        -- wasAtTrigger=false (đang tween) → tween tiếp, không TP
+                        hackPC(returnPC, retTok, wasAtTrigger)
                         isReturning = false
-                        isHacking   = false
+                        isHacking = false
                     end)
                 else
                     isHacking = false
@@ -1173,9 +1048,6 @@ local function autoSaveLoop()
     end
 end
 
--- ============================================================
--- BEAST AUTO LOOP
--- ============================================================
 local function getHammerEvent()
     local c = player.Character
     local h = c and c:FindFirstChild("Hammer")
@@ -1191,7 +1063,7 @@ local function getBeastNearestSurvivor(excludeName)
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= player and p.Character then
             if excludeName and p.Name == excludeName then continue end
-            local hum   = p.Character:FindFirstChild("Humanoid")
+            local hum = p.Character:FindFirstChild("Humanoid")
             local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
             if hum and torso and not hum.PlatformStand and hum.Health > 0 then
                 local captured = false
@@ -1219,7 +1091,7 @@ local function getBeastNearestRagdoll()
     local nearest, nd = nil, math.huge
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= player and p.Character then
-            local hum   = p.Character:FindFirstChild("Humanoid")
+            local hum = p.Character:FindFirstChild("Humanoid")
             local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
             if hum and torso and hum.PlatformStand then
                 local d = (root.Position - torso.Position).Magnitude
@@ -1260,12 +1132,10 @@ local function beastLoop()
             repeat task.wait(0.5) until isGameActive() or not scriptEnabled
             continue
         end
-
         local remote = getHammerEvent()
         if not remote then continue end
-        local c    = player.Character; if not c then continue end
+        local c = player.Character; if not c then continue end
         local root = c:FindFirstChild("HumanoidRootPart"); if not root then continue end
-
         local ropeCheck = c:FindFirstChild("RopeConstraint", true)
         if ropeCheck then
             local cage = getBeastNearestEmptyCage()
@@ -1279,7 +1149,6 @@ local function beastLoop()
                     local pos = Vector3.new(trig.Position.X + dir.X, trig.Position.Y, trig.Position.Z + dir.Z)
                     local hum = c:FindFirstChild("Humanoid")
                     if hum then hum.PlatformStand = true hum:ChangeState(Enum.HumanoidStateType.Physics) end
-
                     local ncParts3 = {}
                     pcall(function()
                         for _, p in pairs(player.Character:GetDescendants()) do
@@ -1300,7 +1169,6 @@ local function beastLoop()
                     end)
                     root.CFrame = CFrame.new(pos)
                     root.AssemblyLinearVelocity = Vector3.zero
-
                     local t3 = 0
                     while t3 < 2.5 do
                         pcall(function()
@@ -1312,7 +1180,6 @@ local function beastLoop()
                         if ct3 and ct3.Value ~= nil then break end
                         task.wait(0.05); t3 += 0.05
                     end
-
                     fzActive3 = false; fzConn3:Disconnect()
                     ncActive3 = false; ncConn3:Disconnect()
                     if hum then hum.PlatformStand = false hum:ChangeState(Enum.HumanoidStateType.GettingUp) end
@@ -1320,7 +1187,6 @@ local function beastLoop()
             end
             continue
         end
-
         local ragdollTarget = getBeastNearestRagdoll()
         if ragdollTarget and ragdollTarget.Character then
             local torso = ragdollTarget.Character:FindFirstChild("UpperTorso") or ragdollTarget.Character:FindFirstChild("Torso")
@@ -1336,7 +1202,6 @@ local function beastLoop()
                 continue
             end
         end
-
         local target
         if playerMode == "alt" then
             local elapsed = tick() - altRoundStartTick
@@ -1349,7 +1214,7 @@ local function beastLoop()
                 local main = Players:FindFirstChild(followTargetName)
                 if main then
                     local st = main:FindFirstChild("TempPlayerStatsModule")
-                    local f  = st and st:FindFirstChild("Escaped")
+                    local f = st and st:FindFirstChild("Escaped")
                     mainEscaped = f and f.Value == true
                 end
             end)
@@ -1357,23 +1222,19 @@ local function beastLoop()
         else
             target = getBeastNearestSurvivor()
         end
-
         if not target or not target.Character then
             updateStatus("Beast: All captured!")
             log("👹 Tất cả đã cage → chờ ván sau")
             repeat task.wait(0.5) until not isGameActive() or not scriptEnabled or not isSelfBeast()
             continue
         end
-
         local torso = target.Character:FindFirstChild("UpperTorso") or target.Character:FindFirstChild("Torso")
         if not torso then continue end
         local hum = target.Character:FindFirstChild("Humanoid")
         if hum and hum.PlatformStand then continue end
-
         updateStatus("Beast: Hitting " .. target.Name)
         root.CFrame = CFrame.new(torso.Position + Vector3.new(0, 0, 0.5))
-
-        local hitTimer   = 0
+        local hitTimer = 0
         local ragdollTimer = 0
         while hitTimer < 1.5 do
             if not target.Character then break end
@@ -1395,7 +1256,6 @@ local function beastLoop()
                 end
             end)
             if targetCaged then log("👹 " .. target.Name .. " in FreezePod!"); break end
-            
             ragdollTimer += 0.05
             if ragdollTimer >= 2 then
                 local h3 = target.Character and target.Character:FindFirstChild("Humanoid")
@@ -1412,9 +1272,6 @@ local function beastLoop()
     end
 end
 
--- ============================================================
--- ANTI-AFK
--- ============================================================
 local function antiAFK()
     task.spawn(function()
         local VU = game:GetService("VirtualUser")
@@ -1432,48 +1289,40 @@ local function antiAFK()
     end)
 end
 
--- ============================================================
--- RESET GAME STATE
--- ============================================================
-local roundsPlayed    = 0
+local roundsPlayed = 0
 local firstMoveOfRound = true
 
 local function resetGameState()
     log("Reset state (round=" .. roundsPlayed .. ")")
-    isHacking      = false
-    currentPC      = nil
+    isHacking = false
+    currentPC = nil
     currentTrigger = nil
-    canAutoJump    = false
-    gameOver       = false
-    isMoving       = false
-    isReturning    = false
-    isSaving       = false
-    skippedPCs     = {}
-    hackedPCs      = {}
-    allPCs         = {}
-    hasEscaped     = false
-    beast          = nil
-    foundBeast     = false
-    beastNearby    = false
+    canAutoJump = false
+    gameOver = false
+    isMoving = false
+    isReturning = false
+    isSaving = false
+    skippedPCs = {}
+    hackedPCs = {}
+    allPCs = {}
+    hasEscaped = false
+    beast = nil
+    foundBeast = false
+    beastNearby = false
     firstMoveOfRound = true
     coHackActive = false
     savesThisRound = 0
-    altWasRescued  = false
-
+    altWasRescued = false
     pcall(function()
         for _, v in ipairs(workspace:GetChildren()) do
             if v.Name == "TempFloor_FTF" then v:Destroy() end
         end
     end)
-
     updateCharacterReferences()
     updateStatus("Waiting for new game")
     setState("waiting")
 end
 
--- ============================================================
--- EMERGENCY FREEZE CLEANUP
--- ============================================================
 local function emergencyUnfreeze()
     pcall(function()
         local char = player.Character
@@ -1491,13 +1340,13 @@ local function emergencyUnfreeze()
         local lobbyCenter = (LOBBY_MIN + LOBBY_MAX) / 2
         root.CFrame = CFrame.new(lobbyCenter.X, LOBBY_MIN.Y + 5, lobbyCenter.Z)
     end)
-    isHacking      = false
-    isMoving       = false
-    isReturning    = false
-    isSaving       = false
-    canAutoJump    = false
+    isHacking = false
+    isMoving = false
+    isReturning = false
+    isSaving = false
+    canAutoJump = false
     currentTrigger = nil
-    currentPC      = nil
+    currentPC = nil
 end
 
 task.spawn(function()
@@ -1507,7 +1356,7 @@ task.spawn(function()
         if not isHacking and not isSaving and not isMoving then return end
         local txt = tostring(gs.Value):upper()
         if txt:find("BEAST LEFT") or txt:find("GAME OVER")
-        or txt:find("BEF LAI")   or txt:find("KET THUC")
+        or txt:find("BEF LAI") or txt:find("KET THUC")
         or txt:find("TRO CHOI KET THUC") then
             emergencyUnfreeze()
         end
@@ -1527,22 +1376,19 @@ player.CharacterAdded:Connect(function(char)
 end)
 
 local function waitForGameActive()
-    local gs  = ReplicatedStorage:FindFirstChild("GameStatus")
+    local gs = ReplicatedStorage:FindFirstChild("GameStatus")
     local txt = gs and tostring(gs.Value):upper() or ""
     local map = ReplicatedStorage:FindFirstChild("CurrentMap")
     local mapName = map and map.Value and map.Value.Name or "nil"
     log("waitForGame: lobby=" .. tostring(isInLobby()) .. " map='" .. mapName .. "'")
-
     if isInGame() and (txt:find("GAME OVER") or txt:find("BEAST LEFT") or txt:find("INTERMISSION")) then
         log("waitForGame: game over in map, waiting for lobby...")
         repeat task.wait(0.5) until isInLobby() or not scriptEnabled
     end
-
     if isInGame() then
         log("waitForGame: already in-game!")
         return true
     end
-
     updateStatus("Waiting for game...")
     local timeout = 300; local elapsed = 0; local lastLog = -1
     local myTok = scriptToken
@@ -1563,9 +1409,6 @@ local function waitForGameActive()
     return false
 end
 
--- ============================================================
--- MAIN LOOP
--- ============================================================
 local function mainLoop()
     while true do
         if not scriptEnabled then
@@ -1589,16 +1432,13 @@ local function mainLoop()
             repeat task.wait(0.2) until scriptEnabled
             continue
         end
-
         if not waitForGameActive() then
             log("waitForGameActive failed, retry in 10s")
             task.wait(10); continue
         end
-
         roundsPlayed += 1
         resetGameState()
         altRoundStartTick = tick()
-
         if roundsPlayed % 50 == 0 then
             logBuffer = {}
             pcall(function()
@@ -1608,16 +1448,13 @@ local function mainLoop()
                 end
             end)
         end
-
         log("=== [ROUND " .. roundsPlayed .. " START] HackExtra=" .. tostring(hackExtraPC) .. " Mode=" .. playerMode .. " ===")
-
         if isSelfBeast() then
             setState("beast")
             updateStatus("Beast mode - auto running")
             repeat task.wait(1) until not scriptEnabled or not isSelfBeast()
             continue
         end
-
         if playerMode == "alt" then
             local main = Players:FindFirstChild(followTargetName)
             if not main then
@@ -1627,18 +1464,15 @@ local function mainLoop()
                 main = Players:FindFirstChild(followTargetName)
                 if not main then task.wait(2) continue end
             end
-
             updateStatus("ALT: Following " .. main.Name)
             altWasRescued = false
             allPCs = findAllPCs()
-
             local altTok = scriptToken
             while scriptEnabled and scriptToken == altTok and not gameOver do
                 task.wait(0.2)
                 if not isGameActive() then break end
                 main = Players:FindFirstChild(followTargetName)
                 if not main then updateStatus("ALT: Mất main!"); break end
-
                 if isSelfCaged() then
                     log("🔒 [ALT] Bị nhốt! Chờ " .. main.Name .. " cứu...")
                     updateStatus("ALT: Caged! Waiting for " .. main.Name .. "...")
@@ -1646,7 +1480,6 @@ local function mainLoop()
                     while isSelfCaged() and scriptEnabled and isGameActive() do task.wait(0.3) end
                     if not isSelfCaged() then altWasRescued = true; log("ALT: Vừa được cứu!") end
                 end
-
                 if altWasRescued then
                     altWasRescued = false
                     local mainRoot = main.Character and main.Character:FindFirstChild("HumanoidRootPart")
@@ -1656,13 +1489,10 @@ local function mainLoop()
                     end
                     task.wait(0.5)
                 end
-
                 if isFindExitPhase() then
                     updateStatus("ALT: Find Exit! Auto-escaping...")
                     autoExitUnified(); break
                 end
-
-                -- (Thêm helper nếu dùng hàm getPCNearPlayer ngoài scope)
                 local mainRoot = main.Character and main.Character:FindFirstChild("HumanoidRootPart")
                 if mainRoot and rootPart then
                     local dist = (rootPart.Position - mainRoot.Position).Magnitude
@@ -1674,28 +1504,22 @@ local function mainLoop()
                     end
                 end
             end
-
             repeat task.wait(1) until not isGameActive() or not scriptEnabled
             continue
         end
-
         allPCs = findAllPCs()
         if #allPCs == 0 then
             updateStatus("No PCs found"); task.wait(3); continue
         end
         updateStatus("Found " .. #allPCs .. " PC(s)")
-
         local roundStartTick = tick()
         local myTok = scriptToken
         firstMoveOfRound = true
-
         while scriptEnabled and scriptToken == myTok do
             if tick() - roundStartTick > 300 then log("⚠ Round timeout 5min"); break end
-
             if isReturning or isSaving then
                 while (isReturning or isSaving) and isGameActive() and scriptEnabled do task.wait(0.2) end
             end
-
             if not isGameActive() and not isFindExitPhase() then
                 log("Game ended"); break
             end
@@ -1703,30 +1527,30 @@ local function mainLoop()
 
             local hasSkippedPC = false
             local allCompleted = true
+            local justSkippedPC = nil
 
             for _, pcData in ipairs(allPCs) do
                 if not scriptEnabled or scriptToken ~= myTok then break end
                 if isFindExitPhase() and not hackExtraPC then allCompleted = true; break end
                 if not isGameActive() then allCompleted = true; break end
-
-                if beastNearby and not isReturning and not isSaving then
-                    local _bDist = 0
-                    pcall(function()
-                        local br = beast and beast.Character and (beast.Character:FindFirstChild("HumanoidRootPart") or beast.Character:FindFirstChild("Torso"))
-                        if br and rootPart then _bDist = math.floor((rootPart.Position - br.Position).Magnitude) end
-                    end)
-                    log("👹 [MAIN] Beast cách " .. _bDist .. " studs → skip PC" .. pcData.id .. " tween PC khác ngay")
-                    if pcData and pcData.id then skippedPCs[pcData.id] = true end
-                    isHacking = false; canAutoJump = false; currentPC = nil; currentTrigger = nil; isMoving = false
-                    task.wait(0.5)
-                    allCompleted = false; hasSkippedPC = true; break
-                end
-
                 local pcId = pcData.id
                 if hackedPCs[pcId] then
                 elseif skippedPCs[pcId] then
                     hasSkippedPC = true; allCompleted = false
                 else
+                    if beastNearby and not isReturning and not isSaving then
+                        local _bDist = 0
+                        pcall(function()
+                            local br = beast and beast.Character and (beast.Character:FindFirstChild("HumanoidRootPart") or beast.Character:FindFirstChild("Torso"))
+                            if br and rootPart then _bDist = math.floor((rootPart.Position - br.Position).Magnitude) end
+                        end)
+                        log("👹 Skip PC " .. pcId .. " do Beast tới")
+                        skippedPCs[pcId] = true
+                        justSkippedPC = pcId
+                        isHacking = false; canAutoJump = false; currentPC = nil; currentTrigger = nil; isMoving = false
+                        task.wait(0.5)
+                        allCompleted = false; hasSkippedPC = true; break
+                    end
                     if isSaving or isHacking or isReturning then
                         while (isSaving or isHacking or isReturning) and isGameActive() and scriptEnabled do task.wait(0.2) end
                     end
@@ -1735,19 +1559,23 @@ local function mainLoop()
                     else
                         allCompleted = false
                         if isFindExitPhase() and not hackExtraPC then allCompleted = true; break end
+                        -- Nếu đây là PC cuối chưa hack → reset skippedPCs để beast tới còn có PC tween sang
+                        local unhackedCount = 0
+                        for _, pc in ipairs(allPCs) do
+                            if not hackedPCs[pc.id] then unhackedCount += 1 end
+                        end
+                        if unhackedCount == 1 then
+                            skippedPCs = {}
+                            log("🔄 PC cuối → reset skippedPCs")
+                        end
                         local isFirst = firstMoveOfRound
                         firstMoveOfRound = false
                         hackPC(pcData, myTok, isFirst)
-                        if isFindExitPhase() and not hackExtraPC then
-                            log("🚪 Exit phase sau hack PC" .. pcId)
-                            allCompleted = true; break
-                        end
+                        if isFindExitPhase() and not hackExtraPC then allCompleted = true; break end
                     end
                 end
             end
-
             if allCompleted then break end
-
             if hasSkippedPC then
                 local remainingCount = 0
                 for id in pairs(skippedPCs) do
@@ -1758,27 +1586,20 @@ local function mainLoop()
                     for _, pc in ipairs(allPCs) do
                         if not hackedPCs[pc.id] and not skippedPCs[pc.id] then freeCount += 1 end
                     end
-                    if freeCount > 0 then
+                    if freeCount == 0 then
+                        log("👹 Tất cả PC bị skip → reset, retry")
+                        updateStatus("All PCs blocked, resetting...")
+                        skippedPCs = {}
+                    else
                         if isFindExitPhase() and not hackExtraPC then break end
-                        log("👹 Còn " .. freeCount .. " PC free → tween")
-                        updateStatus("Beast nearby! Trying other PC...")
                         for _, nextPC in ipairs(allPCs) do
                             if not hackedPCs[nextPC.id] and not skippedPCs[nextPC.id] then
                                 allCompleted = false
                                 hackPC(nextPC, myTok, false)
                                 if isFindExitPhase() and not hackExtraPC then allCompleted = true end
+                                skippedPCs = {} 
                                 break
                             end
-                        end
-                    else
-                        if hackExtraPC then
-                            log("👹 hackExtra: beast canh PC extra → exit"); break
-                        else
-                            log("👹 Tất cả PC bị skip → reset 0.2s rồi hack tiếp")
-                            updateStatus("All PCs blocked! Resetting...")
-                            task.wait(0.2)
-                            skippedPCs = {}
-                            log("👹 Reset skip → retry ngay")
                         end
                     end
                 else
@@ -1786,20 +1607,6 @@ local function mainLoop()
                 end
             end
         end
-
-        if hackExtraPC then
-            local hasUnhacked = false
-            for _, pc in ipairs(allPCs) do
-                if not hackedPCs[pc.id] then hasUnhacked = true break end
-            end
-            if hasUnhacked and isGameActive() and not isFindExitPhase() then
-                log("⚡ [EXTRA] Còn PC chưa hack → retry")
-                skippedPCs = {}
-                task.wait(2)
-                continue
-            end
-        end
-
         if isSaving then
             log("⏳ Chờ save xong...")
             while isSaving do task.wait(0.2) end
@@ -1807,18 +1614,14 @@ local function mainLoop()
                 log("🔄 Save done, resume hack..."); continue
             end
         end
-
         isHacking = false; canAutoJump = false; currentTrigger = nil; currentPC = nil
-
         log("⏳ Waiting for Find Exit...")
         updateStatus("Waiting for Find Exit...")
         local waitStart = tick()
         repeat task.wait(0.3)
         until isFindExitPhase() or not isGameActive()
             or (tick() - waitStart > 60) or not scriptEnabled
-
         if not scriptEnabled then continue end
-
         if isFindExitPhase() then
             log("🚪 Find Exit! Auto-exit...")
             updateStatus("Auto Exit started!")
@@ -1827,7 +1630,6 @@ local function mainLoop()
         else
             log("⏱ Find Exit timeout hoặc game ended")
         end
-
         updateStatus("Waiting for lobby...")
         local waitEnd = tick()
         repeat task.wait(0.5)
@@ -1836,23 +1638,18 @@ local function mainLoop()
     end
 end
 
--- ============================================================
--- GUI 
--- ============================================================
 local function createGUI()
     local TweenService = game:GetService("TweenService")
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "AutoHackGUI"
     screenGui.ResetOnSpawn = false
     screenGui.Parent = player:WaitForChild("PlayerGui")
-
     local scriptStartTime = tick()
-    local webhookUrl      = _G.ftfWebhookUrl      or ""
+    local webhookUrl = _G.ftfWebhookUrl or ""
     local webhookInterval = _G.ftfWebhookInterval or 5
-    local creditsAtStart  = nil
-    local autoSendEnabled = _G.ftfAutoSend        or false
-    local settingsOpen    = false
-
+    local creditsAtStart = nil
+    local autoSendEnabled = _G.ftfAutoSend or false
+    local settingsOpen = false
     local function getCredits()
         local stats = player:FindFirstChild("SavedPlayerStatsModule")
         if not stats then return nil end
@@ -1862,10 +1659,8 @@ local function createGUI()
     local function formatUptime(secs)
         return string.format("%02d:%02d:%02d", math.floor(secs/3600), math.floor((secs%3600)/60), math.floor(secs%60))
     end
-
     local CW, CH = 210, 148
     local SW = 220
-
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(0, CW, 0, CH)
     frame.Position = UDim2.new(0.5, -CW/2, 0, 20)
@@ -1878,17 +1673,14 @@ local function createGUI()
     stroke.Color = Color3.fromRGB(70, 70, 100)
     stroke.Thickness = 1.2
     stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
     local leftPanel = Instance.new("Frame", frame)
     leftPanel.Size = UDim2.new(0, CW, 1, 0)
     leftPanel.BackgroundTransparency = 1
-
     local titleBar = Instance.new("Frame", leftPanel)
     titleBar.Size = UDim2.new(1, 0, 0, 30)
     titleBar.BackgroundColor3 = Color3.fromRGB(28, 28, 45)
     titleBar.BorderSizePixel = 0
     Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 12)
-
     local titleLabel = Instance.new("TextLabel", titleBar)
     titleLabel.Size = UDim2.new(1, -68, 1, 0)
     titleLabel.Position = UDim2.new(0, 10, 0, 0)
@@ -1898,7 +1690,6 @@ local function createGUI()
     titleLabel.TextSize = 12
     titleLabel.Font = Enum.Font.GothamBold
     titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-
     local hideBtn = Instance.new("TextButton", titleBar)
     hideBtn.Size = UDim2.new(0, 26, 0, 26)
     hideBtn.Position = UDim2.new(1, -87, 0.5, -13)
@@ -1909,7 +1700,6 @@ local function createGUI()
     hideBtn.Font = Enum.Font.GothamBold
     hideBtn.BorderSizePixel = 0
     Instance.new("UICorner", hideBtn).CornerRadius = UDim.new(0, 6)
-
     local consoleBtn = Instance.new("TextButton", titleBar)
     consoleBtn.Size = UDim2.new(0, 26, 0, 26)
     consoleBtn.Position = UDim2.new(1, -58, 0.5, -13)
@@ -1920,7 +1710,6 @@ local function createGUI()
     consoleBtn.Font = Enum.Font.GothamBold
     consoleBtn.BorderSizePixel = 0
     Instance.new("UICorner", consoleBtn).CornerRadius = UDim.new(0, 6)
-
     local gearBtn = Instance.new("TextButton", titleBar)
     gearBtn.Size = UDim2.new(0, 26, 0, 26)
     gearBtn.Position = UDim2.new(1, -29, 0.5, -13)
@@ -1931,7 +1720,6 @@ local function createGUI()
     gearBtn.Font = Enum.Font.GothamBold
     gearBtn.BorderSizePixel = 0
     Instance.new("UICorner", gearBtn).CornerRadius = UDim.new(0, 6)
-
     local toggleButton = Instance.new("TextButton", leftPanel)
     toggleButton.Size = UDim2.new(1, -16, 0, 34)
     toggleButton.Position = UDim2.new(0, 8, 0, 34)
@@ -1942,7 +1730,6 @@ local function createGUI()
     toggleButton.Font = Enum.Font.GothamBold
     toggleButton.BorderSizePixel = 0
     Instance.new("UICorner", toggleButton).CornerRadius = UDim.new(0, 8)
-
     local status = Instance.new("TextLabel", leftPanel)
     status.Size = UDim2.new(1, -16, 0, 14)
     status.Position = UDim2.new(0, 8, 0, 72)
@@ -1954,12 +1741,10 @@ local function createGUI()
     status.TextXAlignment = Enum.TextXAlignment.Left
     status.TextWrapped = true
     statusLabel = status
-
     local cbFrame = Instance.new("Frame", leftPanel)
     cbFrame.Size = UDim2.new(1, -16, 0, 18)
     cbFrame.Position = UDim2.new(0, 8, 0, 89)
     cbFrame.BackgroundTransparency = 1
-
     local checkbox = Instance.new("Frame", cbFrame)
     checkbox.Size = UDim2.new(0, 14, 0, 14)
     checkbox.Position = UDim2.new(0, 0, 0.5, -7)
@@ -1967,7 +1752,6 @@ local function createGUI()
     checkbox.BorderSizePixel = 1
     checkbox.BorderColor3 = Color3.fromRGB(110, 110, 140)
     Instance.new("UICorner", checkbox).CornerRadius = UDim.new(0, 3)
-
     local checkmark = Instance.new("TextLabel", checkbox)
     checkmark.Size = UDim2.new(1,0,1,0)
     checkmark.BackgroundTransparency = 1
@@ -1976,7 +1760,6 @@ local function createGUI()
     checkmark.TextSize = 12
     checkmark.Font = Enum.Font.GothamBold
     checkmark.Visible = false
-
     local checkLabel = Instance.new("TextLabel", cbFrame)
     checkLabel.Size = UDim2.new(1, -18, 1, 0)
     checkLabel.Position = UDim2.new(0, 18, 0, 0)
@@ -1986,17 +1769,14 @@ local function createGUI()
     checkLabel.TextSize = 10
     checkLabel.Font = Enum.Font.Gotham
     checkLabel.TextXAlignment = Enum.TextXAlignment.Left
-
     local checkButton = Instance.new("TextButton", cbFrame)
     checkButton.Size = UDim2.new(1,0,1,0)
     checkButton.BackgroundTransparency = 1
     checkButton.Text = ""
-
     local modeFrame = Instance.new("Frame", leftPanel)
     modeFrame.Size = UDim2.new(1, -16, 0, 26)
     modeFrame.Position = UDim2.new(0, 8, 0, 112)
     modeFrame.BackgroundTransparency = 1
-
     local modeMainBtn = Instance.new("TextButton", modeFrame)
     modeMainBtn.Size = UDim2.new(0.5, -2, 1, 0)
     modeMainBtn.BackgroundColor3 = Color3.fromRGB(35, 100, 200)
@@ -2006,7 +1786,6 @@ local function createGUI()
     modeMainBtn.Font = Enum.Font.GothamBold
     modeMainBtn.BorderSizePixel = 0
     Instance.new("UICorner", modeMainBtn).CornerRadius = UDim.new(0, 6)
-
     local modeAltBtn = Instance.new("TextButton", modeFrame)
     modeAltBtn.Size = UDim2.new(0.5, -2, 1, 0)
     modeAltBtn.Position = UDim2.new(0.5, 2, 0, 0)
@@ -2017,26 +1796,23 @@ local function createGUI()
     modeAltBtn.Font = Enum.Font.GothamBold
     modeAltBtn.BorderSizePixel = 0
     Instance.new("UICorner", modeAltBtn).CornerRadius = UDim.new(0, 6)
-
     local function updateModeButtons()
         if playerMode == "main" then
             modeMainBtn.BackgroundColor3 = Color3.fromRGB(35,100,200); modeMainBtn.TextColor3 = Color3.new(1,1,1)
-            modeAltBtn.BackgroundColor3  = Color3.fromRGB(45,45,60);   modeAltBtn.TextColor3  = Color3.fromRGB(150,150,170)
+            modeAltBtn.BackgroundColor3 = Color3.fromRGB(45,45,60); modeAltBtn.TextColor3 = Color3.fromRGB(150,150,170)
         else
-            modeMainBtn.BackgroundColor3 = Color3.fromRGB(45,45,60);   modeMainBtn.TextColor3 = Color3.fromRGB(150,150,170)
-            modeAltBtn.BackgroundColor3  = Color3.fromRGB(170,80,15);  modeAltBtn.TextColor3  = Color3.new(1,1,1)
+            modeMainBtn.BackgroundColor3 = Color3.fromRGB(45,45,60); modeMainBtn.TextColor3 = Color3.fromRGB(150,150,170)
+            modeAltBtn.BackgroundColor3 = Color3.fromRGB(170,80,15); modeAltBtn.TextColor3 = Color3.new(1,1,1)
         end
     end
     modeMainBtn.MouseButton1Click:Connect(function() playerMode="main"; followTargetName=""; updateModeButtons() end)
     modeAltBtn.MouseButton1Click:Connect(function() playerMode="alt"; updateModeButtons() end)
-
     local vDivider = Instance.new("Frame", frame)
     vDivider.Size = UDim2.new(0, 1, 1, -16)
     vDivider.Position = UDim2.new(0, CW+2, 0, 8)
     vDivider.BackgroundColor3 = Color3.fromRGB(70,70,100)
     vDivider.BorderSizePixel = 0
     vDivider.Visible = false
-
     local rightPanel = Instance.new("ScrollingFrame", frame)
     rightPanel.Size = UDim2.new(0, SW, 1, 0)
     rightPanel.Position = UDim2.new(0, CW+6, 0, 0)
@@ -2046,12 +1822,10 @@ local function createGUI()
     rightPanel.ScrollBarImageColor3 = Color3.fromRGB(80,80,120)
     rightPanel.CanvasSize = UDim2.new(0,0,0,400)
     rightPanel.Visible = false
-
     local rPad = Instance.new("UIPadding", rightPanel)
     rPad.PaddingTop = UDim.new(0,6); rPad.PaddingLeft = UDim.new(0,8); rPad.PaddingRight = UDim.new(0,8)
     local rLayout = Instance.new("UIListLayout", rightPanel)
     rLayout.SortOrder = Enum.SortOrder.LayoutOrder; rLayout.Padding = UDim.new(0,6)
-
     local function rLabel(text, color, order)
         local lbl = Instance.new("TextLabel", rightPanel)
         lbl.Size = UDim2.new(1,0,0,14); lbl.BackgroundTransparency = 1
@@ -2065,17 +1839,14 @@ local function createGUI()
         d.Size = UDim2.new(1,0,0,1); d.BackgroundColor3 = Color3.fromRGB(60,60,90)
         d.BorderSizePixel = 0; d.LayoutOrder = order
     end
-
-    local lblPlayer  = rLabel("👤 "..player.Name,   Color3.fromRGB(255,220,100), 1)
-    local lblUptime  = rLabel("⏱ 00:00:00",          Color3.fromRGB(140,210,255), 2)
-    local lblRounds  = rLabel("🎮 Rounds: 0",         Color3.fromRGB(200,200,255), 3)
-    local lblCredits = rLabel("💰 Credits: ...",      Color3.fromRGB(100,255,150), 4)
-    local lblEarned  = rLabel("📈 Earned: ...",       Color3.fromRGB(100,255,150), 5)
+    local lblPlayer = rLabel("👤 "..player.Name, Color3.fromRGB(255,220,100), 1)
+    local lblUptime = rLabel("⏱ 00:00:00", Color3.fromRGB(140,210,255), 2)
+    local lblRounds = rLabel("🎮 Rounds: 0", Color3.fromRGB(200,200,255), 3)
+    local lblCredits = rLabel("💰 Credits: ...", Color3.fromRGB(100,255,150), 4)
+    local lblEarned = rLabel("📈 Earned: ...", Color3.fromRGB(100,255,150), 5)
     rDiv(6)
-
     local lblWh = rLabel("Webhook URL:", Color3.fromRGB(180,180,255), 7)
     lblWh.Font = Enum.Font.GothamBold
-
     local webhookInput = Instance.new("TextBox", rightPanel)
     webhookInput.Size = UDim2.new(1,0,0,24); webhookInput.BackgroundColor3 = Color3.fromRGB(28,28,48)
     webhookInput.BorderSizePixel = 0; webhookInput.Text = ""
@@ -2089,26 +1860,21 @@ local function createGUI()
         webhookUrl = webhookInput.Text
         _G.ftfWebhookUrl = webhookUrl; saveConfig()
     end)
-
     local btnRow = Instance.new("Frame", rightPanel)
     btnRow.Size = UDim2.new(1,0,0,26); btnRow.BackgroundTransparency = 1; btnRow.LayoutOrder = 9
-
     local testBtn = Instance.new("TextButton", btnRow)
     testBtn.Size = UDim2.new(0.48,-2,1,0); testBtn.BackgroundColor3 = Color3.fromRGB(35,75,140)
     testBtn.Text = "Test"; testBtn.TextColor3 = Color3.new(1,1,1)
     testBtn.TextSize = 10; testBtn.Font = Enum.Font.GothamBold
     testBtn.BorderSizePixel = 0
     Instance.new("UICorner", testBtn).CornerRadius = UDim.new(0,6)
-
     local autoBtn = Instance.new("TextButton", btnRow)
     autoBtn.Size = UDim2.new(0.52,-2,1,0); autoBtn.Position = UDim2.new(0.48,2,0,0)
     autoBtn.BackgroundColor3 = Color3.fromRGB(55,55,70); autoBtn.Text = "Auto: OFF"
     autoBtn.TextColor3 = Color3.new(1,1,1); autoBtn.TextSize = 10
     autoBtn.Font = Enum.Font.GothamBold; autoBtn.BorderSizePixel = 0
     Instance.new("UICorner", autoBtn).CornerRadius = UDim.new(0,6)
-
     local lblWhStatus = rLabel("", Color3.fromRGB(140,255,140), 10)
-
     local intervalLabelRow = Instance.new("Frame", rightPanel)
     intervalLabelRow.Size = UDim2.new(1,0,0,16); intervalLabelRow.BackgroundTransparency = 1; intervalLabelRow.LayoutOrder = 11
     local lblInterval2 = Instance.new("TextLabel", intervalLabelRow)
@@ -2122,7 +1888,6 @@ local function createGUI()
     intervalInput.Text = tostring(webhookInterval); intervalInput.TextColor3 = Color3.fromRGB(140,140,255)
     intervalInput.TextSize = 10; intervalInput.Font = Enum.Font.GothamBold; intervalInput.ClearTextOnFocus = true
     Instance.new("UICorner", intervalInput).CornerRadius = UDim.new(0,4)
-
     local intervalTrack = Instance.new("Frame", rightPanel)
     intervalTrack.Size = UDim2.new(1,0,0,18); intervalTrack.BackgroundTransparency = 1; intervalTrack.LayoutOrder = 12
     local intervalBg = Instance.new("Frame", intervalTrack)
@@ -2137,7 +1902,6 @@ local function createGUI()
     intervalKnob.Position = UDim2.new((webhookInterval-1)/59,0,0.5,0)
     intervalKnob.BackgroundColor3 = Color3.fromRGB(140,140,255); intervalKnob.BorderSizePixel = 0; intervalKnob.ZIndex = 2
     Instance.new("UICorner", intervalKnob).CornerRadius = UDim.new(1,0)
-
     local function setInterval(val)
         val = math.clamp(math.round(val), 1, 60); webhookInterval = val
         local pct = (val-1)/59
@@ -2148,7 +1912,6 @@ local function createGUI()
     end
     intervalInput.FocusLost:Connect(function() local n=tonumber(intervalInput.Text) if n then setInterval(n) end end)
     rDiv(13)
-
     local speedLabelRow = Instance.new("Frame", rightPanel)
     speedLabelRow.Size = UDim2.new(1,0,0,16); speedLabelRow.BackgroundTransparency = 1; speedLabelRow.LayoutOrder = 14
     local lblSpeed = Instance.new("TextLabel", speedLabelRow)
@@ -2161,7 +1924,6 @@ local function createGUI()
     speedInput.Text = tostring(tweenSpeed); speedInput.TextColor3 = Color3.fromRGB(160,255,160)
     speedInput.TextSize = 10; speedInput.Font = Enum.Font.GothamBold; speedInput.ClearTextOnFocus = true
     Instance.new("UICorner", speedInput).CornerRadius = UDim.new(0,4)
-
     local speedTrack = Instance.new("Frame", rightPanel)
     speedTrack.Size = UDim2.new(1,0,0,18); speedTrack.BackgroundTransparency = 1; speedTrack.LayoutOrder = 15
     local speedBg = Instance.new("Frame", speedTrack)
@@ -2179,12 +1941,11 @@ local function createGUI()
     local speedWarn = rLabel("⚠ Speed ≥35 may get you kicked!", Color3.fromRGB(255,160,40), 16)
     speedWarn.Visible = false
     rDiv(17)
-
     local function setSpeed(val)
         val = math.clamp(math.floor(val), 10, 45); tweenSpeed = val
         local warn = val >= 35; local pct = (val-10)/35
         lblSpeed.Text = "Speed: "..val.." st/s"
-        lblSpeed.TextColor3    = warn and Color3.fromRGB(255,180,50) or Color3.fromRGB(160,255,160)
+        lblSpeed.TextColor3 = warn and Color3.fromRGB(255,180,50) or Color3.fromRGB(160,255,160)
         speedFill.BackgroundColor3 = warn and Color3.fromRGB(255,140,30) or Color3.fromRGB(70,200,70)
         speedKnob.BackgroundColor3 = warn and Color3.fromRGB(255,180,50) or Color3.fromRGB(110,255,110)
         speedWarn.Visible = warn
@@ -2192,11 +1953,9 @@ local function createGUI()
         speedInput.Text = tostring(val); saveConfig()
     end
     speedInput.FocusLost:Connect(function() local n=tonumber(speedInput.Text) if n then setSpeed(n) end end)
-
     local lblAltTitle = rLabel("🔧 ALT MODE CONFIG", Color3.fromRGB(255,160,60), 18)
     lblAltTitle.Font = Enum.Font.GothamBold
     local lblFollow = rLabel("Follow Main Player:", Color3.fromRGB(200,200,200), 19)
-
     local playerListFrame = Instance.new("Frame", rightPanel)
     playerListFrame.Size = UDim2.new(1,0,0,72); playerListFrame.BackgroundColor3 = Color3.fromRGB(22,22,36)
     playerListFrame.BorderSizePixel = 0; playerListFrame.ClipsDescendants = true; playerListFrame.LayoutOrder = 20
@@ -2205,13 +1964,10 @@ local function createGUI()
     plLayout.SortOrder = Enum.SortOrder.LayoutOrder; plLayout.Padding = UDim.new(0,2)
     local plPad = Instance.new("UIPadding", playerListFrame)
     plPad.PaddingTop = UDim.new(0,4); plPad.PaddingLeft = UDim.new(0,4); plPad.PaddingRight = UDim.new(0,4)
-
     local lblFollowing = rLabel("→ Not selected", Color3.fromRGB(100,255,150), 21)
     lblFollowing.Font = Enum.Font.GothamBold
-
     local lblDelay = rLabel("Cage delay: "..altCageDelay.."s", Color3.fromRGB(255,180,100), 22)
     lblDelay.Font = Enum.Font.GothamBold
-
     local cageTrack = Instance.new("Frame", rightPanel)
     cageTrack.Size = UDim2.new(1,0,0,18); cageTrack.BackgroundTransparency = 1; cageTrack.LayoutOrder = 23
     local cageBg = Instance.new("Frame", cageTrack)
@@ -2226,18 +1982,15 @@ local function createGUI()
     cageKnob.Position = UDim2.new((altCageDelay-10)/290,0,0.5,0)
     cageKnob.BackgroundColor3 = Color3.fromRGB(255,160,50); cageKnob.BorderSizePixel = 0; cageKnob.ZIndex = 2
     Instance.new("UICorner", cageKnob).CornerRadius = UDim.new(1,0)
-
     rLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         rightPanel.CanvasSize = UDim2.new(0,0,0,rLayout.AbsoluteContentSize.Y+16)
     end)
-
     local function setCageDelay(val)
         val = math.clamp(math.floor(val), 10, 300); altCageDelay = val
         local pct = (val-10)/290
         cageFill.Size = UDim2.new(pct,0,1,0); cageKnob.Position = UDim2.new(pct,0,0.5,0)
         lblDelay.Text = "Cage delay: "..val.."s"; saveConfig()
     end
-
     local function refreshPlayerList()
         for _, c in ipairs(playerListFrame:GetChildren()) do
             if c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end
@@ -2268,11 +2021,9 @@ local function createGUI()
     end
     Players.PlayerAdded:Connect(function() refreshPlayerList() end)
     Players.PlayerRemoving:Connect(function() refreshPlayerList() end)
-
     rDiv(24)
     local pingDisconEnabled = false
     local pingUserId = ""
-
     local pingRow = Instance.new("Frame", rightPanel)
     pingRow.Size = UDim2.new(1,0,0,18); pingRow.BackgroundTransparency = 1; pingRow.LayoutOrder = 25
     local pingCheckbox = Instance.new("Frame", pingRow)
@@ -2289,7 +2040,6 @@ local function createGUI()
     pingLabel.BackgroundTransparency = 1; pingLabel.Text = "Ping when disconnected"
     pingLabel.TextColor3 = Color3.fromRGB(170,170,190); pingLabel.TextSize = 10
     pingLabel.Font = Enum.Font.Gotham; pingLabel.TextXAlignment = Enum.TextXAlignment.Left
-
     local pingIdInput = Instance.new("TextBox", rightPanel)
     pingIdInput.Size = UDim2.new(1,0,0,26); pingIdInput.BackgroundColor3 = Color3.fromRGB(22,22,36)
     pingIdInput.BorderSizePixel = 0; pingIdInput.Text = ""
@@ -2303,7 +2053,6 @@ local function createGUI()
     pingIdInput:GetPropertyChangedSignal("Text"):Connect(function()
         pingUserId = pingIdInput.Text:gsub("%s+",""); _G.ftfPingUserId = pingUserId; saveConfig()
     end)
-
     if _G.ftfPingDiscon then
         pingDisconEnabled = true; pingCheckmark.Visible = true
         pingCheckbox.BackgroundColor3 = Color3.fromRGB(25,55,75)
@@ -2313,7 +2062,6 @@ local function createGUI()
     if _G.ftfPingUserId and _G.ftfPingUserId ~= "" then
         pingUserId = _G.ftfPingUserId; pingIdInput.Text = _G.ftfPingUserId
     end
-
     local pingBtn = Instance.new("TextButton", pingRow)
     pingBtn.Size = UDim2.new(1,0,1,0); pingBtn.BackgroundTransparency = 1; pingBtn.Text = ""
     pingBtn.MouseButton1Click:Connect(function()
@@ -2324,10 +2072,8 @@ local function createGUI()
         pingLabel.TextColor3 = pingDisconEnabled and Color3.fromRGB(140,220,255) or Color3.fromRGB(170,170,190)
         pingIdInput.Visible = pingDisconEnabled; _G.ftfPingDiscon = pingDisconEnabled; saveConfig()
     end)
-
     local CONSOLE_W, CONSOLE_H = 400, 340
     local consoleOpen = false
-
     local consolePanel = Instance.new("Frame", screenGui)
     consolePanel.Size = UDim2.new(0,CONSOLE_W,0,CONSOLE_H)
     consolePanel.BackgroundColor3 = Color3.fromRGB(10,14,10)
@@ -2336,20 +2082,17 @@ local function createGUI()
     Instance.new("UICorner", consolePanel).CornerRadius = UDim.new(0,8)
     local consoleStroke = Instance.new("UIStroke", consolePanel)
     consoleStroke.Color = Color3.fromRGB(40,120,40); consoleStroke.Thickness = 1.5
-
     local consoleTitleBar = Instance.new("Frame", consolePanel)
     consoleTitleBar.Size = UDim2.new(1,0,0,28); consoleTitleBar.BackgroundColor3 = Color3.fromRGB(20,60,20)
     consoleTitleBar.BorderSizePixel = 0; consoleTitleBar.ZIndex = 12; consoleTitleBar.Active = true
     Instance.new("UICorner", consoleTitleBar).CornerRadius = UDim.new(0,8)
     local consoleTitleStroke = Instance.new("UIStroke", consoleTitleBar)
     consoleTitleStroke.Color = Color3.fromRGB(60,180,60); consoleTitleStroke.Thickness = 1.5
-
     local consoleTitleLbl = Instance.new("TextLabel", consoleTitleBar)
     consoleTitleLbl.Size = UDim2.new(1,-30,1,0); consoleTitleLbl.Position = UDim2.new(0,8,0,0)
     consoleTitleLbl.BackgroundTransparency = 1; consoleTitleLbl.Text = "📋 FTF Console  ☰ drag"
     consoleTitleLbl.TextColor3 = Color3.fromRGB(100,220,100); consoleTitleLbl.TextSize = 13
     consoleTitleLbl.Font = Enum.Font.GothamBold; consoleTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
-
     local consoleResetBtn = Instance.new("TextButton", consoleTitleBar)
     consoleResetBtn.Size = UDim2.new(0,26,0,18); consoleResetBtn.Position = UDim2.new(1,-58,0.5,-9)
     consoleResetBtn.BackgroundColor3 = Color3.fromRGB(30,60,100); consoleResetBtn.Text = "⌂"
@@ -2363,14 +2106,12 @@ local function createGUI()
         consolePanel.Position = UDim2.new(0, math.min(fx, sw.X-CONSOLE_W-4), 0, fy)
         savedConsolePos = nil
     end)
-
     local consoleClearBtn = Instance.new("TextButton", consoleTitleBar)
     consoleClearBtn.Size = UDim2.new(0,26,0,18); consoleClearBtn.Position = UDim2.new(1,-28,0.5,-9)
     consoleClearBtn.BackgroundColor3 = Color3.fromRGB(60,30,30); consoleClearBtn.Text = "CLR"
     consoleClearBtn.TextColor3 = Color3.fromRGB(255,120,120); consoleClearBtn.TextSize = 8
     consoleClearBtn.Font = Enum.Font.GothamBold; consoleClearBtn.BorderSizePixel = 0
     Instance.new("UICorner", consoleClearBtn).CornerRadius = UDim.new(0,4)
-
     local consoleScroll = Instance.new("ScrollingFrame", consolePanel)
     consoleScroll.Size = UDim2.new(1,-4,1,-32); consoleScroll.Position = UDim2.new(0,2,0,30)
     consoleScroll.BackgroundColor3 = Color3.fromRGB(8,12,8)
@@ -2378,15 +2119,12 @@ local function createGUI()
     consoleScroll.ScrollBarImageColor3 = Color3.fromRGB(60,160,60)
     consoleScroll.CanvasSize = UDim2.new(0,0,0,0); consoleScroll.ScrollingDirection = Enum.ScrollingDirection.Y
     Instance.new("UICorner", consoleScroll).CornerRadius = UDim.new(0,4)
-
     local consoleLayout = Instance.new("UIListLayout", consoleScroll)
     consoleLayout.SortOrder = Enum.SortOrder.LayoutOrder; consoleLayout.Padding = UDim.new(0,1)
     local consolePad = Instance.new("UIPadding", consoleScroll)
     consolePad.PaddingLeft = UDim.new(0,4); consolePad.PaddingTop = UDim.new(0,2)
-
     local logOrder = 0; local maxLogLines = 120; local LINE_H = 17
     local labelQueue = {}
-
     local function consoleLog(msg, logType)
         logOrder += 1
         local color, prefix
@@ -2411,17 +2149,14 @@ local function createGUI()
             consoleScroll.CanvasPosition = Vector2.new(0, math.max(0, totalH-consoleScroll.AbsoluteSize.Y))
         end)
     end
-
     consoleClearBtn.MouseButton1Click:Connect(function()
         for _, c in ipairs(consoleScroll:GetChildren()) do if c:IsA("TextLabel") then c:Destroy() end end
         logOrder = 0; consoleScroll.CanvasSize = UDim2.new(0,0,0,0); labelQueue = {}
     end)
-
     consoleLogFn = consoleLog
     setSpeed(tweenSpeed); setInterval(webhookInterval)
     for _, entry in ipairs(logBuffer) do consoleLog(entry.msg, entry.logType) end
     logBuffer = {}
-
     local function toggleConsole()
         consoleOpen = not consoleOpen
         if consoleOpen then
@@ -2442,11 +2177,9 @@ local function createGUI()
         end
     end
     consoleBtn.MouseButton1Click:Connect(toggleConsole)
-
-    local TWEEN_OPEN  = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+    local TWEEN_OPEN = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
     local TWEEN_CLOSE = TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-    local compactPos  = frame.Position
-
+    local compactPos = frame.Position
     local function toggleSettings()
         settingsOpen = not settingsOpen
         if settingsOpen then
@@ -2469,7 +2202,6 @@ local function createGUI()
         end
     end
     gearBtn.MouseButton1Click:Connect(toggleSettings)
-
     local uiHidden = false
     local hiddenIcon = Instance.new("TextButton", screenGui)
     hiddenIcon.Size = UDim2.new(0,44,0,44); hiddenIcon.Position = frame.Position
@@ -2480,11 +2212,9 @@ local function createGUI()
     Instance.new("UICorner", hiddenIcon).CornerRadius = UDim.new(0,10)
     local hiddenStroke = Instance.new("UIStroke", hiddenIcon)
     hiddenStroke.Color = Color3.fromRGB(70,70,100); hiddenStroke.Thickness = 1.5
-
     local iconDragging = false; local iconDragStart = Vector2.new(0,0)
     local iconStartPos = Vector2.new(0,0); local iconMoved = false
     local iconActiveTouchId = nil; local savedIconPos = nil
-
     local function iconIsMine(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.MouseMovement then return true end
         if i.UserInputType == Enum.UserInputType.Touch then return iconActiveTouchId == nil or iconActiveTouchId == i end
@@ -2497,7 +2227,6 @@ local function createGUI()
         iconDragStart = Vector2.new(i.Position.X, i.Position.Y)
         iconStartPos = Vector2.new(hiddenIcon.AbsolutePosition.X, hiddenIcon.AbsolutePosition.Y)
     end)
-
     local _UIS = game:GetService("UserInputService")
     _UIS.InputChanged:Connect(function(i)
         if not iconDragging or not iconIsMine(i) then return end
@@ -2527,7 +2256,6 @@ local function createGUI()
         if consolePanel.Visible then consolePanel.Visible = false end
         hiddenIcon.Visible = true
     end)
-
     local UIS = game:GetService("UserInputService")
     local speedDrag, cageDrag, intervalDrag = false, false, false
     local dragging, dragStart, startPos
@@ -2536,7 +2264,6 @@ local function createGUI()
     local DRAG_THRESHOLD = 6
     local dragConfirmed = false; local conDragConfirmed = false
     local activeTouchId = nil
-
     local function isMine(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.MouseMovement then return true end
         if i.UserInputType == Enum.UserInputType.Touch then return activeTouchId == i end
@@ -2591,20 +2318,19 @@ local function createGUI()
             consolePanel.Position = UDim2.fromOffset(conStartPos.X+d.X, conStartPos.Y+d.Y)
         end
     end)
-
     local function sendWebhook(isTest)
         if webhookUrl == "" then lblWhStatus.Text = "No URL!" return end
         local elapsed = tick() - scriptStartTime
         local credits = getCredits()
-        local delta   = (credits and creditsAtStart) and (credits - creditsAtStart) or 0
+        local delta = (credits and creditsAtStart) and (credits - creditsAtStart) or 0
         local mapName = "?"; pcall(function() local mv=ReplicatedStorage:FindFirstChild("CurrentMap") if mv and mv.Value then mapName=mv.Value.Name end end)
         local gameStatus = "?"; pcall(function() local gs=ReplicatedStorage:FindFirstChild("GameStatus") if gs then gameStatus=tostring(gs.Value) end end)
-        local beastName  = beast and beast.Name or "N/A"
+        local beastName = beast and beast.Name or "N/A"
         local escapedStr = hasEscaped and "✅ Escaped" or "⏳ In game"
-        local pingStr    = (pingDisconEnabled and pingUserId ~= "") and ("<@"..pingUserId.."> ") or ""
-        local modeStr    = playerMode == "alt" and ("ALT → "..(followTargetName ~= "" and followTargetName or "?")) or "MAIN"
-        local header     = isTest and "🧪 **[FTF] TEST REPORT**" or "📊 **[FTF] Auto Report**"
-        local content    = header
+        local pingStr = (pingDisconEnabled and pingUserId ~= "") and ("<@"..pingUserId.."> ") or ""
+        local modeStr = playerMode == "alt" and ("ALT → "..(followTargetName ~= "" and followTargetName or "?")) or "MAIN"
+        local header = isTest and "🧪 **[FTF] TEST REPORT**" or "📊 **[FTF] Auto Report**"
+        local content = header
             .."\n━━━━━━━━━━━━━━━━━━━━"
             .."\n👤 **Player:** "..player.Name
             .."\n🗺 **Map:** "..mapName
@@ -2626,7 +2352,6 @@ local function createGUI()
             lblWhStatus.Text = isTest and "Test sent!" or "Sent!"
         end)
     end
-
     testBtn.MouseButton1Click:Connect(function() lblWhStatus.Text="Sending..." task.spawn(function() sendWebhook(true) end) end)
     autoBtn.MouseButton1Click:Connect(function()
         autoSendEnabled = not autoSendEnabled
@@ -2635,7 +2360,6 @@ local function createGUI()
         lblWhStatus.Text = autoSendEnabled and ("Every "..webhookInterval.."m") or "Auto off"
         _G.ftfAutoSend = autoSendEnabled; saveConfig()
     end)
-
     local function sendKickWebhook(reason, isKick)
         if webhookUrl == "" then return end
         local elapsed = tick()-scriptStartTime; local credits=getCredits()
@@ -2696,7 +2420,6 @@ local function createGUI()
             end)
         end)
     end)
-
     task.spawn(function()
         task.wait(2); creditsAtStart = getCredits()
         while true do
@@ -2704,13 +2427,12 @@ local function createGUI()
             if not settingsOpen then continue end
             local credits = getCredits(); local elapsed = tick()-scriptStartTime
             local delta = (credits and creditsAtStart) and (credits-creditsAtStart) or 0
-            lblUptime.Text  = "⏱ "..formatUptime(elapsed)
-            lblRounds.Text  = "🎮 Rounds: "..roundsPlayed
+            lblUptime.Text = "⏱ "..formatUptime(elapsed)
+            lblRounds.Text = "🎮 Rounds: "..roundsPlayed
             lblCredits.Text = "💰 "..(credits and tostring(credits) or "?").."C"
-            lblEarned.Text  = "📈 +"..tostring(delta).."C"
+            lblEarned.Text = "📈 +"..tostring(delta).."C"
         end
     end)
-
     local lastSentTick = 0
     task.spawn(function()
         while true do
@@ -2722,7 +2444,6 @@ local function createGUI()
             end
         end
     end)
-
     toggleButton.MouseButton1Click:Connect(function()
         scriptEnabled = not scriptEnabled
         toggleButton.BackgroundColor3 = scriptEnabled and Color3.fromRGB(40,190,40) or Color3.fromRGB(200,50,50)
@@ -2739,7 +2460,6 @@ local function createGUI()
             end)
         end
     end)
-
     if _G.ftfHackExtraPC then
         hackExtraPC = true; checkmark.Visible = true
         checkbox.BackgroundColor3 = Color3.fromRGB(75,35,35); checkbox.BorderColor3 = Color3.fromRGB(255,80,80)
@@ -2750,7 +2470,6 @@ local function createGUI()
         autoSendEnabled = true; autoBtn.BackgroundColor3 = Color3.fromRGB(45,120,45)
         autoBtn.Text = "Auto: ON"; lblWhStatus.Text = "Every "..webhookInterval.."m"
     end
-
     checkButton.MouseButton1Click:Connect(function()
         hackExtraPC = not hackExtraPC; checkmark.Visible = hackExtraPC
         checkbox.BackgroundColor3 = hackExtraPC and Color3.fromRGB(75,35,35) or Color3.fromRGB(55,55,70)
@@ -2760,9 +2479,6 @@ local function createGUI()
     end)
 end
 
--- ============================================================
--- INIT
--- ============================================================
 updateCharacterReferences()
 createGUI()
 antiAFK()
@@ -2771,7 +2487,7 @@ log("[DEBUG] FTF v3 loaded ✅")
 task.spawn(function()
     pcall(function()
         local center = (LOBBY_MIN + LOBBY_MAX) / 2
-        local size   = LOBBY_MAX - LOBBY_MIN
+        local size = LOBBY_MAX - LOBBY_MIN
         local box = Instance.new("Part")
         box.Name = "FTF_LobbyBox_Debug"; box.Size = size
         box.CFrame = CFrame.new(center); box.Anchored = true
