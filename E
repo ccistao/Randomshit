@@ -535,12 +535,6 @@ local function hackPC(pcData, myTok, isFirstMove)
         if i == 1 then
             moveTo(trigger, myTok, isFirst)
         else
-            -- Bug 2 fix: acc khác đang hack cùng trigger → không tranh
-            if isCoHacking() then
-                log("🤝 PC" .. pcId .. ": trigger " .. i .. " bị coHack → skip trigger")
-                canAutoJump = false; currentTrigger = nil
-                continue
-            end
             moveStraightTo(trigger, myTok)
         end
         if isScreenGreen(pcData) then
