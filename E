@@ -525,9 +525,22 @@ local function hackPC(pcData, myTok, isFirstMove)
         if not scriptEnabled or scriptToken ~= myTok then return false end
         if isSaving then return false end
         if isFindExitPhase() and not hackExtraPC then return false end
+        -- Bug 1 fix: beast đứng sẵn tại PC → skip ngay, không thử trigger
+        if beastNearby and not isReturning then
+            log("👹 PC" .. pcId .. ": beast near trước khi thử trigger → skip")
+            skippedPCs[pcData.id] = true
+            isMoving = false; canAutoJump = false; currentTrigger = nil
+            return false
+        end
         if i == 1 then
             moveTo(trigger, myTok, isFirst)
         else
+            -- Bug 2 fix: acc khác đang hack cùng trigger → không tranh
+            if isCoHacking() then
+                log("🤝 PC" .. pcId .. ": trigger " .. i .. " bị coHack → skip trigger")
+                canAutoJump = false; currentTrigger = nil
+                continue
+            end
             moveStraightTo(trigger, myTok)
         end
         if isScreenGreen(pcData) then
