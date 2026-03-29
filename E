@@ -554,13 +554,6 @@ local function hackPC(pcData, myTok, isFirstMove)
         if not scriptEnabled or scriptToken ~= myTok then return false end
         if isSaving then return false end
         if isFindExitPhase() and not hackExtraPC then return false end
-        -- Bug 1 fix: beast đứng sẵn tại PC → skip ngay, không thử trigger
-        if beastNearby and not isReturning then
-            log("👹 PC" .. pcId .. ": beast near trước khi thử trigger → skip")
-            skippedPCs[pcData.id] = true
-            isMoving = false; canAutoJump = false; currentTrigger = nil
-            return false
-        end
         if si == 1 then
             moveTo(trigger, myTok, isFirst)
         else
@@ -658,8 +651,7 @@ local function hackPC(pcData, myTok, isFirstMove)
     local lastProgress = getPlayerActionProgress()
     local lastProgressTick = tick()
     while isHacking and scriptEnabled and scriptToken == hackTok and not gameOver do
-        task.wait(0.1)
-        if not isGameActive() then
+        task.wait(0.1)        if not isGameActive() then
             log("Game ended mid-hack")
             isHacking = false; break
         end
@@ -1637,9 +1629,10 @@ local function mainLoop()
                         if not hackedPCs[pc.id] and not skippedPCs[pc.id] then freeCount += 1 end
                     end
                     if freeCount == 0 then
-                        log("👹 Tất cả PC bị skip → reset, retry")
-                        updateStatus("All PCs blocked, resetting...")
+                        log("👹 Tất cả PC bị skip → reset, tạm skip PC cuối, hack PC khác trước")
+                        local lastSkipped = justSkippedPC
                         skippedPCs = {}
+                        if lastSkipped then skippedPCs[lastSkipped] = true end
                     else
                         if isFindExitPhase() and not hackExtraPC then break end
                         for _, nextPC in ipairs(allPCs) do
@@ -1647,7 +1640,7 @@ local function mainLoop()
                                 allCompleted = false
                                 hackPC(nextPC, myTok, false)
                                 if isFindExitPhase() and not hackExtraPC then allCompleted = true end
-                                skippedPCs = {} 
+                                skippedPCs = {}
                                 break
                             end
                         end
