@@ -362,6 +362,22 @@ local function isCoHacking()
     return coHackActive
 end
 
+local function isTriggerOccupied(trigger)
+    for _, other in ipairs(Players:GetPlayers()) do
+        if other == player or not other.Character then continue end
+        local st = other:FindFirstChild("TempPlayerStatsModule")
+        if st and st:FindFirstChild("IsBeast") and st.IsBeast.Value == true then continue end
+        local otherRoot = other.Character:FindFirstChild("HumanoidRootPart")
+        if not otherRoot then continue end
+        if (otherRoot.Position - trigger.Position).Magnitude <= 8 then
+            local ap = st and st:FindFirstChild("ActionProgress")
+            local cur = ap and (type(ap.Value) == "number" and ap.Value or 0) or 0
+            if cur > 0.001 then return true end
+        end
+    end
+    return false
+end
+
 local isMoving = false
 currentPC = nil
 local currentTrigger = nil
@@ -521,7 +537,20 @@ local function hackPC(pcData, myTok, isFirstMove)
     log("[PC" .. pcId .. "] Bắt đầu hack | triggers=" .. #pcData.triggers)
     local chosenTrigger = nil
     local isFirst = isFirstMove or false
+
+    -- Sắp xếp: trigger free lên trước, trigger bị acc khác chiếm xuống sau
+    local sortedTriggers = {}
     for i, trigger in ipairs(pcData.triggers) do
+        table.insert(sortedTriggers, {trigger = trigger, idx = i, occupied = isTriggerOccupied(trigger)})
+    end
+    table.sort(sortedTriggers, function(a, b)
+        if a.occupied ~= b.occupied then return not a.occupied end
+        return a.idx < b.idx
+    end)
+
+    for si, tData in ipairs(sortedTriggers) do
+        local trigger = tData.trigger
+        local i = tData.idx
         if not scriptEnabled or scriptToken ~= myTok then return false end
         if isSaving then return false end
         if isFindExitPhase() and not hackExtraPC then return false end
@@ -532,7 +561,7 @@ local function hackPC(pcData, myTok, isFirstMove)
             isMoving = false; canAutoJump = false; currentTrigger = nil
             return false
         end
-        if i == 1 then
+        if si == 1 then
             moveTo(trigger, myTok, isFirst)
         else
             moveStraightTo(trigger, myTok)
@@ -626,6 +655,8 @@ local function hackPC(pcData, myTok, isFirstMove)
         pcall(function() if _bgyr and _bgyr.Parent then _bgyr:Destroy() end end)
     end
     local hackTok = myTok
+    local lastProgress = getPlayerActionProgress()
+    local lastProgressTick = tick()
     while isHacking and scriptEnabled and scriptToken == hackTok and not gameOver do
         task.wait(0.1)
         if not isGameActive() then
@@ -672,6 +703,18 @@ local function hackPC(pcData, myTok, isFirstMove)
             local r = ReplicatedStorage:FindFirstChild("RemoteEvent")
             if r then r:FireServer("Input", "Action", true) end
         end)
+        -- Check progress tăng không, nếu stuck 3s → trigger bị dành → thử lại
+        local curProgress = getPlayerActionProgress()
+        if curProgress > lastProgress + 0.001 then
+            lastProgress = curProgress
+            lastProgressTick = tick()
+        elseif tick() - lastProgressTick > 3 then
+            log("⚠ [PC" .. pcId .. "] Progress stuck 3s → thử trigger khác")
+            isHacking = false; unfreezeHack()
+            currentPC = nil; canAutoJump = false; currentTrigger = nil
+            setState("moving")
+            return false
+        end
         if pcData.computer:FindFirstChild("SkillCheckActive")
         and pcData.computer.SkillCheckActive.Value then
             pcall(function()
