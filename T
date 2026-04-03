@@ -1,0 +1,15 @@
+local player = game.Players.LocalPlayer
+
+local function applyAnim(char)
+    local animate = char:WaitForChild("Animate")
+    local walk = animate:WaitForChild("walk")
+    local walkAnim = walk:WaitForChild("WalkAnim")
+
+    walkAnim.AnimationId = "rbxassetid://130051797027490"
+end
+
+if player.Character then
+    applyAnim(player.Character)
+end
+
+player.CharacterAdded:Connect(applyAnim)
