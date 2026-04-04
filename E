@@ -1653,16 +1653,10 @@ local function mainLoop()
                             updateStatus("Enough PCs done, waiting exit...")
                             break
                         else
-                            log("👹 Chưa đủ PC → force hack dù beast gần")
+                            log("👹 Chưa đủ PC → reset skip, để mainLoop retry")
                             updateStatus("Force hacking despite beast...")
                             skippedPCs = {}
                             task.wait(0.5)
-                            for _, nextPC in ipairs(allPCs) do
-                                if not hackedPCs[nextPC.id] then
-                                    hackPC(nextPC, myTok, false)
-                                    break
-                                end
-                            end
                         end
                     else
                         if isFindExitPhase() and not hackExtraPC then break end
@@ -2562,3 +2556,4 @@ log("[DEBUG] FTF v3 loaded ✅")
 task.spawn(mainLoop)
 task.spawn(beastLoop)
 task.spawn(autoSaveLoop)
+print("cc")
