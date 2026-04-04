@@ -2534,26 +2534,6 @@ createGUI()
 antiAFK()
 log("[DEBUG] FTF v3 loaded ✅")
 
-task.spawn(function()
-    pcall(function()
-        local center = (LOBBY_MIN + LOBBY_MAX) / 2
-        local size = LOBBY_MAX - LOBBY_MIN
-        local box = Instance.new("Part")
-        box.Name = "FTF_LobbyBox_Debug"; box.Size = size
-        box.CFrame = CFrame.new(center); box.Anchored = true
-        box.CanCollide = false; box.Transparency = 0.85
-        box.BrickColor = BrickColor.new("Bright blue")
-        box.Material = Enum.Material.Neon; box.Parent = workspace
-        local sel = Instance.new("SelectionBox")
-        sel.Adornee = box; sel.Color3 = Color3.fromRGB(0,150,255)
-        sel.LineThickness = 0.06; sel.SurfaceTransparency = 0.9; sel.Parent = workspace
-        task.delay(60, function()
-            if box and box.Parent then box:Destroy() end
-            if sel and sel.Parent then sel:Destroy() end
-        end)
-    end)
-end)
-
 task.spawn(mainLoop)
 task.spawn(beastLoop)
 task.spawn(autoSaveLoop)
