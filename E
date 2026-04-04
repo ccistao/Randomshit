@@ -1278,6 +1278,7 @@ local function beastLoop()
         root.CFrame = CFrame.new(torso.Position + Vector3.new(0, 0, 0.5))
         local hitTimer = 0
         local ragdollTimer = 0
+        local lastHitTick = tick()
         while hitTimer < 1.5 do
             if not target.Character then break end
             local h2 = target.Character:FindFirstChild("Humanoid")
@@ -1309,6 +1310,11 @@ local function beastLoop()
             if t2 then root.CFrame = CFrame.new(t2.Position + Vector3.new(0, 0, 0.5)) end
             remote:FireServer("HammerClick", true)
             remote:FireServer("HammerHit", torso)
+            local h2check = target.Character:FindFirstChild("Humanoid")
+            if h2check and h2check.PlatformStand then lastHitTick = tick() end
+            if tick() - lastHitTick > 1 then
+                log("👹 " .. target.Name .. " 1s không hit dc → skip"); break
+            end
             task.wait(0.05); hitTimer += 0.05
         end
     end
@@ -2489,10 +2495,11 @@ local function createGUI()
     end)
     toggleButton.MouseButton1Click:Connect(function()
         scriptEnabled = not scriptEnabled
+        scriptToken += 1  -- kill tất cả loop cũ dù ON hay OFF
         toggleButton.BackgroundColor3 = scriptEnabled and Color3.fromRGB(40,190,40) or Color3.fromRGB(200,50,50)
         toggleButton.Text = scriptEnabled and "ON" or "OFF"
         if scriptEnabled then
-            hasEscaped = false; scriptToken += 1
+            hasEscaped = false
         end
         updateStatus(scriptEnabled and "Starting..." or "Script OFF")
         if scriptEnabled then
