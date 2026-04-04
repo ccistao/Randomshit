@@ -1,15 +1,136 @@
-local player = game.Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
-local function applyAnim(char)
-    local animate = char:WaitForChild("Animate")
-    local walk = animate:WaitForChild("walk")
-    local walkAnim = walk:WaitForChild("WalkAnim")
+setfpscap(0)
 
-    walkAnim.AnimationId = "rbxassetid://130051797027490"
+-- Data
+local history = {}
+local MAX_HISTORY = 60
+local totalFps = 0
+local sampleCount = 0
+
+-- GUI
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "FPSDisplay"
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.Parent = game.Players.LocalPlayer.PlayerGui
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 180, 0, 120)
+frame.Position = UDim2.new(1, -190, 0, 10)
+frame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+frame.BackgroundTransparency = 0.3
+frame.BorderSizePixel = 0
+frame.Parent = screenGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 8)
+corner.Parent = frame
+
+-- Labels
+local function makeLabel(text, posY)
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(1, -10, 0, 16)
+    l.Position = UDim2.new(0, 5, 0, posY)
+    l.BackgroundTransparency = 1
+    l.TextColor3 = Color3.fromRGB(200, 200, 200)
+    l.TextSize = 12
+    l.Font = Enum.Font.GothamBold
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Text = text
+    l.Parent = frame
+    return l
 end
 
-if player.Character then
-    applyAnim(player.Character)
+local fpsLabel = makeLabel("FPS: --", 4)
+local minLabel = makeLabel("Min: --", 20)
+local maxLabel = makeLabel("Max: --", 36)
+local avgLabel = makeLabel("Avg: --", 52)
+
+-- Chart
+local chartFrame = Instance.new("Frame")
+chartFrame.Size = UDim2.new(1, -10, 0, 40)
+chartFrame.Position = UDim2.new(0, 5, 0, 72)
+chartFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+chartFrame.BackgroundTransparency = 0.5
+chartFrame.BorderSizePixel = 0
+chartFrame.ClipsDescendants = true
+chartFrame.Parent = frame
+
+local chartCorner = Instance.new("UICorner")
+chartCorner.CornerRadius = UDim.new(0, 4)
+chartCorner.Parent = chartFrame
+
+local bars = {}
+for i = 1, MAX_HISTORY do
+    local bar = Instance.new("Frame")
+    bar.Size = UDim2.new(1/MAX_HISTORY, 0, 0, 0)
+    bar.Position = UDim2.new((i-1)/MAX_HISTORY, 0, 1, 0)
+    bar.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+    bar.BorderSizePixel = 0
+    bar.AnchorPoint = Vector2.new(0, 1)
+    bar.Parent = chartFrame
+    bars[i] = bar
 end
 
-player.CharacterAdded:Connect(applyAnim)
+-- Drag
+local dragging, dragStart, startPos = false, nil, nil
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = frame.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+-- Update
+local function getColor(fps)
+    return fps >= 50 and Color3.fromRGB(0, 255, 100)
+        or fps >= 30 and Color3.fromRGB(255, 200, 0)
+        or Color3.fromRGB(255, 60, 60)
+end
+
+RunService.RenderStepped:Connect(function(dt)
+    local fps = math.round(1 / dt)
+
+    table.insert(history, fps)
+    if #history > MAX_HISTORY then table.remove(history, 1) end
+
+    totalFps += fps
+    sampleCount += 1
+
+    local min, max = math.huge, -math.huge
+    for _, v in ipairs(history) do
+        if v < min then min = v end
+        if v > max then max = v end
+    end
+    local avg = math.round(totalFps / sampleCount)
+
+    fpsLabel.Text = "FPS: " .. fps
+    fpsLabel.TextColor3 = getColor(fps)
+    minLabel.Text = "Min: " .. min
+    minLabel.TextColor3 = getColor(min)
+    maxLabel.Text = "Max: " .. max
+    maxLabel.TextColor3 = getColor(max)
+    avgLabel.Text = "Avg: " .. avg
+    avgLabel.TextColor3 = getColor(avg)
+
+    for i, bar in ipairs(bars) do
+        local v = history[i] or 0
+        local h = math.clamp(v / 120, 0, 1)
+        bar.Size = UDim2.new(1/MAX_HISTORY, -1, h, 0)
+        bar.BackgroundColor3 = getColor(v)
+    end
+end)
