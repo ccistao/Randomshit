@@ -554,6 +554,13 @@ local function hackPC(pcData, myTok, isFirstMove)
         if not scriptEnabled or scriptToken ~= myTok then return false end
         if isSaving then return false end
         if isFindExitPhase() and not hackExtraPC then return false end
+        -- Beast gần → skip PC ngay, không thử trigger tiếp
+        if beastNearby and not isReturning then
+            log("👹 PC" .. pcId .. ": beast gần khi thử trigger → skip PC")
+            skippedPCs[pcData.id] = true
+            isMoving = false; canAutoJump = false; currentTrigger = nil
+            return false
+        end
         if si == 1 then
             moveTo(trigger, myTok, isFirst)
         else
@@ -830,7 +837,7 @@ local function autoExitUnified()
         local prevProg = 0; local peakProg = 0
         while waited < timeoutSecs do
             task.wait(0.05); waited += 0.05
-            if isBeastNearby(35) then
+            if isBeastNearby(15) then
                 log("👹 [EXIT] Beast cách khi mở cửa → chuyển exit")
                 beastInterrupted = true; break
             end
@@ -894,6 +901,8 @@ local function autoExitUnified()
     local lastExitUsed = nil
     local exits = findExits()
     local maxWait = 0
+    local beastInterruptCount = 0
+
     while scriptEnabled and not hasEscaped and maxWait < 60 do
         task.wait(0.3); maxWait += 0.3
         if not isGameActive() and not isFindExitPhase() then break end
@@ -905,13 +914,24 @@ local function autoExitUnified()
                 if e.model ~= lastExitUsed then targetExit = e break end
             end
         end
+
+        -- Beast canh hết exit → đứng yên chờ thay vì loop
+        if beastInterruptCount >= #exits then
+            log("👹 [EXIT] Beast canh hết exit → chờ 3s...")
+            task.wait(3)
+            beastInterruptCount = 0
+            lastExitUsed = nil
+            continue
+        end
+
         local otherOpener = getPlayerOpeningDoor(targetExit.trigger)
         if otherOpener then
             log("🤝 " .. otherOpener.Name .. " đang mở cửa...")
             tpFront(targetExit.trigger)
             local opened, beastInt = waitForDoorOpen(targetExit, 20)
-            if opened then escape(targetExit); lastExitUsed = targetExit.model end
+            if opened then escape(targetExit); lastExitUsed = targetExit.model; beastInterruptCount = 0 end
             if beastInt then
+                beastInterruptCount += 1
                 for _, e in ipairs(exits) do
                     if e.model ~= targetExit.model then targetExit = e break end
                 end
@@ -944,6 +964,7 @@ local function autoExitUnified()
             firing = false
             if beastInt then
                 log("👹 [EXIT] Beast tới! Chuyển exit khác...")
+                beastInterruptCount += 1
                 for _, e in ipairs(exits) do
                     if e.model ~= targetExit.model then targetExit = e break end
                 end
@@ -951,6 +972,7 @@ local function autoExitUnified()
             elseif opened then
                 escape(targetExit)
                 lastExitUsed = targetExit.model
+                beastInterruptCount = 0
                 if hasEscaped then break end
             else
                 log("⏱ Door timeout, thử exit khác...")
@@ -1575,7 +1597,6 @@ local function mainLoop()
 
             local hasSkippedPC = false
             local allCompleted = true
-            local justSkippedPC = nil
 
             for _, pcData in ipairs(allPCs) do
                 if not scriptEnabled or scriptToken ~= myTok then break end
@@ -1586,19 +1607,6 @@ local function mainLoop()
                 elseif skippedPCs[pcId] then
                     hasSkippedPC = true; allCompleted = false
                 else
-                    if beastNearby and not isReturning and not isSaving then
-                        local _bDist = 0
-                        pcall(function()
-                            local br = beast and beast.Character and (beast.Character:FindFirstChild("HumanoidRootPart") or beast.Character:FindFirstChild("Torso"))
-                            if br and rootPart then _bDist = math.floor((rootPart.Position - br.Position).Magnitude) end
-                        end)
-                        log("👹 Skip PC " .. pcId .. " do Beast tới")
-                        skippedPCs[pcId] = true
-                        justSkippedPC = pcId
-                        isHacking = false; canAutoJump = false; currentPC = nil; currentTrigger = nil; isMoving = false
-                        task.wait(0.5)
-                        allCompleted = false; hasSkippedPC = true; break
-                    end
                     if isSaving or isHacking or isReturning then
                         while (isSaving or isHacking or isReturning) and isGameActive() and scriptEnabled do task.wait(0.2) end
                     end
@@ -1635,10 +1643,27 @@ local function mainLoop()
                         if not hackedPCs[pc.id] and not skippedPCs[pc.id] then freeCount += 1 end
                     end
                     if freeCount == 0 then
-                        log("👹 Tất cả PC bị skip → reset, tạm skip PC cuối, hack PC khác trước")
-                        local lastSkipped = justSkippedPC
-                        skippedPCs = {}
-                        if lastSkipped then skippedPCs[lastSkipped] = true end
+                        local hackedCount = 0
+                        for _, pc in ipairs(allPCs) do
+                            if hackedPCs[pc.id] then hackedCount += 1 end
+                        end
+                        local needed = #allPCs - 1
+                        if hackedCount >= needed then
+                            log("👹 Beast canh hết, đã hack đủ → chờ exit")
+                            updateStatus("Enough PCs done, waiting exit...")
+                            break
+                        else
+                            log("👹 Chưa đủ PC → force hack dù beast gần")
+                            updateStatus("Force hacking despite beast...")
+                            skippedPCs = {}
+                            task.wait(0.5)
+                            for _, nextPC in ipairs(allPCs) do
+                                if not hackedPCs[nextPC.id] then
+                                    hackPC(nextPC, myTok, false)
+                                    break
+                                end
+                            end
+                        end
                     else
                         if isFindExitPhase() and not hackExtraPC then break end
                         for _, nextPC in ipairs(allPCs) do
