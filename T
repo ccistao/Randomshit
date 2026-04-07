@@ -1,11 +1,10 @@
 local character = script.Parent
-local animate = character:WaitForChild("Animate")
+local humanoid = character:WaitForChild("Humanoid")
+local animator = humanoid:WaitForChild("Animator")
 
--- Chèn ID mới của bạn vào Walk và Run
-animate:WaitForChild("walk"):WaitForChild("WalkAnim").AnimationId = "rbxassetid://75113626320627"
-animate:WaitForChild("run"):WaitForChild("RunAnim").AnimationId = "rbxassetid://75113626320627"
+local testAnim = Instance.new("Animation")
+testAnim.AnimationId = "rbxassetid://123868550019850"
 
--- Ép script khởi động lại để nhận ID
-animate.Disabled = true
-task.wait(0.1)
-animate.Disabled = false
+local track = animator:LoadAnimation(testAnim)
+track.Priority = Enum.AnimationPriority.Action
+track:Play()
