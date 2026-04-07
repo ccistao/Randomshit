@@ -3,3 +3,7 @@ local animate = character:WaitForChild("Animate")
 
 animate:WaitForChild("walk"):WaitForChild("WalkAnim").AnimationId = "rbxassetid://75090025770595"
 animate:WaitForChild("run"):WaitForChild("RunAnim").AnimationId = "rbxassetid://75090025770595"
+
+animate.Disabled = true
+task.wait()
+animate.Disabled = false
