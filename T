@@ -5,16 +5,26 @@ local humanoid = character:WaitForChild("Humanoid")
 local animator = humanoid:WaitForChild("Animator")
 
 local walkAnim = Instance.new("Animation")
-walkAnim.AnimationId = "rbxassetid://ID_CỦA_BẠN_Ở_ĐÂY"
+walkAnim.AnimationId = "rbxassetid://ID_CỦA_BẠN"
+
+local idleAnim = Instance.new("Animation")
+idleAnim.AnimationId = "rbxassetid://507766388"
 
 local walkTrack = animator:LoadAnimation(walkAnim)
+local idleTrack = animator:LoadAnimation(idleAnim)
+
+idleTrack:Play()
 
 humanoid.Running:Connect(function(speed)
     if speed > 0.5 then
         if not walkTrack.IsPlaying then
             walkTrack:Play()
+            idleTrack:Stop()
         end
     else
-        walkTrack:Stop()
+        if not idleTrack.IsPlaying then
+            idleTrack:Play()
+            walkTrack:Stop()
+        end
     end
 end)
