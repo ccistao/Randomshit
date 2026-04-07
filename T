@@ -1,10 +1,5 @@
 local character = script.Parent
-local humanoid = character:WaitForChild("Humanoid")
-local animator = humanoid:WaitForChild("Animator")
+local animate = character:WaitForChild("Animate")
 
-local myAnimation = Instance.new("Animation")
-myAnimation.AnimationId = "rbxassetid://75090025770595" 
-
-local animationTrack = animator:LoadAnimation(myAnimation)
-
-animationTrack:Play()
+animate:WaitForChild("walk"):WaitForChild("WalkAnim").AnimationId = "rbxassetid://75090025770595"
+animate:WaitForChild("run"):WaitForChild("RunAnim").AnimationId = "rbxassetid://75090025770595"
