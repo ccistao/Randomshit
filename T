@@ -1,1 +1,10 @@
-AIzaSyDDVcsPzTc7XHUR36V6tD8LT5GRUYkuMtY
+local character = script.Parent
+local humanoid = character:WaitForChild("Humanoid")
+local animator = humanoid:WaitForChild("Animator")
+
+local myAnimation = Instance.new("Animation")
+myAnimation.AnimationId = "rbxassetid://75090025770595" 
+
+local animationTrack = animator:LoadAnimation(myAnimation)
+
+animationTrack:Play()
