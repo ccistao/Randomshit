@@ -1,25 +1,56 @@
-local shooter = workspace["PeaShooter"]
-local ballTemplate = game.ReplicatedStorage.Ball
+local TweenService = game:GetService("TweenService")
+local pea = workspace.PeaShooter
+local root = pea.HumanoidRootPart
 
+local originCFrame = root.CFrame
+
+-- Idle lắc
+local idleInfo = TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+local idleTween = TweenService:Create(root, idleInfo, {
+    CFrame = originCFrame * CFrame.Angles(0, math.rad(15), 0)
+})
+idleTween:Play()
+
+-- Hàm anim bắn
+local function playShootAnim()
+    idleTween:Pause()
+
+    -- Ngả về sau
+    local backInfo = TweenInfo.new(0.1, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+    local backTween = TweenService:Create(root, backInfo, {
+        CFrame = originCFrame * CFrame.Angles(math.rad(-20), 0, 0)
+    })
+    backTween:Play()
+    backTween.Completed:Wait()
+
+    -- Bật về trước
+    local forwardInfo = TweenInfo.new(0.15, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+    local forwardTween = TweenService:Create(root, forwardInfo, {
+        CFrame = originCFrame
+    })
+    forwardTween:Play()
+    forwardTween.Completed:Wait()
+
+    idleTween:Play()
+end
+
+-- Bắn mỗi 3s
+local ballTemplate = game.ReplicatedStorage.Ball
 while true do
     task.wait(3)
+    playShootAnim()
 
     local ball = ballTemplate:Clone()
     ball.Parent = workspace
     ball.Anchored = false
-    ball.CanCollide = true -- đổi thành true để chạm được
-    ball.CFrame = shooter:GetPivot() * CFrame.new(0, 0.782, 0)
+    ball.CanCollide = false
+    ball.CFrame = pea:GetPivot() * CFrame.new(0, 0.782, 0)
 
     local bv = Instance.new("BodyVelocity")
-    bv.Velocity = shooter:GetPivot().LookVector * 10
+    bv.Velocity = pea:GetPivot().LookVector * 30
     bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
     bv.Parent = ball
 
-    task.delay(4, function()
-        ball:Destroy()
-    end)
-
-    -- Detect chạm
     ball.Touched:Connect(function(hit)
         local humanoid = hit.Parent:FindFirstChild("Humanoid")
             or hit.Parent.Parent:FindFirstChild("Humanoid")
@@ -27,5 +58,9 @@ while true do
             humanoid:TakeDamage(20)
             ball:Destroy()
         end
+    end)
+
+    task.delay(4, function()
+        ball:Destroy()
     end)
 end
