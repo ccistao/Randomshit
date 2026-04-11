@@ -1,6 +1,5 @@
-local shooter = workspace.Model.Model
+local shooter = workspace["Pea Shooter"]
 local ballTemplate = game.ReplicatedStorage.Ball
-local head = shooter.PrimaryPart
 
 while true do
     task.wait(3)
@@ -8,18 +7,11 @@ while true do
     local ball = ballTemplate:Clone()
     ball.Parent = workspace
     ball.Anchored = false
-    ball.CanCollide = false -- không va chạm vật lý
-    ball.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
-    ball.CFrame = head.CFrame * CFrame.new(0, 0, -2)
-    
-    -- Tắt gravity
-    local bf = Instance.new("BodyForce")
-    bf.Force = Vector3.new(0, ball:GetMass() * 196.2, 0)
-    bf.Parent = ball
-    
-    -- Bay thẳng
+    ball.CanCollide = false
+    ball.CFrame = shooter:GetPivot() * CFrame.new(0, 0, -2)
+
     local bv = Instance.new("BodyVelocity")
-    bv.Velocity = head.CFrame.LookVector * 30
+    bv.Velocity = shooter:GetPivot().LookVector * 30
     bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
     bv.Parent = ball
 
