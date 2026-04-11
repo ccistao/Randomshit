@@ -1,10 +1,17 @@
-local character = script.Parent
-local humanoid = character:WaitForChild("Humanoid")
-local animator = humanoid:WaitForChild("Animator")
+local shooter = workspace.Model.Model
+local ballTemplate = game.ReplicatedStorage.Ball
+local head = shooter.PrimaryPart
 
-local testAnim = Instance.new("Animation")
-testAnim.AnimationId = "rbxassetid://123868550019850"
+while true do
+    task.wait(3)
 
-local track = animator:LoadAnimation(testAnim)
-track.Priority = Enum.AnimationPriority.Action
-track:Play()
+    local ball = ballTemplate:Clone()
+    ball.Parent = workspace
+    ball.Anchored = false
+    ball.CFrame = head.CFrame * CFrame.new(0, 0, -2)
+    ball.AssemblyLinearVelocity = head.CFrame.LookVector * 30
+
+    task.delay(4, function()
+        ball:Destroy()
+    end)
+end
