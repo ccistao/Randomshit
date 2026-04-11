@@ -1,21 +1,15 @@
-local shooter = workspace["Pea Shooter"]
-local ballTemplate = game.ReplicatedStorage.Ball
+local ball = game.ReplicatedStorage.Ball
 
-while true do
-    task.wait(3)
-
-    local ball = ballTemplate:Clone()
-    ball.Parent = workspace
-    ball.Anchored = false
-    ball.CanCollide = false
-    ball.CFrame = shooter:GetPivot() * CFrame.new(0, 0, -2)
-
-    local bv = Instance.new("BodyVelocity")
-    bv.Velocity = shooter:GetPivot().LookVector * 30
-    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-    bv.Parent = ball
-
-    task.delay(4, function()
-        ball:Destroy()
-    end)
-end
+-- Khi ball clone chạm vào Rig thì gây damage
+workspace.DescendantAdded:Connect(function(obj)
+    if obj.Name == "Ball" then
+        obj.Touched:Connect(function(hit)
+            local humanoid = hit.Parent:FindFirstChild("Humanoid")
+                or hit.Parent.Parent:FindFirstChild("Humanoid")
+            if humanoid then
+                humanoid:TakeDamage(20)
+                obj:Destroy() -- xóa đạn sau khi trúng
+            end
+        end)
+    end
+end)
