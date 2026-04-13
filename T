@@ -1,7 +1,15 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local PhysicsService = game:GetService("PhysicsService") -- Gọi thêm dịch vụ vật lý
 
--- Nắm đầu mấy cái thư mục ông vừa tạo
+-- ==========================================
+-- CÀI ĐẶT ĐỂ ZOMBIE ĐI XUYÊN QUA NHAU
+-- ==========================================
+-- Đăng ký một nhóm va chạm tên là "HoiZombie"
+PhysicsService:RegisterCollisionGroup("HoiZombie")
+-- Lệnh cho những đứa trong "HoiZombie" KHÔNG ĐƯỢC đụng nhau
+PhysicsService:CollisionGroupSetCollidable("HoiZombie", "HoiZombie", false)
+
 local Spawns = workspace:WaitForChild("Spawns")
 local Ends = workspace:WaitForChild("Ends")
 local ZombieTemplate = ReplicatedStorage:WaitForChild("Zombie")
@@ -10,31 +18,38 @@ local ZombieTemplate = ReplicatedStorage:WaitForChild("Zombie")
 -- HỆ THỐNG ZOMBIE DI CHUYỂN
 -- ==========================================
 local function spawnZombie()
-	-- Bốc thăm ngẫu nhiên từ lane 1 đến lane 5
 	local randomLane = tostring(math.random(1, 5))
-	
 	local spawnPart = Spawns:FindFirstChild(randomLane)
 	local endPart = Ends:FindFirstChild(randomLane)
 	
 	if spawnPart and endPart then
-		-- Nhân bản con Zombie
 		local newZombie = ZombieTemplate:Clone()
-		newZombie.Parent = workspace
 		
-		-- Đặt nó đứng ngay trên cái Part bên phải
+		-- Ép toàn bộ cơ thể con Zombie mới này vào nhóm "HoiZombie"
+		for _, part in pairs(newZombie:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.CollisionGroup = "HoiZombie"
+			end
+		end
+		
+		newZombie.Parent = workspace
 		newZombie:SetPrimaryPartCFrame(spawnPart.CFrame + Vector3.new(0, 3, 0))
 		
-		-- Lệnh cho con Zombie lết xác đi về cái Part bên trái
 		local humanoid = newZombie:FindFirstChild("Humanoid")
 		if humanoid then
 			humanoid:MoveTo(endPart.Position)
+			
+			-- Bổ sung: Lỡ nó đi tới nơi mà lag chưa chạm đích thì bắt nó đi tiếp
+			humanoid.MoveToFinished:Connect(function()
+				humanoid:MoveTo(endPart.Position)
+			end)
 		end
 	end
 end
 
--- Vòng lặp đẻ quái: Cứ 1 giây rặn ra 1 con
+-- Vòng lặp đẻ quái (Tạm để 2 giây 1 con cho ông dễ test)
 task.spawn(function()
-	while task.wait(1) do
+	while task.wait(2) do
 		spawnZombie()
 	end
 end)
@@ -45,15 +60,9 @@ end)
 for _, endPart in pairs(Ends:GetChildren()) do
 	endPart.Touched:Connect(function(hit)
 		local character = hit.Parent
-		
-		-- Nếu cái chạm vào là Zombie
 		if character and character.Name == "Zombie" then
-			-- Xóa xác con zombie đó đi
 			character:Destroy()
-			
 			print("TOANG! ZOMBIE ĐÃ VÀO NHÀ!")
-			
-			-- Giết toàn bộ người chơi đang có trong map
 			for _, player in pairs(Players:GetPlayers()) do
 				local playerChar = player.Character
 				if playerChar and playerChar:FindFirstChild("Humanoid") then
