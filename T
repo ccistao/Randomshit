@@ -1,66 +1,65 @@
-local TweenService = game:GetService("TweenService")
-local pea = workspace.PeaShooter
-local root = pea.HumanoidRootPart
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
 
-local originCFrame = root.CFrame
+-- Nắm đầu mấy cái thư mục ông vừa tạo
+local Spawns = workspace:WaitForChild("Spawns")
+local Ends = workspace:WaitForChild("Ends")
+local ZombieTemplate = ReplicatedStorage:WaitForChild("Zombie")
 
--- Idle lắc
-local idleInfo = TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
-local idleTween = TweenService:Create(root, idleInfo, {
-    CFrame = originCFrame * CFrame.Angles(0, math.rad(15), 0)
-})
-idleTween:Play()
-
--- Hàm anim bắn
-local function playShootAnim()
-    idleTween:Pause()
-
-    -- Ngả về sau
-    local backInfo = TweenInfo.new(0.1, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
-    local backTween = TweenService:Create(root, backInfo, {
-        CFrame = originCFrame * CFrame.Angles(math.rad(-20), 0, 0)
-    })
-    backTween:Play()
-    backTween.Completed:Wait()
-
-    -- Bật về trước
-    local forwardInfo = TweenInfo.new(0.15, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
-    local forwardTween = TweenService:Create(root, forwardInfo, {
-        CFrame = originCFrame
-    })
-    forwardTween:Play()
-    forwardTween.Completed:Wait()
-
-    idleTween:Play()
+-- ==========================================
+-- HỆ THỐNG ZOMBIE DI CHUYỂN
+-- ==========================================
+local function spawnZombie()
+	-- Bốc thăm ngẫu nhiên từ lane 1 đến lane 5
+	local randomLane = tostring(math.random(1, 5))
+	
+	local spawnPart = Spawns:FindFirstChild(randomLane)
+	local endPart = Ends:FindFirstChild(randomLane)
+	
+	if spawnPart and endPart then
+		-- Nhân bản con Zombie
+		local newZombie = ZombieTemplate:Clone()
+		newZombie.Parent = workspace
+		
+		-- Đặt nó đứng ngay trên cái Part bên phải
+		newZombie:SetPrimaryPartCFrame(spawnPart.CFrame + Vector3.new(0, 3, 0))
+		
+		-- Lệnh cho con Zombie lết xác đi về cái Part bên trái
+		local humanoid = newZombie:FindFirstChild("Humanoid")
+		if humanoid then
+			humanoid:MoveTo(endPart.Position)
+		end
+	end
 end
 
--- Bắn mỗi 3s
-local ballTemplate = game.ReplicatedStorage.Ball
-while true do
-    task.wait(3)
-    playShootAnim()
+-- Vòng lặp đẻ quái: Cứ 1 giây rặn ra 1 con
+task.spawn(function()
+	while task.wait(1) do
+		spawnZombie()
+	end
+end)
 
-    local ball = ballTemplate:Clone()
-    ball.Parent = workspace
-    ball.Anchored = false
-    ball.CanCollide = false
-    ball.CFrame = pea:GetPivot() * CFrame.new(0, 0.782, 0)
-
-    local bv = Instance.new("BodyVelocity")
-    bv.Velocity = pea:GetPivot().LookVector * 30
-    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-    bv.Parent = ball
-
-    ball.Touched:Connect(function(hit)
-        local humanoid = hit.Parent:FindFirstChild("Humanoid")
-            or hit.Parent.Parent:FindFirstChild("Humanoid")
-        if humanoid and humanoid.Parent.Name == "Rig" then
-            humanoid:TakeDamage(20)
-            ball:Destroy()
-        end
-    end)
-
-    task.delay(4, function()
-        ball:Destroy()
-    end)
+-- ==========================================
+-- HỆ THỐNG ZOMBIE VÀO NHÀ -> GAME OVER
+-- ==========================================
+for _, endPart in pairs(Ends:GetChildren()) do
+	endPart.Touched:Connect(function(hit)
+		local character = hit.Parent
+		
+		-- Nếu cái chạm vào là Zombie
+		if character and character.Name == "Zombie" then
+			-- Xóa xác con zombie đó đi
+			character:Destroy()
+			
+			print("TOANG! ZOMBIE ĐÃ VÀO NHÀ!")
+			
+			-- Giết toàn bộ người chơi đang có trong map
+			for _, player in pairs(Players:GetPlayers()) do
+				local playerChar = player.Character
+				if playerChar and playerChar:FindFirstChild("Humanoid") then
+					playerChar.Humanoid.Health = 0
+				end
+			end
+		end
+	end)
 end
