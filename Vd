@@ -1,0 +1,104 @@
+local CoreGui = game:GetService("CoreGui")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualUser = game:GetService("VirtualUser") -- Thêm dịch vụ cho Anti-AFK
+
+-- [ TÍNH NĂNG ANTI-AFK ] --
+-- Tự động giả lập click ảo khi game chuẩn bị kick vì treo máy
+Players.LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+
+-- Đường dẫn Remote Bán (Sử dụng SellAllCrops theo yêu cầu)
+local SellRemote = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("SellAllCrops")
+
+-- Khởi tạo UI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AutoFarm_V3"
+
+local success = pcall(function()
+    ScreenGui.Parent = CoreGui
+end)
+if not success then
+    ScreenGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local ToggleBtn = Instance.new("TextButton")
+local UICorner = Instance.new("UICorner")
+
+ToggleBtn.Parent = ScreenGui
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(255, 65, 65)
+ToggleBtn.Position = UDim2.new(0.5, -80, 0.1, 0)
+ToggleBtn.Size = UDim2.new(0, 160, 0, 45)
+ToggleBtn.Font = Enum.Font.SourceSansBold
+ToggleBtn.Text = "FARM: OFF (0/3)"
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.TextSize = 18
+ToggleBtn.Active = true
+ToggleBtn.Draggable = true 
+
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = ToggleBtn
+
+-- Biến lưu trạng thái
+getgenv().AutoFarm_IsRunning = false
+local collectCount = 0 -- Biến đếm số lần thu thập
+
+ToggleBtn.MouseButton1Click:Connect(function()
+    getgenv().AutoFarm_IsRunning = not getgenv().AutoFarm_IsRunning
+    
+    if getgenv().AutoFarm_IsRunning then
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(65, 255, 65)
+        ToggleBtn.Text = "FARM: ON (" .. collectCount .. "/3)"
+    else
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(255, 65, 65)
+        ToggleBtn.Text = "FARM: OFF (" .. collectCount .. "/3)"
+    end
+end)
+
+-- Vòng lặp chính
+task.spawn(function()
+    while true do
+        task.wait(3) -- Chờ 3 giây mỗi vòng lặp
+        
+        if getgenv().AutoFarm_IsRunning then
+            local plots = Workspace:FindFirstChild("Plots")
+            
+            if plots then
+                -- Bắt đầu thu thập toàn bộ bãi farm
+                for _, obj in pairs(plots:GetDescendants()) do
+                    if not getgenv().AutoFarm_IsRunning then break end 
+                    
+                    if obj:IsA("ProximityPrompt") and obj.Name == "CollectPrompt" then
+                        pcall(function()
+                            fireproximityprompt(obj) 
+                        end)
+                        task.wait(0.3) -- Nghỉ 0.3s giữa mỗi cây
+                    end
+                end
+                
+                -- Sau khi quét xong 1 lượt toàn bộ farm, tăng biến đếm
+                collectCount = collectCount + 1
+                ToggleBtn.Text = "FARM: ON (" .. collectCount .. "/3)"
+                
+                -- Nếu đủ 3 lần thu thập thì gọi lệnh bán
+                if collectCount >= 3 then
+                    if SellRemote and SellRemote:IsA("RemoteFunction") then
+                        task.spawn(function()
+                            pcall(function()
+                                SellRemote:InvokeServer()
+                                print("Đã gọi SellAllCrops sau 3 lần thu hoạch!")
+                            end)
+                        end)
+                    end
+                    
+                    -- Reset biến đếm về 0
+                    collectCount = 0
+                    ToggleBtn.Text = "FARM: ON (0/3)"
+                end
+            end
+        end
+    end
+end)
