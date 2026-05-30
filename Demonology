@@ -626,7 +626,7 @@ end
 -- ══════════════════════════════════════════════
 local tickLast=tick()
 addConn(RS.Heartbeat:Connect(function()
-    if tick()-tickLast < 0.05 then return end; tickLast=tick()
+    if tick()-tickLast < 0.15 then return end; tickLast=tick()
 
     local favRoom=ghostModel:GetAttribute("FavoriteRoom") or "?"
     local curRoom=ghostModel:GetAttribute("CurrentRoom") or "?"
