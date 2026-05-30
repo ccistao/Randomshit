@@ -7,6 +7,17 @@ getgenv()["DemoPRO"] = true
 
 local PS  = game:GetService("Players")
 local RS  = game:GetService("RunService")
+local UIS = game:GetService("")
+local HS  = game:GetService("HttpService")
+if getgenv()["DemoPRO"] then
+    local old = game.CoreGui:FindFirstChild("DemoPRO")
+    if old then old:Destroy() end
+    getgenv()["DemoPRO"] = nil
+end
+getgenv()["DemoPRO"] = true
+
+local PS  = game:GetService("Players")
+local RS  = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 local HS  = game:GetService("HttpService")
 local plr = PS.LocalPlayer
@@ -150,10 +161,12 @@ local function saveSettings()
         sx=miniIcon.Position.X.Scale, ox=miniIcon.Position.X.Offset,
         sy=miniIcon.Position.Y.Scale, oy=miniIcon.Position.Y.Offset,
     }
-    pcall(function() writefile(FILE_NAME, HS:JSONEncode(data)) end)
+    pcall(function()
+        if writefile then writefile(FILE_NAME, HS:JSONEncode(data)) end
+    end)
 end
 local function loadSettings()
-    if not isfile or not isfile(FILE_NAME) then return {} end
+    if not pcall(function() return isfile(FILE_NAME) end) then return {} end
     local ok2,res=pcall(function() return HS:JSONDecode(readfile(FILE_NAME)) end)
     return ok2 and res or {}
 end
