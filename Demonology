@@ -7,17 +7,6 @@ getgenv()["DemoPRO"] = true
 
 local PS  = game:GetService("Players")
 local RS  = game:GetService("RunService")
-local UIS = game:GetService("")
-local HS  = game:GetService("HttpService")
-if getgenv()["DemoPRO"] then
-    local old = game.CoreGui:FindFirstChild("DemoPRO")
-    if old then old:Destroy() end
-    getgenv()["DemoPRO"] = nil
-end
-getgenv()["DemoPRO"] = true
-
-local PS  = game:GetService("Players")
-local RS  = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 local HS  = game:GetService("HttpService")
 local plr = PS.LocalPlayer
@@ -33,9 +22,6 @@ end
 local connections = {}
 local function addConn(c) table.insert(connections, c) end
 
--- ══════════════════════════════════════════════
---  COLORS / UI HELPERS
--- ══════════════════════════════════════════════
 local COLORS = {
     bg=Color3.fromRGB(10,10,16), panel=Color3.fromRGB(18,18,28), card=Color3.fromRGB(24,24,36),
     accent=Color3.fromRGB(110,40,220), accentDark=Color3.fromRGB(70,20,150),
@@ -78,9 +64,6 @@ local function makeDraggable(elem, handle, onEnd)
     end))
 end
 
--- ══════════════════════════════════════════════
---  MAIN WINDOW
--- ══════════════════════════════════════════════
 local win=Instance.new("Frame",gui)
 win.Size=UDim2.new(0,380,0,420); win.Position=UDim2.new(0.5,-190,0.5,-210)
 win.BackgroundColor3=COLORS.bg; win.Active=true; mkCorner(win,14); mkStroke(win,COLORS.accent,1.5)
@@ -101,9 +84,6 @@ miniIcon.Size=UDim2.new(0,46,0,46); miniIcon.Position=UDim2.new(0.5,-23,0,20)
 miniIcon.BackgroundColor3=COLORS.accentDark; miniIcon.Text="👻"; miniIcon.TextScaled=true; miniIcon.Visible=false
 mkCorner(miniIcon,23); mkStroke(miniIcon,COLORS.accent,2)
 
--- ══════════════════════════════════════════════
---  TABS
--- ══════════════════════════════════════════════
 local tabBar=Instance.new("Frame",win); tabBar.Size=UDim2.new(1,-16,0,32); tabBar.Position=UDim2.new(0,8,0,50)
 tabBar.BackgroundColor3=COLORS.panel; mkCorner(tabBar,8)
 local tl=Instance.new("UIListLayout",tabBar); tl.FillDirection=Enum.FillDirection.Horizontal; tl.Padding=UDim.new(0,2); tl.VerticalAlignment=Enum.VerticalAlignment.Center; mkPad(tabBar,4,4,4,4)
@@ -131,9 +111,6 @@ local infoBar=Instance.new("Frame",win); infoBar.Size=UDim2.new(1,-16,0,36); inf
 infoBar.BackgroundColor3=COLORS.panel; mkCorner(infoBar,8); mkPad(infoBar,8,8,0,0)
 local ghostInfoLabel=mkLabel(infoBar,"",nil,COLORS.textSub,Enum.Font.Gotham); ghostInfoLabel.TextSize=11; ghostInfoLabel.TextScaled=false
 
--- ══════════════════════════════════════════════
---  GLASS OVERLAY (khai báo sớm để saveSettings dùng được)
--- ══════════════════════════════════════════════
 local glassOverlay=Instance.new("Frame",gui)
 glassOverlay.Size=UDim2.new(0,165,0,135); glassOverlay.Position=UDim2.new(1,-185,0,20)
 glassOverlay.BackgroundColor3=Color3.fromRGB(15,12,28); glassOverlay.BackgroundTransparency=0.35; glassOverlay.Active=true; glassOverlay.Visible=false
@@ -144,9 +121,6 @@ glTitleL.Position=UDim2.new(0,0,0,4); glTitleL.TextSize=10; glTitleL.TextScaled=
 local glassContent=mkLabel(glassOverlay,"",UDim2.new(1,-12,1,-24),COLORS.textMain,Enum.Font.Gotham)
 glassContent.Position=UDim2.new(0,8,0,22); glassContent.TextSize=10; glassContent.TextScaled=false; glassContent.TextYAlignment=Enum.TextYAlignment.Top
 
--- ══════════════════════════════════════════════
---  SAVE / LOAD  (sau khi glassOverlay đã khai báo)
--- ══════════════════════════════════════════════
 local FILE_NAME="DemoPRO_Config.json"
 local function saveSettings()
     local data={_toggles={}, _overlayPos=nil, _miniPos=nil}
@@ -171,16 +145,12 @@ local function loadSettings()
     return ok2 and res or {}
 end
 
--- Drag + auto-save vị trí
 makeDraggable(glassOverlay, glassOverlay, saveSettings)
 makeDraggable(miniIcon, miniIcon, saveSettings)
 
 minBtn.MouseButton1Click:Connect(function() win.Visible=false; miniIcon.Visible=true end)
 miniIcon.MouseButton1Click:Connect(function() win.Visible=true; miniIcon.Visible=false end)
 
--- ══════════════════════════════════════════════
---  BẰNG CHỨNG CARDS
--- ══════════════════════════════════════════════
 local evPage=tabPages[1]
 local evScroll=Instance.new("ScrollingFrame",evPage); evScroll.Size=UDim2.new(1,0,1,0)
 evScroll.BackgroundTransparency=1; evScroll.ScrollBarThickness=2; evScroll.ScrollBarImageColor3=COLORS.accent; evScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
@@ -227,9 +197,6 @@ local function setEvidence(name,found,extra,absent)
     end
 end
 
--- ══════════════════════════════════════════════
---  CÔNG CỤ
--- ══════════════════════════════════════════════
 local toolPage=tabPages[2]
 local toolScroll=Instance.new("ScrollingFrame",toolPage); toolScroll.Size=UDim2.new(1,0,1,0)
 toolScroll.BackgroundTransparency=1; toolScroll.ScrollBarThickness=2; toolScroll.ScrollBarImageColor3=COLORS.accent; toolScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
@@ -303,9 +270,6 @@ local placeBtn=mkActionBtn(toolScroll,"📦","Đặt Đồ Gần Ma",4,function(
     tpOutside(); task.wait(0.5); placeBtn.BackgroundColor3=COLORS.accentDark; placingDB=false
 end)
 
--- ══════════════════════════════════════════════
---  ĐỊNH VỊ
--- ══════════════════════════════════════════════
 local espPage=tabPages[3]
 local espScroll=Instance.new("ScrollingFrame",espPage); espScroll.Size=UDim2.new(1,0,1,0)
 espScroll.BackgroundTransparency=1; espScroll.ScrollBarThickness=2; espScroll.ScrollBarImageColor3=COLORS.accent; espScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
@@ -354,9 +318,6 @@ closeBtn.MouseButton1Click:Connect(function()
     gui:Destroy(); getgenv()["DemoPRO"]=nil
 end)
 
--- ══════════════════════════════════════════════
---  GHOST DATABASE
--- ══════════════════════════════════════════════
 local GDB={
     ["Aswang"]    ={["Cấp độ EMF 5"]=true,        ["Viết ma"]=true,             ["Tàn úa"]=true},
     ["Banshee"]   ={["Thời gian đóng băng"]=true,  ["Quả cầu ma"]=true,          ["Vết tay"]=true},
@@ -405,18 +366,10 @@ local function predictGhost()
     return out
 end
 
--- ══════════════════════════════════════════════
---  STATE VARIABLES
--- ══════════════════════════════════════════════
 local highestEMF=1
 local lowestTemp=100
 local orbAbsentConfirmed=false
 
--- ══════════════════════════════════════════════
---  WATCH FUNCTIONS (watch trực tiếp trên object)
--- ══════════════════════════════════════════════
-
--- Helper: check tên item (cả Name lẫn attribute)
 local function isItem(obj, ...)
     local n = obj.Name; local a = obj:GetAttribute("ItemName") or ""
     for _,name in ipairs({...}) do
@@ -447,24 +400,20 @@ local function watchIndicators(folder)
     end))
 end
 
--- Spirit Book: watch decal thay đổi texture (viết ma)
 local watchedBooks={}
 local function watchSpiritBook(model)
     if watchedBooks[model] then return end
     watchedBooks[model]=true
-    -- scan decal đang có
     for _,d in ipairs(model:GetDescendants()) do
         if d:IsA("Decal") and d.Texture~="" and d.Texture~="rbxassetid://0" then
             setEvidence("Viết ma",true); return
         end
     end
-    -- watch decal mới thêm vào
     addConn(model.DescendantAdded:Connect(function(d)
         if d:IsA("Decal") and d.Texture~="" and d.Texture~="rbxassetid://0" then
             setEvidence("Viết ma",true)
         end
     end))
-    -- watch decal texture thay đổi
     addConn(model.DescendantAdded:Connect(function(d)
         if d:IsA("Decal") then
             addConn(d:GetPropertyChangedSignal("Texture"):Connect(function()
@@ -474,7 +423,6 @@ local function watchSpiritBook(model)
     end))
 end
 
--- Flower Pot: watch màu Flower_Petals
 local watchedPots={}
 local function watchFlowerPot(model)
     if watchedPots[model] then return end
@@ -491,7 +439,6 @@ local function watchFlowerPot(model)
     addConn(model.DescendantAdded:Connect(checkPetals))
 end
 
--- Spirit Box: watch sounds + subtitles trong model
 local watchedBoxes={}
 local function watchSpiritBox(model)
     if watchedBoxes[model] then return end
@@ -503,28 +450,17 @@ local function watchSpiritBox(model)
     end))
 end
 
--- ══════════════════════════════════════════════
---  SCAN + WATCH TẤT CẢ OBJECT ĐÃ CÓ SẴN
--- ══════════════════════════════════════════════
 local function initialScan()
     for _,obj in ipairs(workspace:GetDescendants()) do
         local iname=obj:GetAttribute("ItemName") or obj.Name
-        -- EMF
         if obj:IsA("Folder") and obj.Name=="Indicators" then watchIndicators(obj) end
-        -- Spirit Book
         if obj:IsA("Model") and (obj.Name=="Spirit Book" or obj:GetAttribute("ItemName")=="Spirit Book") then watchSpiritBook(obj) end
-        -- Flower Pot
         if obj:IsA("Model") and (obj.Name=="Flower Pot" or obj:GetAttribute("ItemName")=="Flower Pot") then watchFlowerPot(obj) end
-        -- Spirit Box
         if obj:IsA("Model") and (obj.Name=="Spirit Box" or obj:GetAttribute("ItemName")=="Spirit Box") then watchSpiritBox(obj) end
-        -- Handprint (đã có sẵn)
         if obj:IsA("BasePart") and (obj.Name=="Handprint" or obj.Name=="Handprint1" or obj.Name=="Handprint2") then setEvidence("Vết tay",true) end
-        -- GhostOrb (đã có sẵn)
         if obj:IsA("BasePart") and obj.Name=="GhostOrb" then setEvidence("Quả cầu ma",true) end
-        -- Laser
         if ghostModel:GetAttribute("InLaser")==true then setEvidence("Máy chiếu laser",true) end
     end
-    -- Nhiệt độ
     if roomsFolder then
         for _,room in ipairs(roomsFolder:GetChildren()) do
             local temp=room:GetAttribute("Temperature")
@@ -535,32 +471,21 @@ local function initialScan()
     end
 end
 
--- ══════════════════════════════════════════════
---  REAL-TIME: chỉ watch thứ spawn trong workspace
--- ══════════════════════════════════════════════
 addConn(workspace.DescendantAdded:Connect(function(d)
-    -- Hunt escape
     if isEscapeHunt and d:IsA("Sound") and d.Name=="Hunt" then tpOutside(); return end
-    -- Handprint (game spawn trong workspace)
     if d:IsA("BasePart") and (d.Name=="Handprint" or d.Name=="Handprint1" or d.Name=="Handprint2") then
         setEvidence("Vết tay",true); return
     end
-    -- GhostOrb (game spawn trong workspace)
     if d:IsA("BasePart") and d.Name=="GhostOrb" then
         orbAbsentConfirmed=false; setEvidence("Quả cầu ma",true); return
     end
 end))
 
--- ══════════════════════════════════════════════
---  WATCH CHARACTER (bắt object trong tay player)
--- ══════════════════════════════════════════════
 local function watchCharacter(char)
     addConn(char.DescendantAdded:Connect(function(d)
-        -- EMF folder trong tay
         if d:IsA("Folder") and d.Name=="Indicators" then
             watchIndicators(d)
         end
-        -- EMF neon part trực tiếp
         if d:IsA("BasePart") and d.Material==Enum.Material.Neon then
             local n=tonumber(d.Name)
             if n and n>highestEMF then
@@ -569,11 +494,9 @@ local function watchCharacter(char)
                 else setEvidence("Cấp độ EMF 5",false,"Cấp "..highestEMF) end
             end
         end
-        -- Spirit Book trong tay
         if d:IsA("Model") and (d.Name=="Spirit Book" or d:GetAttribute("ItemName")=="Spirit Book") then
             watchSpiritBook(d)
         end
-        -- Decal trong Spirit Book đang cầm
         if d:IsA("Decal") and d.Texture~="" and d.Texture~="rbxassetid://0" then
             local p=d.Parent; while p do
                 if p:IsA("Model") and (p.Name=="Spirit Book" or p:GetAttribute("ItemName")=="Spirit Book") then
@@ -581,22 +504,18 @@ local function watchCharacter(char)
                 end; p=p.Parent
             end
         end
-        -- Flower Pot trong tay
         if d:IsA("Model") and (d.Name=="Flower Pot" or d:GetAttribute("ItemName")=="Flower Pot") then
             watchFlowerPot(d)
         end
-        -- Spirit Box trong tay
         if d:IsA("Model") and (d.Name=="Spirit Box" or d:GetAttribute("ItemName")=="Spirit Box") then
             watchSpiritBox(d)
         end
-        -- SpiritBox sound trong tay
         if d:IsA("Sound") and (d.Name=="SpiritBoxResponse" or d.Name=="SpiritBox" or d.Name=="Response") then
             task.delay(0.05,function() if d and d.IsPlaying then setEvidence("Hộp linh hồn",true) end end)
         end
     end))
 end
 
--- Watch char hiện tại + char mới spawn
 for _,p in pairs(PS:GetPlayers()) do
     if p.Character then watchCharacter(p.Character) end
     addConn(p.CharacterAdded:Connect(watchCharacter))
@@ -605,11 +524,12 @@ addConn(PS.PlayerAdded:Connect(function(p)
     if p.Character then watchCharacter(p.Character) end
     addConn(p.CharacterAdded:Connect(watchCharacter))
 end))
+
+addConn(ghostModel.AttributeChanged:Connect(function(attr)
     if attr=="InLaser" and ghostModel:GetAttribute("InLaser")==true then setEvidence("Máy chiếu laser",true) end
     if attr=="SpiritBoxActive" and ghostModel:GetAttribute("SpiritBoxActive")==true then setEvidence("Hộp linh hồn",true) end
 end))
 
--- Nhiệt độ realtime
 if roomsFolder then
     for _,room in ipairs(roomsFolder:GetChildren()) do
         addConn(room.AttributeChanged:Connect(function(attr)
@@ -625,7 +545,6 @@ if roomsFolder then
     end
 end
 
--- SCR absent: watch tất cả player equip SCR
 local function isSCRActive()
     for _,p in pairs(PS:GetPlayers()) do
         local char=p.Character; if not char then continue end
@@ -636,14 +555,10 @@ local function isSCRActive()
     return false
 end
 
--- ══════════════════════════════════════════════
---  HEARTBEAT (chỉ poll thứ không có event)
--- ══════════════════════════════════════════════
 local tickLast=tick()
 addConn(RS.Heartbeat:Connect(function()
     if tick()-tickLast<0.5 then return end; tickLast=tick()
 
-    -- Info bar
     local favRoom=ghostModel:GetAttribute("FavoriteRoom") or "?"
     local curRoom=ghostModel:GetAttribute("CurrentRoom") or "?"
     if ghostModel:GetAttribute("Hunting") then
@@ -652,15 +567,12 @@ addConn(RS.Heartbeat:Connect(function()
         ghostInfoLabel.Text=string.format("👤 Phòng Thích: %s | Hiện tại: %s",tostring(favRoom),tostring(curRoom)); ghostInfoLabel.TextColor3=COLORS.textSub
     end
 
-    -- SpiritBox subtitle (không có event)
     if not evidenceCards["Hộp linh hồn"].found then
         local ok2,res=pcall(function() return #plr.PlayerGui.Subtitles.Holder.TextLabel.Text:gsub("%s+","")>=3 end)
         if ok2 and res then setEvidence("Hộp linh hồn",true) end
     end
 
-    -- SCR absent
     if not evidenceCards["Quả cầu ma"].found and not orbAbsentConfirmed and isSCRActive() then
-        -- kiểm tra orb có trong workspace không
         local hasOrb=false
         for _,obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("BasePart") and obj.Name=="GhostOrb" then hasOrb=true; break end
@@ -671,7 +583,6 @@ addConn(RS.Heartbeat:Connect(function()
         end
     end
 
-    -- Glass overlay
     if glassOverlay.Visible then
         local foundEv={}
         for name,data in pairs(evidenceCards) do if data.found then table.insert(foundEv,name) end end
@@ -688,25 +599,18 @@ addConn(RS.Heartbeat:Connect(function()
     if isPlrEsp then updatePlrEsp() end
 end))
 
--- ══════════════════════════════════════════════
---  LOAD CONFIG
--- ══════════════════════════════════════════════
 task.spawn(function()
     task.wait(0.3)
-    -- Scan object đã có sẵn trước
     initialScan()
 
     local saved=loadSettings()
 
-    -- Khôi phục vị trí overlay
     local opos=saved._overlayPos
     if opos then glassOverlay.Position=UDim2.new(opos.sx,opos.ox,opos.sy,opos.oy) end
 
-    -- Khôi phục vị trí miniIcon
     local mpos=saved._miniPos
     if mpos then miniIcon.Position=UDim2.new(mpos.sx,mpos.ox,mpos.sy,mpos.oy) end
 
-    -- Khôi phục toggles
     local toggles=saved._toggles or saved
     for label,state in pairs(toggles) do
         if state and toolStates[label] then
