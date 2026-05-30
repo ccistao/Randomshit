@@ -255,7 +255,8 @@ local function dropItem(s) pcall(function() game:GetService("ReplicatedStorage")
 local function activeItem() local char=plr.Character; if not char then return end; for _,v in pairs(char:GetChildren()) do if (v:IsA("Model") or tonumber(v.Name)) and v:GetAttribute("Enabled")~=true and v:FindFirstChild("Handle") then pcall(function() game:GetService("ReplicatedStorage").Events.ToggleItemState:FireServer(v) end); break end end end
 
 local placingDB=false
-local placeBtn=mkActionBtn(toolScroll,"📦","Đặt Đồ Gần Ma",4,function()
+local placeBtn
+placeBtn=mkActionBtn(toolScroll,"📦","Đặt Đồ Gần Ma",4,function()
     if ghostModel:GetAttribute("Hunting") or placingDB then return end
     placingDB=true; placeBtn.BackgroundColor3=COLORS.yellow
     if plr.Character then plr.Character:PivotTo(ghostModel:GetPivot()) end
@@ -378,25 +379,22 @@ local function isItem(obj, ...)
     return false
 end
 local function watchIndicators(folder)
-    for _,v in ipairs(folder:GetChildren()) do
-        if v:IsA("BasePart") and v.Material==Enum.Material.Neon then
-            local n=tonumber(v.Name)
-            if n and n>highestEMF then
-                highestEMF=n
-                if highestEMF==5 then setEvidence("Cấp độ EMF 5",true,"Cấp 5 ✓")
-                else setEvidence("Cấp độ EMF 5",false,"Cấp "..highestEMF) end
+    local function recount()
+        local count=0
+        for _,v in ipairs(folder:GetChildren()) do
+            if v:IsA("BasePart") and v.Material==Enum.Material.Neon then
+                count=count+1
             end
+        end
+        if count>highestEMF then
+            highestEMF=count
+            if highestEMF>=5 then setEvidence("Cấp độ EMF 5",true,"Cấp 5 ✓")
+            else setEvidence("Cấp độ EMF 5",false,"Cấp "..highestEMF) end
         end
     end
+    recount()
     addConn(folder.ChildAdded:Connect(function(v)
-        if v:IsA("BasePart") and v.Material==Enum.Material.Neon then
-            local n=tonumber(v.Name)
-            if n and n>highestEMF then
-                highestEMF=n
-                if highestEMF==5 then setEvidence("Cấp độ EMF 5",true,"Cấp 5 ✓")
-                else setEvidence("Cấp độ EMF 5",false,"Cấp "..highestEMF) end
-            end
-        end
+        if v:IsA("BasePart") and v.Material==Enum.Material.Neon then recount() end
     end))
 end
 
@@ -481,18 +479,26 @@ addConn(workspace.DescendantAdded:Connect(function(d)
     end
 end))
 
+local watchedChars={}
 local function watchCharacter(char)
+    if watchedChars[char] then return end
+    watchedChars[char]=true
     addConn(char.DescendantAdded:Connect(function(d)
         if d:IsA("Folder") and d.Name=="Indicators" then
             watchIndicators(d)
-        end
-        if d:IsA("BasePart") and d.Material==Enum.Material.Neon then
-            local n=tonumber(d.Name)
-            if n and n>highestEMF then
-                highestEMF=n
-                if highestEMF==5 then setEvidence("Cấp độ EMF 5",true,"Cấp 5 ✓")
-                else setEvidence("Cấp độ EMF 5",false,"Cấp "..highestEMF) end
-            end
+            task.delay(0.2,function()
+                local count=0
+                for _,v in ipairs(d:GetChildren()) do
+                    if v:IsA("BasePart") and v.Material==Enum.Material.Neon then
+                        count=count+1
+                    end
+                end
+                if count>highestEMF then
+                    highestEMF=count
+                    if highestEMF>=5 then setEvidence("Cấp độ EMF 5",true,"Cấp 5 ✓")
+                    else setEvidence("Cấp độ EMF 5",false,"Cấp "..highestEMF) end
+                end
+            end)
         end
         if d:IsA("Model") and (d.Name=="Spirit Book" or d:GetAttribute("ItemName")=="Spirit Book") then
             watchSpiritBook(d)
