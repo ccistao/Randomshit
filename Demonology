@@ -477,8 +477,31 @@ addConn(workspace.DescendantAdded:Connect(function(d)
     if d:IsA("BasePart") and d.Name=="GhostOrb" then
         orbAbsentConfirmed=false; setEvidence("Quả cầu ma",true); return
     end
+    -- Fix: watch EMF và Viết ma khi đồ nằm dưới đất
+    if d:IsA("Folder") and d.Name=="Indicators" then
+        watchIndicators(d)
+        task.delay(0.2,function()
+            local count=0
+            for _,v in ipairs(d:GetChildren()) do
+                if v:IsA("BasePart") and v.Material==Enum.Material.Neon then
+                    count=count+1
+                end
+            end
+            if count>highestEMF then
+                highestEMF=count
+                if highestEMF>=5 then setEvidence("Cấp độ EMF 5",true,"Cấp 5 ✓")
+                else setEvidence("Cấp độ EMF 5",false,"Cấp "..highestEMF) end
+            end
+        end)
+    end
+    if d:IsA("Decal") and d.Texture~="" and d.Texture~="rbxassetid://0" then
+        local p=d.Parent; while p do
+            if p:IsA("Model") and (p.Name=="Spirit Book" or p:GetAttribute("ItemName")=="Spirit Book") then
+                setEvidence("Viết ma",true); break
+            end; p=p.Parent
+        end
+    end
 end))
-
 local watchedChars={}
 local function watchCharacter(char)
     if watchedChars[char] then return end
