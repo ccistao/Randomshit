@@ -4,725 +4,722 @@ if getgenv()["DemoPRO"] then
     getgenv()["DemoPRO"] = nil
 end
 getgenv()["DemoPRO"] = true
-local PS = game:GetService("Players")
-local RS = game:GetService("RunService")
+
+local PS  = game:GetService("Players")
+local RS  = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
-local TS = game:GetService("TweenService")
-local HS = game:GetService("HttpService")
+local TS  = game:GetService("TweenService")
+local HS  = game:GetService("HttpService")
 local plr = PS.LocalPlayer
+
 local ghostModel = workspace:FindFirstChild("Ghost")
-if not ghostModel then
-    getgenv()["DemoPRO"] = nil
-    return
-end
+if not ghostModel then getgenv()["DemoPRO"] = nil; return end
+
 local roomsFolder = nil
 if workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Rooms") then
     roomsFolder = workspace.Map.Rooms
 end
+
 local connections = {}
 local function addConn(c) table.insert(connections, c) end
+
+-- ══════════════════════════════════════════════
+--  CONFIG / SAVE / LOAD  (bao gồm vị trí overlay)
+-- ══════════════════════════════════════════════
 local FILE_NAME = "DemoPRO_Config.json"
+
 local function saveSettings()
-    local data = {}
+    local data = { _toggles = {}, _overlayPos = nil }
     for label, tbl in pairs(getgenv().ToolStates or {}) do
-        data[label] = tbl.state
+        data._toggles[label] = tbl.state
+    end
+    -- lưu vị trí glassOverlay
+    if glassOverlay then
+        data._overlayPos = {
+            sx = glassOverlay.Position.X.Scale,
+            ox = glassOverlay.Position.X.Offset,
+            sy = glassOverlay.Position.Y.Scale,
+            oy = glassOverlay.Position.Y.Offset,
+        }
     end
     pcall(function() writefile(FILE_NAME, HS:JSONEncode(data)) end)
 end
+
 local function loadSettings()
     if not isfile or not isfile(FILE_NAME) then return {} end
     local ok, res = pcall(function() return HS:JSONDecode(readfile(FILE_NAME)) end)
     return ok and res or {}
 end
-local gui = Instance.new("ScreenGui")
-gui.Name = "DemoPRO"
-gui.ResetOnSpawn = false
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-local guiSuccess = pcall(function() gui.Parent = gethui() end)
-if not guiSuccess or not gui.Parent then gui.Parent = game.CoreGui end
+
+-- ══════════════════════════════════════════════
+--  GUI SETUP
+-- ══════════════════════════════════════════════
 local COLORS = {
-    bg = Color3.fromRGB(10, 10, 16),
-    panel = Color3.fromRGB(18, 18, 28),
-    card = Color3.fromRGB(24, 24, 36),
-    accent = Color3.fromRGB(110, 40, 220),
-    accentDark = Color3.fromRGB(70, 20, 150),
-    green = Color3.fromRGB(0, 210, 90),
-    red = Color3.fromRGB(220, 50, 50),
-    yellow = Color3.fromRGB(230, 190, 0),
-    textMain = Color3.fromRGB(230, 230, 240),
-    textSub = Color3.fromRGB(140, 140, 165),
-    textDim = Color3.fromRGB(100, 100, 120),
-    btnOff = Color3.fromRGB(30, 30, 45),
-    btnOn = Color3.fromRGB(30, 90, 50),
+    bg       = Color3.fromRGB(10,10,16),
+    panel    = Color3.fromRGB(18,18,28),
+    card     = Color3.fromRGB(24,24,36),
+    accent   = Color3.fromRGB(110,40,220),
+    accentDark = Color3.fromRGB(70,20,150),
+    green    = Color3.fromRGB(0,210,90),
+    red      = Color3.fromRGB(220,50,50),
+    yellow   = Color3.fromRGB(230,190,0),
+    textMain = Color3.fromRGB(230,230,240),
+    textSub  = Color3.fromRGB(140,140,165),
+    textDim  = Color3.fromRGB(100,100,120),
+    btnOff   = Color3.fromRGB(30,30,45),
+    btnOn    = Color3.fromRGB(30,90,50),
 }
-local function mkCorner(p, r)
-    local c = Instance.new("UICorner", p)
-    c.CornerRadius = UDim.new(0, r or 8)
-    return c
-end
-local function mkStroke(p, col, thick)
-    local s = Instance.new("UIStroke", p)
-    s.Color = col or COLORS.accent
-    s.Thickness = thick or 1
-    return s
-end
-local function mkPad(p, l, r, t, b)
-    local pd = Instance.new("UIPadding", p)
-    pd.PaddingLeft, pd.PaddingRight = UDim.new(0, l or 0), UDim.new(0, r or 0)
-    pd.PaddingTop, pd.PaddingBottom = UDim.new(0, t or 0), UDim.new(0, b or 0)
-end
-local function mkLabel(parent, text, size, color, font, xalign)
-    local l = Instance.new("TextLabel", parent)
-    l.BackgroundTransparency = 1
-    l.Size = size or UDim2.new(1, 0, 1, 0)
-    l.Text = text or ""
-    l.TextColor3 = color or COLORS.textMain
-    l.TextScaled = true
-    l.Font = font or Enum.Font.Gotham
-    l.TextXAlignment = xalign or Enum.TextXAlignment.Left
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "DemoPRO"; gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+local ok = pcall(function() gui.Parent = gethui() end)
+if not ok or not gui.Parent then gui.Parent = game.CoreGui end
+
+local function mkCorner(p,r) local c=Instance.new("UICorner",p); c.CornerRadius=UDim.new(0,r or 8); return c end
+local function mkStroke(p,col,thick) local s=Instance.new("UIStroke",p); s.Color=col or COLORS.accent; s.Thickness=thick or 1; return s end
+local function mkPad(p,l,r,t,b) local pd=Instance.new("UIPadding",p); pd.PaddingLeft=UDim.new(0,l or 0); pd.PaddingRight=UDim.new(0,r or 0); pd.PaddingTop=UDim.new(0,t or 0); pd.PaddingBottom=UDim.new(0,b or 0) end
+local function mkLabel(parent,text,size,color,font,xalign)
+    local l=Instance.new("TextLabel",parent); l.BackgroundTransparency=1
+    l.Size=size or UDim2.new(1,0,1,0); l.Text=text or ""; l.TextColor3=color or COLORS.textMain
+    l.TextScaled=true; l.Font=font or Enum.Font.Gotham; l.TextXAlignment=xalign or Enum.TextXAlignment.Left
     return l
 end
-local function makeDraggable(guiElement, dragHandle)
-    dragHandle = dragHandle or guiElement
+
+local function makeDraggable(elem, handle, onEndCallback)
+    handle = handle or elem
     local dragging, dragInput, dragStart, startPos = false, nil, nil, nil
-    addConn(dragHandle.InputBegan:Connect(function(input)
+    addConn(handle.InputBegan:Connect(function(input)
         if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and not dragging then
-            dragging = true
-            dragInput = input
-            dragStart = input.Position
-            startPos = guiElement.Position
+            dragging=true; dragInput=input; dragStart=input.Position; startPos=elem.Position
         end
     end))
     addConn(UIS.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            local delta = input.Position - dragStart
-            guiElement.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        if input==dragInput and dragging then
+            local d=input.Position-dragStart
+            elem.Position=UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X, startPos.Y.Scale, startPos.Y.Offset+d.Y)
         end
     end))
     addConn(UIS.InputEnded:Connect(function(input)
-        if input == dragInput then dragging = false; dragInput = nil end
+        if input==dragInput then
+            dragging=false; dragInput=nil
+            if onEndCallback then onEndCallback() end
+        end
     end))
 end
+
+-- Main window
 local win = Instance.new("Frame", gui)
-win.Size = UDim2.new(0, 380, 0, 420)
-win.Position = UDim2.new(0.5, -190, 0.5, -210)
-win.BackgroundColor3 = COLORS.bg
-win.Active = true
-mkCorner(win, 14)
-mkStroke(win, COLORS.accent, 1.5)
+win.Size=UDim2.new(0,380,0,420); win.Position=UDim2.new(0.5,-190,0.5,-210)
+win.BackgroundColor3=COLORS.bg; win.Active=true
+mkCorner(win,14); mkStroke(win,COLORS.accent,1.5)
+
 local header = Instance.new("Frame", win)
-header.Size = UDim2.new(1, 0, 0, 44)
-header.BackgroundColor3 = COLORS.accentDark
-mkCorner(header, 14)
+header.Size=UDim2.new(1,0,0,44); header.BackgroundColor3=COLORS.accentDark; mkCorner(header,14)
 makeDraggable(win, header)
-local headerFix = Instance.new("Frame", header)
-headerFix.Size = UDim2.new(1, 0, 0.5, 0)
-headerFix.Position = UDim2.new(0, 0, 0.5, 0)
-headerFix.BackgroundColor3 = COLORS.accentDark
-headerFix.BorderSizePixel = 0
-local headerTitle = mkLabel(header, "👻 DEMONOLOGY PRO", UDim2.new(1, -120, 1, 0), COLORS.textMain, Enum.Font.GothamBold)
-headerTitle.Position = UDim2.new(0, 12, 0, 0)
-local minBtn = Instance.new("TextButton", header)
-minBtn.Size = UDim2.new(0, 28, 0, 28)
-minBtn.Position = UDim2.new(1, -68, 0.5, -14)
-minBtn.BackgroundColor3 = COLORS.yellow
-minBtn.Text = "–"
-minBtn.TextColor3 = Color3.new(0, 0, 0)
-minBtn.TextScaled = true
-minBtn.Font = Enum.Font.GothamBold
-mkCorner(minBtn, 6)
-local closeBtn = Instance.new("TextButton", header)
-closeBtn.Size = UDim2.new(0, 28, 0, 28)
-closeBtn.Position = UDim2.new(1, -36, 0.5, -14)
-closeBtn.BackgroundColor3 = COLORS.red
-closeBtn.Text = "✕"
-closeBtn.TextColor3 = Color3.new(1, 1, 1)
-closeBtn.TextScaled = true
-closeBtn.Font = Enum.Font.GothamBold
-mkCorner(closeBtn, 6)
-local miniIcon = Instance.new("TextButton", gui)
-miniIcon.Size = UDim2.new(0, 46, 0, 46)
-miniIcon.Position = UDim2.new(0.5, -23, 0, 20)
-miniIcon.BackgroundColor3 = COLORS.accentDark
-miniIcon.Text = "👻"
-miniIcon.TextScaled = true
-miniIcon.Visible = false
-mkCorner(miniIcon, 23)
-mkStroke(miniIcon, COLORS.accent, 2)
+
+local headerFix=Instance.new("Frame",header); headerFix.Size=UDim2.new(1,0,0.5,0)
+headerFix.Position=UDim2.new(0,0,0.5,0); headerFix.BackgroundColor3=COLORS.accentDark; headerFix.BorderSizePixel=0
+
+mkLabel(header,"👻 DEMONOLOGY PRO",UDim2.new(1,-120,1,0),COLORS.textMain,Enum.Font.GothamBold).Position=UDim2.new(0,12,0,0)
+
+local minBtn=Instance.new("TextButton",header); minBtn.Size=UDim2.new(0,28,0,28); minBtn.Position=UDim2.new(1,-68,0.5,-14)
+minBtn.BackgroundColor3=COLORS.yellow; minBtn.Text="–"; minBtn.TextColor3=Color3.new(0,0,0); minBtn.TextScaled=true; minBtn.Font=Enum.Font.GothamBold; mkCorner(minBtn,6)
+
+local closeBtn=Instance.new("TextButton",header); closeBtn.Size=UDim2.new(0,28,0,28); closeBtn.Position=UDim2.new(1,-36,0.5,-14)
+closeBtn.BackgroundColor3=COLORS.red; closeBtn.Text="✕"; closeBtn.TextColor3=Color3.new(1,1,1); closeBtn.TextScaled=true; closeBtn.Font=Enum.Font.GothamBold; mkCorner(closeBtn,6)
+
+local miniIcon=Instance.new("TextButton",gui); miniIcon.Size=UDim2.new(0,46,0,46); miniIcon.Position=UDim2.new(0.5,-23,0,20)
+miniIcon.BackgroundColor3=COLORS.accentDark; miniIcon.Text="👻"; miniIcon.TextScaled=true; miniIcon.Visible=false
+mkCorner(miniIcon,23); mkStroke(miniIcon,COLORS.accent,2)
 makeDraggable(miniIcon)
-minBtn.MouseButton1Click:Connect(function() win.Visible = false; miniIcon.Visible = true end)
-miniIcon.MouseButton1Click:Connect(function() win.Visible = true; miniIcon.Visible = false end)
-local tabBar = Instance.new("Frame", win)
-tabBar.Size = UDim2.new(1, -16, 0, 32)
-tabBar.Position = UDim2.new(0, 8, 0, 50)
-tabBar.BackgroundColor3 = COLORS.panel
-mkCorner(tabBar, 8)
-local tabLayout = Instance.new("UIListLayout", tabBar)
-tabLayout.FillDirection = Enum.FillDirection.Horizontal
-tabLayout.Padding = UDim.new(0, 2)
-tabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-mkPad(tabBar, 4, 4, 4, 4)
-local tabNames = {"Bằng chứng", "Công cụ", "Định vị"}
+
+minBtn.MouseButton1Click:Connect(function() win.Visible=false; miniIcon.Visible=true end)
+miniIcon.MouseButton1Click:Connect(function() win.Visible=true; miniIcon.Visible=false end)
+
+-- Tabs
+local tabBar=Instance.new("Frame",win); tabBar.Size=UDim2.new(1,-16,0,32); tabBar.Position=UDim2.new(0,8,0,50)
+tabBar.BackgroundColor3=COLORS.panel; mkCorner(tabBar,8)
+local tabLayout=Instance.new("UIListLayout",tabBar); tabLayout.FillDirection=Enum.FillDirection.Horizontal
+tabLayout.Padding=UDim.new(0,2); tabLayout.VerticalAlignment=Enum.VerticalAlignment.Center; mkPad(tabBar,4,4,4,4)
+
+local tabNames={"Bằng chứng","Công cụ","Định vị"}
 local tabBtns, tabPages = {}, {}
-for i, name in ipairs(tabNames) do
-    local btn = Instance.new("TextButton", tabBar)
-    btn.Size = UDim2.new(1 / #tabNames, -4, 1, 0)
-    btn.BackgroundColor3 = i == 1 and COLORS.accent or COLORS.card
-    btn.Text = name
-    btn.TextColor3 = i == 1 and COLORS.textMain or COLORS.textSub
-    btn.TextScaled = true
-    btn.Font = Enum.Font.GothamBold
-    mkCorner(btn, 6)
-    tabBtns[i] = btn
-    local page = Instance.new("Frame", win)
-    page.Size = UDim2.new(1, -16, 1, -140)
-    page.Position = UDim2.new(0, 8, 0, 88)
-    page.BackgroundTransparency = 1
-    page.Visible = i == 1
-    tabPages[i] = page
+for i,name in ipairs(tabNames) do
+    local btn=Instance.new("TextButton",tabBar); btn.Size=UDim2.new(1/#tabNames,-4,1,0)
+    btn.BackgroundColor3=i==1 and COLORS.accent or COLORS.card; btn.Text=name
+    btn.TextColor3=i==1 and COLORS.textMain or COLORS.textSub; btn.TextScaled=true; btn.Font=Enum.Font.GothamBold; mkCorner(btn,6)
+    tabBtns[i]=btn
+    local page=Instance.new("Frame",win); page.Size=UDim2.new(1,-16,1,-140); page.Position=UDim2.new(0,8,0,88)
+    page.BackgroundTransparency=1; page.Visible=i==1; tabPages[i]=page
 end
 local function switchTab(idx)
-    for i, btn in ipairs(tabBtns) do
-        btn.BackgroundColor3 = i == idx and COLORS.accent or COLORS.card
-        btn.TextColor3 = i == idx and COLORS.textMain or COLORS.textSub
-        tabPages[i].Visible = i == idx
+    for i,btn in ipairs(tabBtns) do
+        btn.BackgroundColor3=i==idx and COLORS.accent or COLORS.card
+        btn.TextColor3=i==idx and COLORS.textMain or COLORS.textSub
+        tabPages[i].Visible=i==idx
     end
 end
-for i, btn in ipairs(tabBtns) do
-    btn.MouseButton1Click:Connect(function() switchTab(i) end)
-end
-local infoBar = Instance.new("Frame", win)
-infoBar.Size = UDim2.new(1, -16, 0, 36)
-infoBar.Position = UDim2.new(0, 8, 1, -44)
-infoBar.BackgroundColor3 = COLORS.panel
-mkCorner(infoBar, 8)
-mkPad(infoBar, 8, 8, 0, 0)
-local ghostInfoLabel = mkLabel(infoBar, "", nil, COLORS.textSub, Enum.Font.Gotham)
-ghostInfoLabel.TextSize = 11
-ghostInfoLabel.TextScaled = false
-local evPage = tabPages[1]
-local evScroll = Instance.new("ScrollingFrame", evPage)
-evScroll.Size = UDim2.new(1, 0, 1, 0)
-evScroll.BackgroundTransparency = 1
-evScroll.ScrollBarThickness = 2
-evScroll.ScrollBarImageColor3 = COLORS.accent
-evScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-local evGrid = Instance.new("UIGridLayout", evScroll)
-evGrid.CellSize = UDim2.new(0.5, -5, 0, 68)
-evGrid.CellPadding = UDim2.new(0, 6, 0, 6)
-mkPad(evScroll, 2, 2, 2, 2)
+for i,btn in ipairs(tabBtns) do btn.MouseButton1Click:Connect(function() switchTab(i) end) end
+
+-- Info bar
+local infoBar=Instance.new("Frame",win); infoBar.Size=UDim2.new(1,-16,0,36); infoBar.Position=UDim2.new(0,8,1,-44)
+infoBar.BackgroundColor3=COLORS.panel; mkCorner(infoBar,8); mkPad(infoBar,8,8,0,0)
+local ghostInfoLabel=mkLabel(infoBar,"",nil,COLORS.textSub,Enum.Font.Gotham)
+ghostInfoLabel.TextSize=11; ghostInfoLabel.TextScaled=false
+
+-- ══════════════════════════════════════════════
+--  TAB 1: BẰNG CHỨNG
+-- ══════════════════════════════════════════════
+local evPage=tabPages[1]
+local evScroll=Instance.new("ScrollingFrame",evPage); evScroll.Size=UDim2.new(1,0,1,0)
+evScroll.BackgroundTransparency=1; evScroll.ScrollBarThickness=2; evScroll.ScrollBarImageColor3=COLORS.accent
+evScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
+local evGrid=Instance.new("UIGridLayout",evScroll); evGrid.CellSize=UDim2.new(0.5,-5,0,68); evGrid.CellPadding=UDim2.new(0,6,0,6)
+mkPad(evScroll,2,2,2,2)
+
 local evidenceData = {
-    {name = "Vết tay", icon = "🖐️", color = Color3.fromRGB(255, 160, 80)},
-    {name = "Quả cầu ma", icon = "🔮", color = Color3.fromRGB(160, 80, 255)},
-    {name = "Cấp độ EMF 5", icon = "📡", color = Color3.fromRGB(80, 200, 255)},
-    {name = "Hộp linh hồn", icon = "📻", color = Color3.fromRGB(255, 220, 60)},
-    {name = "Viết ma", icon = "📖", color = Color3.fromRGB(180, 255, 120)},
-    {name = "Máy chiếu laser", icon = "🔴", color = Color3.fromRGB(255, 60, 60)},
-    {name = "Thời gian đóng băng", icon = "❄️", color = Color3.fromRGB(100, 200, 255)},
-    {name = "Tàn úa", icon = "🌹", color = Color3.fromRGB(220, 80, 120)},
+    {name="Vết tay",             icon="🖐️", color=Color3.fromRGB(255,160,80)},
+    {name="Quả cầu ma",          icon="🔮", color=Color3.fromRGB(160,80,255)},
+    {name="Cấp độ EMF 5",        icon="📡", color=Color3.fromRGB(80,200,255)},
+    {name="Hộp linh hồn",        icon="📻", color=Color3.fromRGB(255,220,60)},
+    {name="Viết ma",             icon="📖", color=Color3.fromRGB(180,255,120)},
+    {name="Máy chiếu laser",     icon="🔴", color=Color3.fromRGB(255,60,60)},
+    {name="Thời gian đóng băng", icon="❄️", color=Color3.fromRGB(100,200,255)},
+    {name="Tàn úa",              icon="🌹", color=Color3.fromRGB(220,80,120)},
 }
+
 local evidenceCards = {}
-for i, ev in ipairs(evidenceData) do
-    local card = Instance.new("Frame", evScroll)
-    card.BackgroundColor3 = COLORS.card
-    card.LayoutOrder = i
-    mkCorner(card, 10)
-    local cardStroke = mkStroke(card, COLORS.textDim, 1)
-    local topBar = Instance.new("Frame", card)
-    topBar.Size = UDim2.new(1, 0, 0, 3)
-    topBar.BackgroundColor3 = ev.color
-    mkCorner(topBar, 10)
-    local iconLabel = mkLabel(card, ev.icon, UDim2.new(0, 32, 0, 32), nil, nil, Enum.TextXAlignment.Center)
-    iconLabel.Position = UDim2.new(0, 6, 0, 6)
-    local dot = Instance.new("Frame", card)
-    dot.Size = UDim2.new(0, 10, 0, 10)
-    dot.Position = UDim2.new(1, -16, 0, 8)
-    dot.BackgroundColor3 = COLORS.textDim
-    mkCorner(dot, 10)
-    local nameLabel = mkLabel(card, ev.name, UDim2.new(1, -12, 0, 18), COLORS.textSub, Enum.Font.GothamBold)
-    nameLabel.Position = UDim2.new(0, 6, 0, 38)
-    nameLabel.TextSize = 11; nameLabel.TextScaled = false
-    local valLabel = mkLabel(card, "Chưa phát hiện", UDim2.new(1, -12, 0, 14), COLORS.textDim, Enum.Font.Gotham)
-    valLabel.Position = UDim2.new(0, 6, 0, 52)
-    valLabel.TextSize = 10; valLabel.TextScaled = false
-    evidenceCards[ev.name] = {card = card, dot = dot, nameLabel = nameLabel, valLabel = valLabel, stroke = cardStroke, color = ev.color, found = false}
+for i,ev in ipairs(evidenceData) do
+    local card=Instance.new("Frame",evScroll); card.BackgroundColor3=COLORS.card; card.LayoutOrder=i; mkCorner(card,10)
+    local cardStroke=mkStroke(card,COLORS.textDim,1)
+    local topBar=Instance.new("Frame",card); topBar.Size=UDim2.new(1,0,0,3); topBar.BackgroundColor3=ev.color; mkCorner(topBar,10)
+    local iconLabel=mkLabel(card,ev.icon,UDim2.new(0,32,0,32),nil,nil,Enum.TextXAlignment.Center); iconLabel.Position=UDim2.new(0,6,0,6)
+    local dot=Instance.new("Frame",card); dot.Size=UDim2.new(0,10,0,10); dot.Position=UDim2.new(1,-16,0,8); dot.BackgroundColor3=COLORS.textDim; mkCorner(dot,10)
+    local nameLabel=mkLabel(card,ev.name,UDim2.new(1,-12,0,18),COLORS.textSub,Enum.Font.GothamBold); nameLabel.Position=UDim2.new(0,6,0,38); nameLabel.TextSize=11; nameLabel.TextScaled=false
+    local valLabel=mkLabel(card,"Chưa phát hiện",UDim2.new(1,-12,0,14),COLORS.textDim,Enum.Font.Gotham); valLabel.Position=UDim2.new(0,6,0,52); valLabel.TextSize=10; valLabel.TextScaled=false
+    evidenceCards[ev.name]={card=card,dot=dot,nameLabel=nameLabel,valLabel=valLabel,stroke=cardStroke,color=ev.color,found=false,absent=false}
 end
-local function setEvidence(name, found, extra)
-    local ev = evidenceCards[name]
-    if not ev then return end
+
+-- setEvidence: found=true→xanh, found=false+absent=true→đỏ (loại trừ), còn lại cập nhật text phụ
+local function setEvidence(name, found, extra, absent)
+    local ev=evidenceCards[name]; if not ev then return end
     if found and not ev.found then
-        ev.found = true
-        ev.dot.BackgroundColor3 = COLORS.green
-        ev.nameLabel.TextColor3 = COLORS.textMain
-        ev.valLabel.TextColor3 = COLORS.green
-        ev.valLabel.Text = extra or "Đã phát hiện ✓"
-        ev.card.BackgroundColor3 = Color3.fromRGB(18, 32, 22)
-        if ev.stroke then ev.stroke.Color = COLORS.green end
-    elseif not found and extra then
-        ev.valLabel.Text = extra
+        ev.found=true; ev.absent=false
+        ev.dot.BackgroundColor3=COLORS.green
+        ev.nameLabel.TextColor3=COLORS.textMain
+        ev.valLabel.TextColor3=COLORS.green
+        ev.valLabel.Text=extra or "Đã phát hiện ✓"
+        ev.card.BackgroundColor3=Color3.fromRGB(18,32,22)
+        if ev.stroke then ev.stroke.Color=COLORS.green end
+    elseif absent and not ev.found and not ev.absent then
+        ev.absent=true
+        ev.dot.BackgroundColor3=COLORS.red
+        ev.valLabel.TextColor3=COLORS.red
+        ev.valLabel.Text=extra or "Không có ✗"
+        ev.card.BackgroundColor3=Color3.fromRGB(32,14,14)
+        if ev.stroke then ev.stroke.Color=COLORS.red end
+    elseif not found and not absent and extra then
+        ev.valLabel.Text=extra
     end
 end
-local toolPage = tabPages[2]
-local toolScroll = Instance.new("ScrollingFrame", toolPage)
-toolScroll.Size = UDim2.new(1, 0, 1, 0)
-toolScroll.BackgroundTransparency = 1
-toolScroll.ScrollBarThickness = 2
-toolScroll.ScrollBarImageColor3 = COLORS.accent
-toolScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-local toolLayout2 = Instance.new("UIListLayout", toolScroll)
-toolLayout2.Padding = UDim.new(0, 6)
-mkPad(toolScroll, 2, 2, 2, 2)
-getgenv().ToolStates = {}
-local toolStates = getgenv().ToolStates
-local function mkToggleBtn(parent, icon, label, order, callback)
-    local btn = Instance.new("TextButton", parent)
-    btn.Size = UDim2.new(1, 0, 0, 46)
-    btn.BackgroundColor3 = COLORS.btnOff
-    btn.Text = ""; btn.LayoutOrder = order
-    mkCorner(btn, 8)
-    local btnStroke = mkStroke(btn, COLORS.textDim, 1)
-    local iconL = mkLabel(btn, icon, UDim2.new(0, 36, 1, -8), COLORS.textMain, nil, Enum.TextXAlignment.Center)
-    iconL.Position = UDim2.new(0, 4, 0, 4)
-    local nameL = mkLabel(btn, label, UDim2.new(1, -90, 0, 22), COLORS.textMain, Enum.Font.GothamBold)
-    nameL.Position = UDim2.new(0, 46, 0, 6)
-    nameL.TextSize = 13; nameL.TextScaled = false
-    local statusL = mkLabel(btn, "TẮT", UDim2.new(0, 36, 0, 16), COLORS.textDim, Enum.Font.GothamBold, Enum.TextXAlignment.Center)
-    statusL.Position = UDim2.new(1, -44, 0.5, -8)
-    statusL.TextSize = 11; statusL.TextScaled = false
-    statusL.BackgroundColor3 = COLORS.card
-    statusL.BackgroundTransparency = 0
-    mkCorner(statusL, 4)
-    local function updateVisuals(state)
-        if state then
-            btn.BackgroundColor3 = COLORS.btnOn
-            statusL.Text = "BẬT"
-            statusL.TextColor3 = COLORS.green
-            statusL.BackgroundColor3 = Color3.fromRGB(15, 40, 25)
-            btnStroke.Color = COLORS.green
-        else
-            btn.BackgroundColor3 = COLORS.btnOff
-            statusL.Text = "TẮT"
-            statusL.TextColor3 = COLORS.textDim
-            statusL.BackgroundColor3 = COLORS.card
-            btnStroke.Color = COLORS.textDim
-        end
+
+-- ══════════════════════════════════════════════
+--  TAB 2: CÔNG CỤ
+-- ══════════════════════════════════════════════
+local toolPage=tabPages[2]
+local toolScroll=Instance.new("ScrollingFrame",toolPage); toolScroll.Size=UDim2.new(1,0,1,0)
+toolScroll.BackgroundTransparency=1; toolScroll.ScrollBarThickness=2; toolScroll.ScrollBarImageColor3=COLORS.accent
+toolScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
+Instance.new("UIListLayout",toolScroll).Padding=UDim.new(0,6); mkPad(toolScroll,2,2,2,2)
+
+getgenv().ToolStates={}
+local toolStates=getgenv().ToolStates
+
+local function mkToggleBtn(parent,icon,label,order,callback)
+    local btn=Instance.new("TextButton",parent); btn.Size=UDim2.new(1,0,0,46); btn.BackgroundColor3=COLORS.btnOff; btn.Text=""; btn.LayoutOrder=order; mkCorner(btn,8)
+    local btnStroke=mkStroke(btn,COLORS.textDim,1)
+    local iconL=mkLabel(btn,icon,UDim2.new(0,36,1,-8),COLORS.textMain,nil,Enum.TextXAlignment.Center); iconL.Position=UDim2.new(0,4,0,4)
+    local nameL=mkLabel(btn,label,UDim2.new(1,-90,0,22),COLORS.textMain,Enum.Font.GothamBold); nameL.Position=UDim2.new(0,46,0,6); nameL.TextSize=13; nameL.TextScaled=false
+    local statusL=mkLabel(btn,"TẮT",UDim2.new(0,36,0,16),COLORS.textDim,Enum.Font.GothamBold,Enum.TextXAlignment.Center)
+    statusL.Position=UDim2.new(1,-44,0.5,-8); statusL.TextSize=11; statusL.TextScaled=false; statusL.BackgroundColor3=COLORS.card; statusL.BackgroundTransparency=0; mkCorner(statusL,4)
+    local function upd(state)
+        if state then btn.BackgroundColor3=COLORS.btnOn; statusL.Text="BẬT"; statusL.TextColor3=COLORS.green; statusL.BackgroundColor3=Color3.fromRGB(15,40,25); btnStroke.Color=COLORS.green
+        else btn.BackgroundColor3=COLORS.btnOff; statusL.Text="TẮT"; statusL.TextColor3=COLORS.textDim; statusL.BackgroundColor3=COLORS.card; btnStroke.Color=COLORS.textDim end
     end
-    toolStates[label] = {state = false, update = updateVisuals}
+    toolStates[label]={state=false,update=upd}
     btn.MouseButton1Click:Connect(function()
-        toolStates[label].state = not toolStates[label].state
-        updateVisuals(toolStates[label].state)
-        saveSettings()
+        toolStates[label].state=not toolStates[label].state; upd(toolStates[label].state); saveSettings()
         if callback then callback(toolStates[label].state) end
     end)
     return btn
 end
-local function mkActionBtn(parent, icon, label, order, callback)
-    local btn = Instance.new("TextButton", parent)
-    btn.Size = UDim2.new(1, 0, 0, 46)
-    btn.BackgroundColor3 = COLORS.accentDark
-    btn.Text = ""; btn.LayoutOrder = order
-    mkCorner(btn, 8)
-    mkStroke(btn, COLORS.accent, 1)
-    local iconL = mkLabel(btn, icon, UDim2.new(0, 36, 1, -8), COLORS.textMain, nil, Enum.TextXAlignment.Center)
-    iconL.Position = UDim2.new(0, 4, 0, 4)
-    local nameL = mkLabel(btn, label, UDim2.new(1, -56, 1, 0), COLORS.textMain, Enum.Font.GothamBold)
-    nameL.Position = UDim2.new(0, 46, 0, 0)
-    nameL.TextSize = 13; nameL.TextScaled = false
+
+local function mkActionBtn(parent,icon,label,order,callback)
+    local btn=Instance.new("TextButton",parent); btn.Size=UDim2.new(1,0,0,46); btn.BackgroundColor3=COLORS.accentDark; btn.Text=""; btn.LayoutOrder=order; mkCorner(btn,8); mkStroke(btn,COLORS.accent,1)
+    local iconL=mkLabel(btn,icon,UDim2.new(0,36,1,-8),COLORS.textMain,nil,Enum.TextXAlignment.Center); iconL.Position=UDim2.new(0,4,0,4)
+    local nameL=mkLabel(btn,label,UDim2.new(1,-56,1,0),COLORS.textMain,Enum.Font.GothamBold); nameL.Position=UDim2.new(0,46,0,0); nameL.TextSize=13; nameL.TextScaled=false
     if callback then btn.MouseButton1Click:Connect(callback) end
     return btn
 end
-local glassOverlay = Instance.new("Frame", gui)
-glassOverlay.Size = UDim2.new(0, 165, 0, 135)
-glassOverlay.Position = UDim2.new(1, -185, 0, 20)
-glassOverlay.BackgroundColor3 = Color3.fromRGB(15, 12, 28)
-glassOverlay.BackgroundTransparency = 0.35
-glassOverlay.Active = true
-mkCorner(glassOverlay, 8)
-mkStroke(glassOverlay, Color3.fromRGB(90, 50, 180), 1.2)
-makeDraggable(glassOverlay)
-local glassTitle = mkLabel(glassOverlay, "🔍 GHOST INFO", UDim2.new(1, 0, 0, 18), Color3.fromRGB(160, 120, 255), Enum.Font.GothamBold, Enum.TextXAlignment.Center)
-glassTitle.Position = UDim2.new(0, 0, 0, 4)
-glassTitle.TextSize = 10; glassTitle.TextScaled = false
-local glassContent = mkLabel(glassOverlay, "", UDim2.new(1, -12, 1, -24), COLORS.textMain, Enum.Font.Gotham)
-glassContent.Position = UDim2.new(0, 8, 0, 22)
-glassContent.TextSize = 10; glassContent.TextScaled = false
-glassContent.TextYAlignment = Enum.TextYAlignment.Top
-local OldLighting = {
-    Ambient = game:GetService("Lighting").Ambient, OutdoorAmbient = game:GetService("Lighting").OutdoorAmbient,
-    Brightness = game:GetService("Lighting").Brightness, GlobalShadows = game:GetService("Lighting").GlobalShadows, FogEnd = game:GetService("Lighting").FogEnd
+
+-- Glass overlay (GHOST INFO mini panel)
+-- Vị trí mặc định góc trên phải, sẽ bị ghi đè bởi config đã lưu
+local glassOverlay=Instance.new("Frame",gui)
+glassOverlay.Size=UDim2.new(0,165,0,135)
+glassOverlay.Position=UDim2.new(1,-185,0,20)  -- default
+glassOverlay.BackgroundColor3=Color3.fromRGB(15,12,28); glassOverlay.BackgroundTransparency=0.35; glassOverlay.Active=true
+mkCorner(glassOverlay,8); mkStroke(glassOverlay,Color3.fromRGB(90,50,180),1.2)
+-- drag + tự lưu vị trí khi thả
+makeDraggable(glassOverlay, glassOverlay, function() saveSettings() end)
+
+mkLabel(glassOverlay,"🔍 GHOST INFO",UDim2.new(1,0,0,18),Color3.fromRGB(160,120,255),Enum.Font.GothamBold,Enum.TextXAlignment.Center).Position=UDim2.new(0,0,0,4)
+local glassTitle=glassOverlay:FindFirstChildWhichIsA("TextLabel")
+if glassTitle then glassTitle.TextSize=10; glassTitle.TextScaled=false end
+local glassContent=mkLabel(glassOverlay,"",UDim2.new(1,-12,1,-24),COLORS.textMain,Enum.Font.Gotham)
+glassContent.Position=UDim2.new(0,8,0,22); glassContent.TextSize=10; glassContent.TextScaled=false; glassContent.TextYAlignment=Enum.TextYAlignment.Top
+
+local OldLighting={
+    Ambient=game:GetService("Lighting").Ambient, OutdoorAmbient=game:GetService("Lighting").OutdoorAmbient,
+    Brightness=game:GetService("Lighting").Brightness, GlobalShadows=game:GetService("Lighting").GlobalShadows, FogEnd=game:GetService("Lighting").FogEnd
 }
-local isEscapeHunt = false
+
+local isEscapeHunt=false
 local function tpOutside()
     pcall(function()
-        local pegboard = workspace:WaitForChild("Map"):WaitForChild("Rooms"):WaitForChild("Base Camp"):WaitForChild("Pegboard")
-        local union = pegboard:FindFirstChild("Union")
-        local char = plr.Character
-        if union and char and char:FindFirstChild("HumanoidRootPart") then
-            char.HumanoidRootPart.CFrame = union.CFrame + Vector3.new(0, 3, 0)
-        end
+        local peg=workspace:WaitForChild("Map"):WaitForChild("Rooms"):WaitForChild("Base Camp"):WaitForChild("Pegboard")
+        local union=peg:FindFirstChild("Union"); local char=plr.Character
+        if union and char and char:FindFirstChild("HumanoidRootPart") then char.HumanoidRootPart.CFrame=union.CFrame+Vector3.new(0,3,0) end
     end)
 end
 addConn(workspace.DescendantAdded:Connect(function(d)
-    if isEscapeHunt and d:IsA("Sound") and d.Name == "Hunt" then tpOutside() end
+    if isEscapeHunt and d:IsA("Sound") and d.Name=="Hunt" then tpOutside() end
 end))
-local escBtn = mkToggleBtn(toolScroll, "🏃", "Trốn Khi Đi Săn", 1, function(st)
-    isEscapeHunt = st
-    if isEscapeHunt and ghostModel:GetAttribute("Hunting") then tpOutside() end
+
+mkToggleBtn(toolScroll,"🏃","Trốn Khi Đi Săn",1,function(st) isEscapeHunt=st; if st and ghostModel:GetAttribute("Hunting") then tpOutside() end end)
+mkToggleBtn(toolScroll,"☀️","Bật Độ Sáng Full",2,function(st)
+    local L=game:GetService("Lighting")
+    if st then L.Ambient,L.OutdoorAmbient,L.Brightness,L.GlobalShadows,L.FogEnd=Color3.new(1,1,1),Color3.new(1,1,1),3,false,100000
+    else L.Ambient,L.OutdoorAmbient,L.Brightness,L.GlobalShadows,L.FogEnd=OldLighting.Ambient,OldLighting.OutdoorAmbient,OldLighting.Brightness,OldLighting.GlobalShadows,OldLighting.FogEnd end
 end)
-local fullBtn = mkToggleBtn(toolScroll, "☀️", "Bật Độ Sáng Full", 2, function(st)
-    local L = game:GetService("Lighting")
-    if st then
-        L.Ambient, L.OutdoorAmbient, L.Brightness, L.GlobalShadows, L.FogEnd = Color3.new(1,1,1), Color3.new(1,1,1), 3, false, 100000
-    else
-        L.Ambient, L.OutdoorAmbient, L.Brightness, L.GlobalShadows, L.FogEnd = OldLighting.Ambient, OldLighting.OutdoorAmbient, OldLighting.Brightness, OldLighting.GlobalShadows, OldLighting.FogEnd
-    end
-end)
-local overlayBtn = mkToggleBtn(toolScroll, "🪟", "Bảng Bằng Chứng", 3, function(st)
-    glassOverlay.Visible = st
-end)
-local function findItem(name)
-    local items = workspace:FindFirstChild("Items")
-    if not items then return nil end
-    for _, v in pairs(items:GetChildren()) do
-        if v:IsA("Model") and v:GetAttribute("ItemName") == name then return v end
-    end
-end
-local function pickupItem(model) pcall(function() game:GetService("ReplicatedStorage").Events.RequestItemPickup:FireServer(model) end) end
-local function equipItem(slot) pcall(function() game:GetService("ReplicatedStorage").Events.RequestItemEquip:FireServer("InvSlot" .. tostring(slot)) end) end
-local function dropItem(slot) pcall(function() game:GetService("ReplicatedStorage").Events.RequestItemDrop:FireServer("InvSlot" .. tostring(slot)) end) end
-local function activeItem()
-    local char = plr.Character if not char then return end
-    for _, v in pairs(char:GetChildren()) do
-        if (v:IsA("Model") or tonumber(v.Name)) and v:GetAttribute("Enabled") ~= true then
-            if v:FindFirstChild("Handle") then
-                pcall(function() game:GetService("ReplicatedStorage").Events.ToggleItemState:FireServer(v) end) break
-            end
-        end
-    end
-end
-local placingDB = false
-local placeBtn = mkActionBtn(toolScroll, "📦", "Đặt Đồ Gần Ma", 4, function()
+mkToggleBtn(toolScroll,"🪟","Bảng Bằng Chứng",3,function(st) glassOverlay.Visible=st; if st then saveSettings() end end)
+
+local function findItem(name) local items=workspace:FindFirstChild("Items"); if not items then return nil end; for _,v in pairs(items:GetChildren()) do if v:IsA("Model") and v:GetAttribute("ItemName")==name then return v end end end
+local function pickupItem(m) pcall(function() game:GetService("ReplicatedStorage").Events.RequestItemPickup:FireServer(m) end) end
+local function equipItem(slot) pcall(function() game:GetService("ReplicatedStorage").Events.RequestItemEquip:FireServer("InvSlot"..tostring(slot)) end) end
+local function dropItem(slot) pcall(function() game:GetService("ReplicatedStorage").Events.RequestItemDrop:FireServer("InvSlot"..tostring(slot)) end) end
+local function activeItem() local char=plr.Character; if not char then return end; for _,v in pairs(char:GetChildren()) do if (v:IsA("Model") or tonumber(v.Name)) and v:GetAttribute("Enabled")~=true and v:FindFirstChild("Handle") then pcall(function() game:GetService("ReplicatedStorage").Events.ToggleItemState:FireServer(v) end); break end end end
+
+local placingDB=false
+local placeBtn=mkActionBtn(toolScroll,"📦","Đặt Đồ Gần Ma",4,function()
     if ghostModel:GetAttribute("Hunting") or placingDB then return end
-    placingDB = true; placeBtn.BackgroundColor3 = COLORS.yellow
+    placingDB=true; placeBtn.BackgroundColor3=COLORS.yellow
     if plr.Character then plr.Character:PivotTo(ghostModel:GetPivot()) end
     task.wait(0.1) equipItem(1) task.wait(0.1) dropItem(1) task.wait(0.1)
-    equipItem(1) task.wait(0.1) dropItem(1) task.wait(0.1)
-    equipItem(1) task.wait(0.1) dropItem(1) task.wait(0.2)
-    for _, name in ipairs({"Cross", "Cross", "Flower Pot"}) do
-        local m = findItem(name) if m then pickupItem(m) end task.wait(0.35)
-    end
+    equipItem(1) task.wait(0.1) dropItem(1) task.wait(0.1) equipItem(1) task.wait(0.1) dropItem(1) task.wait(0.2)
+    for _,name in ipairs({"Cross","Cross","Flower Pot"}) do local m=findItem(name); if m then pickupItem(m) end; task.wait(0.35) end
     task.wait(0.5)
-    for _ = 1, 3 do equipItem(1) task.wait(0.35) activeItem() task.wait(0.35) dropItem(1) task.wait(0.35) end
+    for _=1,3 do equipItem(1) task.wait(0.35) activeItem() task.wait(0.35) dropItem(1) task.wait(0.35) end
     task.wait(0.5)
-    for _, name in ipairs({"Laser Projector", "EMF Reader", "Spirit Book"}) do
-        local m = findItem(name) if m then pickupItem(m) end task.wait(0.35)
-    end
+    for _,name in ipairs({"Laser Projector","EMF Reader","Spirit Book"}) do local m=findItem(name); if m then pickupItem(m) end; task.wait(0.35) end
     task.wait(0.5)
-    for _ = 1, 3 do equipItem(1) task.wait(0.6) activeItem() task.wait(0.5) dropItem(1) task.wait(0.35) end
-    tpOutside() task.wait(0.5) placeBtn.BackgroundColor3 = COLORS.accentDark; placingDB = false
-end)
-local espPage = tabPages[3]
-local espScroll = Instance.new("ScrollingFrame", espPage)
-espScroll.Size = UDim2.new(1, 0, 1, 0)
-espScroll.BackgroundTransparency = 1
-espScroll.ScrollBarThickness = 2
-espScroll.ScrollBarImageColor3 = COLORS.accent
-espScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-local espListLayout = Instance.new("UIListLayout", espScroll)
-espListLayout.Padding = UDim.new(0, 6)
-mkPad(espScroll, 2, 2, 2, 2)
-local ghostHL, ghostBB, isGhostEsp = nil, nil, false
-local ghostEspBtn = mkToggleBtn(espScroll, "👻", "Định Vị Ma", 1, function(st)
-    isGhostEsp = st
-    if isGhostEsp then
-        ghostHL = Instance.new("Highlight", ghostModel)
-        ghostHL.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-        ghostHL.OutlineColor = Color3.fromRGB(255, 50, 50)
-        ghostHL.FillColor, ghostHL.FillTransparency = Color3.fromRGB(255, 0, 0), 0.7
-        ghostBB = Instance.new("BillboardGui", game.CoreGui)
-        ghostBB.Adornee, ghostBB.AlwaysOnTop, ghostBB.Size, ghostBB.StudsOffset = ghostModel, true, UDim2.new(0, 80, 0, 30), Vector3.new(0, 3, 0)
-        local lbl = Instance.new("TextLabel", ghostBB)
-        lbl.Size = UDim2.new(1,0,1,0); lbl.BackgroundTransparency = 1; lbl.Text = "👻 MA/GHOST"; lbl.TextColor3 = Color3.fromRGB(255,80,80)
-        lbl.TextScaled = true; lbl.Font = Enum.Font.GothamBold; lbl.TextStrokeTransparency = 0
-    else
-        if ghostHL then ghostHL:Destroy() ghostHL = nil end
-        if ghostBB then ghostBB:Destroy() ghostBB = nil end
-    end
-end)
-local itemEspList, isItemEsp = {}, false
-local itemEspBtn = mkToggleBtn(espScroll, "🎒", "Định Vị Vật Phẩm", 2, function(st)
-    isItemEsp = st
-    for _, v in pairs(itemEspList) do pcall(function() v:Destroy() end) end
-    itemEspList = {}
-    if isItemEsp then
-        for _, v in pairs(workspace:GetDescendants()) do
-            if v:IsA("Model") and v:GetAttribute("ItemName") then
-                local hl = Instance.new("Highlight", v)
-                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                hl.OutlineColor, hl.FillTransparency = Color3.fromRGB(255, 170, 0), 0.8
-                local bb = Instance.new("BillboardGui", v)
-                bb.Adornee, bb.AlwaysOnTop, bb.Size, bb.StudsOffset = v, true, UDim2.new(0, 100, 0, 24), Vector3.new(0, 2, 0)
-                local lbl = Instance.new("TextLabel", bb)
-                lbl.Size = UDim2.new(1,0,1,0); lbl.BackgroundTransparency = 1; lbl.Text = v:GetAttribute("ItemName")
-                lbl.TextColor3, lbl.TextScaled, lbl.Font, lbl.TextStrokeTransparency = Color3.fromRGB(255, 200, 80), true, Enum.Font.GothamBold, 0
-                table.insert(itemEspList, hl); table.insert(itemEspList, bb)
-            end
-        end
-    end
-end)
-local plrEspList, isPlrEsp = {}, false
-local function updatePlrEsp()
-    for _, v in pairs(plrEspList) do pcall(function() v:Destroy() end) end
-    plrEspList = {} if not isPlrEsp then return end
-    for _, p in pairs(PS:GetPlayers()) do
-        if p ~= plr and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            local hrp = p.Character.HumanoidRootPart
-            local hl = Instance.new("Highlight", p.Character)
-            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-            hl.OutlineColor, hl.FillTransparency = Color3.fromRGB(0, 170, 255), 0.8
-            local bb = Instance.new("BillboardGui", hrp)
-            bb.Adornee, bb.AlwaysOnTop, bb.Size, bb.StudsOffset = hrp, true, UDim2.new(0, 100, 0, 24), Vector3.new(0, 3, 0)
-            local lbl = Instance.new("TextLabel", bb)
-            lbl.Size = UDim2.new(1,0,1,0); lbl.BackgroundTransparency = 1; lbl.Text = p.DisplayName
-            lbl.TextColor3, lbl.TextScaled, lbl.Font, lbl.TextStrokeTransparency = Color3.fromRGB(80, 200, 255), true, Enum.Font.GothamBold, 0
-            table.insert(plrEspList, hl); table.insert(plrEspList, bb)
-        end
-    end
-end
-local plrEspBtn = mkToggleBtn(espScroll, "👥", "Định Vị Người Chơi", 3, function(st)
-    isPlrEsp = st; updatePlrEsp()
-end)
-closeBtn.MouseButton1Click:Connect(function()
-    for _, c in pairs(connections) do pcall(function() c:Disconnect() end) end
-    if ghostHL then ghostHL:Destroy() end; if ghostBB then ghostBB:Destroy() end
-    for _, v in pairs(itemEspList) do pcall(function() v:Destroy() end) end
-    for _, v in pairs(plrEspList) do pcall(function() v:Destroy() end) end
-    local L = game:GetService("Lighting")
-    L.Ambient, L.OutdoorAmbient, L.Brightness, L.GlobalShadows, L.FogEnd = OldLighting.Ambient, OldLighting.OutdoorAmbient, OldLighting.Brightness, OldLighting.GlobalShadows, OldLighting.FogEnd
-    gui:Destroy(); getgenv()["DemoPRO"] = nil
+    for _=1,3 do equipItem(1) task.wait(0.6) activeItem() task.wait(0.5) dropItem(1) task.wait(0.35) end
+    tpOutside(); task.wait(0.5); placeBtn.BackgroundColor3=COLORS.accentDark; placingDB=false
 end)
 
 -- ══════════════════════════════════════════════
---  GHOST DATABASE (đúng theo danh sách game)
+--  TAB 3: ĐỊNH VỊ
+-- ══════════════════════════════════════════════
+local espPage=tabPages[3]
+local espScroll=Instance.new("ScrollingFrame",espPage); espScroll.Size=UDim2.new(1,0,1,0)
+espScroll.BackgroundTransparency=1; espScroll.ScrollBarThickness=2; espScroll.ScrollBarImageColor3=COLORS.accent
+espScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
+Instance.new("UIListLayout",espScroll).Padding=UDim.new(0,6); mkPad(espScroll,2,2,2,2)
+
+local ghostHL,ghostBB,isGhostEsp=nil,nil,false
+mkToggleBtn(espScroll,"👻","Định Vị Ma",1,function(st)
+    isGhostEsp=st
+    if st then
+        ghostHL=Instance.new("Highlight",ghostModel); ghostHL.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop; ghostHL.OutlineColor=Color3.fromRGB(255,50,50); ghostHL.FillColor=Color3.fromRGB(255,0,0); ghostHL.FillTransparency=0.7
+        ghostBB=Instance.new("BillboardGui",game.CoreGui); ghostBB.Adornee=ghostModel; ghostBB.AlwaysOnTop=true; ghostBB.Size=UDim2.new(0,80,0,30); ghostBB.StudsOffset=Vector3.new(0,3,0)
+        local lbl=Instance.new("TextLabel",ghostBB); lbl.Size=UDim2.new(1,0,1,0); lbl.BackgroundTransparency=1; lbl.Text="👻 MA/GHOST"; lbl.TextColor3=Color3.fromRGB(255,80,80); lbl.TextScaled=true; lbl.Font=Enum.Font.GothamBold; lbl.TextStrokeTransparency=0
+    else
+        if ghostHL then ghostHL:Destroy(); ghostHL=nil end
+        if ghostBB then ghostBB:Destroy(); ghostBB=nil end
+    end
+end)
+
+local itemEspList,isItemEsp={},false
+mkToggleBtn(espScroll,"🎒","Định Vị Vật Phẩm",2,function(st)
+    isItemEsp=st; for _,v in pairs(itemEspList) do pcall(function() v:Destroy() end) end; itemEspList={}
+    if st then
+        for _,v in pairs(workspace:GetDescendants()) do
+            if v:IsA("Model") and v:GetAttribute("ItemName") then
+                local hl=Instance.new("Highlight",v); hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop; hl.OutlineColor=Color3.fromRGB(255,170,0); hl.FillTransparency=0.8
+                local bb=Instance.new("BillboardGui",v); bb.Adornee=v; bb.AlwaysOnTop=true; bb.Size=UDim2.new(0,100,0,24); bb.StudsOffset=Vector3.new(0,2,0)
+                local lbl=Instance.new("TextLabel",bb); lbl.Size=UDim2.new(1,0,1,0); lbl.BackgroundTransparency=1; lbl.Text=v:GetAttribute("ItemName"); lbl.TextColor3=Color3.fromRGB(255,200,80); lbl.TextScaled=true; lbl.Font=Enum.Font.GothamBold; lbl.TextStrokeTransparency=0
+                table.insert(itemEspList,hl); table.insert(itemEspList,bb)
+            end
+        end
+    end
+end)
+
+local plrEspList,isPlrEsp={},false
+local function updatePlrEsp()
+    for _,v in pairs(plrEspList) do pcall(function() v:Destroy() end) end; plrEspList={}; if not isPlrEsp then return end
+    for _,p in pairs(PS:GetPlayers()) do
+        if p~=plr and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp=p.Character.HumanoidRootPart
+            local hl=Instance.new("Highlight",p.Character); hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop; hl.OutlineColor=Color3.fromRGB(0,170,255); hl.FillTransparency=0.8
+            local bb=Instance.new("BillboardGui",hrp); bb.Adornee=hrp; bb.AlwaysOnTop=true; bb.Size=UDim2.new(0,100,0,24); bb.StudsOffset=Vector3.new(0,3,0)
+            local lbl=Instance.new("TextLabel",bb); lbl.Size=UDim2.new(1,0,1,0); lbl.BackgroundTransparency=1; lbl.Text=p.DisplayName; lbl.TextColor3=Color3.fromRGB(80,200,255); lbl.TextScaled=true; lbl.Font=Enum.Font.GothamBold; lbl.TextStrokeTransparency=0
+            table.insert(plrEspList,hl); table.insert(plrEspList,bb)
+        end
+    end
+end
+mkToggleBtn(espScroll,"👥","Định Vị Người Chơi",3,function(st) isPlrEsp=st; updatePlrEsp() end)
+
+-- Close
+closeBtn.MouseButton1Click:Connect(function()
+    for _,c in pairs(connections) do pcall(function() c:Disconnect() end) end
+    if ghostHL then ghostHL:Destroy() end; if ghostBB then ghostBB:Destroy() end
+    for _,v in pairs(itemEspList) do pcall(function() v:Destroy() end) end
+    for _,v in pairs(plrEspList) do pcall(function() v:Destroy() end) end
+    local L=game:GetService("Lighting"); L.Ambient,L.OutdoorAmbient,L.Brightness,L.GlobalShadows,L.FogEnd=OldLighting.Ambient,OldLighting.OutdoorAmbient,OldLighting.Brightness,OldLighting.GlobalShadows,OldLighting.FogEnd
+    gui:Destroy(); getgenv()["DemoPRO"]=nil
+end)
+
+-- ══════════════════════════════════════════════
+--  GHOST DATABASE
 -- ══════════════════════════════════════════════
 local GDB = {
-    ["Aswang"]     = {["Cấp độ EMF 5"] = true, ["Viết ma"] = true,              ["Tàn úa"] = true},
-    ["Banshee"]    = {["Thời gian đóng băng"] = true, ["Quả cầu ma"] = true,    ["Vết tay"] = true},
-    ["Demon"]      = {["Cấp độ EMF 5"] = true, ["Thời gian đóng băng"] = true,  ["Vết tay"] = true},
-    ["Dullahan"]   = {["Thời gian đóng băng"] = true, ["Máy chiếu laser"] = true, ["Tàn úa"] = true},
-    ["Dybbuk"]     = {["Thời gian đóng băng"] = true, ["Vết tay"] = true,       ["Tàn úa"] = true},
-    ["Entity"]     = {["Vết tay"] = true, ["Máy chiếu laser"] = true,           ["Hộp linh hồn"] = true},
-    ["Ghoul"]      = {["Thời gian đóng băng"] = true, ["Quả cầu ma"] = true,    ["Hộp linh hồn"] = true},
-    ["Keres"]      = {["Vết tay"] = true, ["Hộp linh hồn"] = true,              ["Tàn úa"] = true},
-    ["Leviathan"]  = {["Viết ma"] = true, ["Vết tay"] = true,                   ["Quả cầu ma"] = true},
-    ["Nightmare"]  = {["Cấp độ EMF 5"] = true, ["Quả cầu ma"] = true,           ["Hộp linh hồn"] = true},
-    ["Oni"]        = {["Thời gian đóng băng"] = true, ["Máy chiếu laser"] = true, ["Hộp linh hồn"] = true},
-    ["Phantom"]    = {["Cấp độ EMF 5"] = true, ["Vết tay"] = true,              ["Quả cầu ma"] = true},
-    ["Revenant"]   = {["Cấp độ EMF 5"] = true, ["Thời gian đóng băng"] = true,  ["Viết ma"] = true},
-    ["Shadow"]     = {["Cấp độ EMF 5"] = true, ["Viết ma"] = true,              ["Máy chiếu laser"] = true},
-    ["Siren"]      = {["Cấp độ EMF 5"] = true, ["Hộp linh hồn"] = true,         ["Tàn úa"] = true},
-    ["Skinwalker"] = {["Thời gian đóng băng"] = true, ["Viết ma"] = true,        ["Hộp linh hồn"] = true},
-    ["Specter"]    = {["Cấp độ EMF 5"] = true, ["Thời gian đóng băng"] = true,  ["Máy chiếu laser"] = true},
-    ["Spirit"]     = {["Viết ma"] = true, ["Vết tay"] = true,                   ["Hộp linh hồn"] = true},
-    ["Umbra"]      = {["Vết tay"] = true, ["Quả cầu ma"] = true,                ["Máy chiếu laser"] = true},
-    ["Vex"]        = {["Thời gian đóng băng"] = true, ["Quả cầu ma"] = true,    ["Tàn úa"] = true},
-    ["Wendigo"]    = {["Viết ma"] = true, ["Quả cầu ma"] = true,                ["Máy chiếu laser"] = true},
-    ["the wisp"]   = {["Máy chiếu laser"] = true, ["Quả cầu ma"] = true,        ["Tàn úa"] = true},
-    ["Wraith"]     = {["Cấp độ EMF 5"] = true, ["Máy chiếu laser"] = true,      ["Hộp linh hồn"] = true},
+    ["Aswang"]     = {["Cấp độ EMF 5"]=true,          ["Viết ma"]=true,              ["Tàn úa"]=true},
+    ["Banshee"]    = {["Thời gian đóng băng"]=true,    ["Quả cầu ma"]=true,           ["Vết tay"]=true},
+    ["Demon"]      = {["Cấp độ EMF 5"]=true,           ["Thời gian đóng băng"]=true,  ["Vết tay"]=true},
+    ["Dullahan"]   = {["Thời gian đóng băng"]=true,    ["Máy chiếu laser"]=true,      ["Tàn úa"]=true},
+    ["Dybbuk"]     = {["Thời gian đóng băng"]=true,    ["Vết tay"]=true,              ["Tàn úa"]=true},
+    ["Entity"]     = {["Vết tay"]=true,                ["Máy chiếu laser"]=true,      ["Hộp linh hồn"]=true},
+    ["Ghoul"]      = {["Thời gian đóng băng"]=true,    ["Quả cầu ma"]=true,           ["Hộp linh hồn"]=true},
+    ["Keres"]      = {["Vết tay"]=true,                ["Hộp linh hồn"]=true,         ["Tàn úa"]=true},
+    ["Leviathan"]  = {["Viết ma"]=true,                ["Vết tay"]=true,              ["Quả cầu ma"]=true},
+    ["Nightmare"]  = {["Cấp độ EMF 5"]=true,           ["Quả cầu ma"]=true,           ["Hộp linh hồn"]=true},
+    ["Oni"]        = {["Thời gian đóng băng"]=true,    ["Máy chiếu laser"]=true,      ["Hộp linh hồn"]=true},
+    ["Phantom"]    = {["Cấp độ EMF 5"]=true,           ["Vết tay"]=true,              ["Quả cầu ma"]=true},
+    ["Revenant"]   = {["Cấp độ EMF 5"]=true,           ["Thời gian đóng băng"]=true,  ["Viết ma"]=true},
+    ["Shadow"]     = {["Cấp độ EMF 5"]=true,           ["Viết ma"]=true,              ["Máy chiếu laser"]=true},
+    ["Siren"]      = {["Cấp độ EMF 5"]=true,           ["Hộp linh hồn"]=true,         ["Tàn úa"]=true},
+    ["Skinwalker"] = {["Thời gian đóng băng"]=true,    ["Viết ma"]=true,              ["Hộp linh hồn"]=true},
+    ["Specter"]    = {["Cấp độ EMF 5"]=true,           ["Thời gian đóng băng"]=true,  ["Máy chiếu laser"]=true},
+    ["Spirit"]     = {["Viết ma"]=true,                ["Vết tay"]=true,              ["Hộp linh hồn"]=true},
+    ["Umbra"]      = {["Vết tay"]=true,                ["Quả cầu ma"]=true,           ["Máy chiếu laser"]=true},
+    ["Vex"]        = {["Thời gian đóng băng"]=true,    ["Quả cầu ma"]=true,           ["Tàn úa"]=true},
+    ["Wendigo"]    = {["Viết ma"]=true,                ["Quả cầu ma"]=true,           ["Máy chiếu laser"]=true},
+    ["the wisp"]   = {["Máy chiếu laser"]=true,        ["Quả cầu ma"]=true,           ["Tàn úa"]=true},
+    ["Wraith"]     = {["Cấp độ EMF 5"]=true,           ["Máy chiếu laser"]=true,      ["Hộp linh hồn"]=true},
 }
 
 -- ══════════════════════════════════════════════
---  DỰ ĐOÁN MA (có fallback Skinwalker)
+--  DỰ ĐOÁN MA  (lọc luôn con có orb nếu SCR ko thấy)
 -- ══════════════════════════════════════════════
+local orbAbsentConfirmed = false  -- SCR bật, không thấy orb
+
 local function predictGhost()
-    local found = {}
-    for k, v in pairs(evidenceCards) do
-        if v.found then table.insert(found, k) end
+    local found, absent = {}, {}
+    for k,v in pairs(evidenceCards) do
+        if v.found   then table.insert(found, k) end
+        if v.absent  then table.insert(absent, k) end
     end
-    if #found == 0 then return "Đang quét..." end
+    if #found == 0 and #absent == 0 then return "Đang quét..." end
 
     local matches = {}
     for gName, evMap in pairs(GDB) do
         local ok = true
+        -- phải có đủ bằng chứng đã thấy
         for _, ev in ipairs(found) do
-            if not evMap[ev] then ok = false; break end
+            if not evMap[ev] then ok=false; break end
+        end
+        -- loại con ma có bằng chứng đã xác nhận vắng mặt
+        if ok then
+            for _, ev in ipairs(absent) do
+                if evMap[ev] then ok=false; break end
+            end
         end
         if ok then table.insert(matches, gName) end
     end
 
-    -- Có đủ 3 bằng chứng nhưng không khớp ai → Skinwalker
     if #found >= 3 and #matches == 0 then
         return "⚠️ Skinwalker (bằng chứng bị thay đổi)"
     end
     if #matches == 0 then return "Không rõ" end
-
-    local maxShow = math.min(#matches, 3)
     local out = ""
-    for i = 1, maxShow do
-        out = out .. matches[i] .. (i < maxShow and ", " or "")
-    end
-    if #matches > 3 then out = out .. " +" .. (#matches - 3) end
+    for i=1, math.min(#matches,3) do out=out..matches[i]..(i<math.min(#matches,3) and ", " or "") end
+    if #matches > 3 then out=out.." +"..(#matches-3) end
     return out
 end
 
+-- ══════════════════════════════════════════════
+--  CHECK FUNCTIONS  (real-time, toàn workspace)
+-- ══════════════════════════════════════════════
 local highestEMF, lowestTemp = 1, 100
+
 local function checkHandprints()
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and (obj.Name == "Handprint" or obj.Name == "Handprint1" or obj.Name == "Handprint2") then
-            return true
+    for _,obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and (obj.Name=="Handprint" or obj.Name=="Handprint1" or obj.Name=="Handprint2") then return true end
+    end
+    return false
+end
+
+-- SCR check
+local function isSCRActive()
+    -- kiểm tra tất cả player trong workspace (cả đồng đội)
+    for _,p in pairs(PS:GetPlayers()) do
+        local char = p.Character; if not char then continue end
+        for _,v in pairs(char:GetDescendants()) do
+            if (v.Name=="Spirit Camera" or v:GetAttribute("ItemName")=="Spirit Camera") and v:GetAttribute("Enabled")==true then
+                return true
+            end
         end
     end
     return false
 end
+
 local function checkGhostOrb()
-    for _, obj in ipairs(workspace:GetDescendants()) do if obj:IsA("BasePart") and obj.Name == "GhostOrb" then return true end end
+    for _,obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and obj.Name=="GhostOrb" then
+            orbAbsentConfirmed=false; return true
+        end
+    end
+    -- SCR đang bật mà không thấy → xác nhận vắng
+    if isSCRActive() then orbAbsentConfirmed=true end
     return false
 end
+
+-- EMF: scan toàn workspace bao gồm đồ của người khác
 local function checkEMF()
-    local level = 0
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("Folder") and obj.Name == "Indicators" then
-            for _, v in ipairs(obj:GetChildren()) do
-                if v:IsA("BasePart") and v.Material == Enum.Material.Neon then
-                    local n = tonumber(v.Name) if n and n > level then level = n end
+    local level=0
+    for _,obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Folder") and obj.Name=="Indicators" then
+            for _,v in ipairs(obj:GetChildren()) do
+                if v:IsA("BasePart") and v.Material==Enum.Material.Neon then
+                    local n=tonumber(v.Name); if n and n>level then level=n end
                 end
             end
         end
     end
     return level
 end
+
 local function checkWither()
-    local ok, res = pcall(function()
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("BasePart") and obj.Name == "Flower_Petals" and obj.Color == Color3.new(0,0,0) then return true end
-        end
-        return false
-    end)
-    return ok and res or false
+    local ok,res=pcall(function()
+        for _,obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") and obj.Name=="Flower_Petals" and obj.Color==Color3.new(0,0,0) then return true end
+        end; return false
+    end); return ok and res or false
 end
+
 local function checkGhostWriting()
     local function scanBook(model)
-        for _, child in ipairs(model:GetDescendants()) do
-            if child:IsA("Decal") and child.Texture ~= "" and child.Texture ~= "rbxassetid://0" then
-                return true
-            end
-        end
-        return false
+        for _,child in ipairs(model:GetDescendants()) do
+            if child:IsA("Decal") and child.Texture~="" and child.Texture~="rbxassetid://0" then return true end
+        end; return false
     end
-    for _, obj in ipairs(workspace:GetChildren()) do
-        if obj:IsA("Model") and (obj.Name == "Spirit Book" or obj:GetAttribute("ItemName") == "Spirit Book") then
+    for _,obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") and (obj.Name=="Spirit Book" or obj:GetAttribute("ItemName")=="Spirit Book") then
             if scanBook(obj) then return true end
-        end
-    end
-    local items = workspace:FindFirstChild("Items")
-    if items then
-        for _, obj in ipairs(items:GetChildren()) do
-            if obj:IsA("Model") and obj:GetAttribute("ItemName") == "Spirit Book" then
-                if scanBook(obj) then return true end
-            end
         end
     end
     return false
 end
+
+-- Spirit box: kiểm tra tất cả player (đồng đội cầm cũng tính)
 local function checkSpiritBox()
-    local ok, res = pcall(function() return #plr.PlayerGui.Subtitles.Holder.TextLabel.Text:gsub("%s+", "") >= 3 end)
-    return ok and res or false
+    -- local player subtitle
+    local ok,res=pcall(function() return #plr.PlayerGui.Subtitles.Holder.TextLabel.Text:gsub("%s+","")>=3 end)
+    if ok and res then return true end
+    -- attribute trên ghost (game set khi ma trả lời)
+    if ghostModel:GetAttribute("SpiritBoxActive")==true then return true end
+    -- scan âm thanh spirit box đang phát trong workspace
+    for _,obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Sound") and (obj.Name=="SpiritBoxResponse" or obj.Name=="SpiritBox") and obj.IsPlaying then return true end
+    end
+    return false
 end
+
 local function checkFreezing()
-    if not roomsFolder then return false, lowestTemp, nil end
-    local lowest, lowestRoom = 100, nil
-    for _, room in ipairs(roomsFolder:GetChildren()) do
-        local temp = room:GetAttribute("Temperature")
-        if temp and temp < lowest then lowest = temp; lowestRoom = room end
+    if not roomsFolder then return false,lowestTemp,nil end
+    local lowest,lowestRoom=100,nil
+    for _,room in ipairs(roomsFolder:GetChildren()) do
+        local temp=room:GetAttribute("Temperature")
+        if temp and temp<lowest then lowest=temp; lowestRoom=room end
     end
-    if lowest < lowestTemp then lowestTemp = lowest end
-    return lowestTemp < 0, lowestTemp, lowestRoom
+    if lowest<lowestTemp then lowestTemp=lowest end
+    return lowestTemp<0, lowestTemp, lowestRoom
 end
-local tickLast = tick()
-addConn(RS.Heartbeat:Connect(function()
-    if tick() - tickLast < 1 then return end; tickLast = tick()
-    local favRoom = ghostModel:GetAttribute("FavoriteRoom") or "?"
-    local curRoom = ghostModel:GetAttribute("CurrentRoom") or "?"
-    local hunting = ghostModel:GetAttribute("Hunting")
-    if hunting then
-        ghostInfoLabel.Text = "⚠️  MA ĐANG ĐI SĂN! TRỐN NGAY!"
-        ghostInfoLabel.TextColor3 = COLORS.red
-    else
-        ghostInfoLabel.Text = string.format("👤 Phòng Thích: %s | Hiện tại: %s", tostring(favRoom), tostring(curRoom))
-        ghostInfoLabel.TextColor3 = COLORS.textSub
-    end
-    if checkHandprints() then setEvidence("Vết tay", true) end
-    if checkGhostOrb() then setEvidence("Quả cầu ma", true) end
-    if ghostModel:GetAttribute("InLaser") == true then setEvidence("Máy chiếu laser", true) end
-    if checkWither() then setEvidence("Tàn úa", true) end
-    if checkGhostWriting() then setEvidence("Viết ma", true) end
-    if checkSpiritBox() then setEvidence("Hộp linh hồn", true) end
-    local emf = checkEMF()
-    if emf > highestEMF then
-        highestEMF = emf
-        if highestEMF == 5 then setEvidence("Cấp độ EMF 5", true, "Cấp 5 ✓") else setEvidence("Cấp độ EMF 5", false, "Cấp " .. highestEMF) end
-    end
-    local freezing, temp, room = checkFreezing()
-    setEvidence("Thời gian đóng băng", freezing, string.format("%.1f°C", lowestTemp))
-    if glassOverlay.Visible then
-        local foundEv = {}
-        for name, data in pairs(evidenceCards) do
-            if data.found then table.insert(foundEv, name) end
+
+-- ══════════════════════════════════════════════
+--  REAL-TIME EVENT HOOKS (bắt ngay khi xảy ra)
+-- ══════════════════════════════════════════════
+-- EMF: bắt ngay khi Indicators folder xuất hiện/thay đổi
+addConn(workspace.DescendantAdded:Connect(function(d)
+    -- Hunt escape
+    if isEscapeHunt and d:IsA("Sound") and d.Name=="Hunt" then tpOutside(); return end
+    -- EMF indicator mới
+    if d:IsA("BasePart") and d.Material==Enum.Material.Neon then
+        local n=tonumber(d.Name)
+        if n and n>highestEMF then
+            highestEMF=n
+            if highestEMF==5 then setEvidence("Cấp độ EMF 5",true,"Cấp 5 ✓")
+            else setEvidence("Cấp độ EMF 5",false,"Cấp "..highestEMF) end
         end
-        local evStr = #foundEv > 0 and table.concat(foundEv, ", ") or "Chưa có"
-        local ghostPredict = predictGhost()
-        glassContent.RichText = true
-        glassContent.Text = string.format(
-            "👹 <b>Loại Ma:</b> <font color='rgb(255,230,60)'>%s</font>\n" ..
-            "🏠 <b>Phòng:</b> <font color='rgb(100,180,255)'>%s</font> (Đang ở: %s)\n" ..
-            "🌡️ <b>Nhiệt độ:</b> <font color='rgb(255,100,100)'>%.1f°C</font> | 📡 <b>EMF:</b> Lvl %d\n" ..
-            "📝 <b>Đã thấy:</b> <font color='rgb(100,255,150)'>%s</font>",
-            ghostPredict, tostring(favRoom), tostring(curRoom), lowestTemp, highestEMF, evStr
-        )
     end
+    -- GhostOrb xuất hiện
+    if d:IsA("BasePart") and d.Name=="GhostOrb" then
+        orbAbsentConfirmed=false
+        setEvidence("Quả cầu ma",true)
+    end
+    -- Handprint
+    if d:IsA("BasePart") and (d.Name=="Handprint" or d.Name=="Handprint1" or d.Name=="Handprint2") then
+        setEvidence("Vết tay",true)
+    end
+    -- Spirit Book decal (viết ma)
+    if d:IsA("Decal") and d.Texture~="" and d.Texture~="rbxassetid://0" then
+        local parent=d.Parent; while parent do
+            if parent:IsA("Model") and (parent.Name=="Spirit Book" or parent:GetAttribute("ItemName")=="Spirit Book") then
+                setEvidence("Viết ma",true); break
+            end; parent=parent.Parent
+        end
+    end
+    -- SpiritBox sound
+    if d:IsA("Sound") and (d.Name=="SpiritBoxResponse" or d.Name=="SpiritBox") then
+        task.delay(0.1, function() if d.IsPlaying then setEvidence("Hộp linh hồn",true) end end)
+    end
+end))
+
+-- Attribute changed: InLaser, SpiritBoxActive
+addConn(ghostModel.AttributeChanged:Connect(function(attr)
+    if attr=="InLaser" and ghostModel:GetAttribute("InLaser")==true then
+        setEvidence("Máy chiếu laser",true)
+    end
+    if attr=="SpiritBoxActive" and ghostModel:GetAttribute("SpiritBoxActive")==true then
+        setEvidence("Hộp linh hồn",true)
+    end
+end))
+
+-- Temperature changed realtime
+if roomsFolder then
+    for _,room in ipairs(roomsFolder:GetChildren()) do
+        addConn(room.AttributeChanged:Connect(function(attr)
+            if attr=="Temperature" then
+                local temp=room:GetAttribute("Temperature")
+                if temp and temp<lowestTemp then
+                    lowestTemp=temp
+                    local freezing=lowestTemp<0
+                    setEvidence("Thời gian đóng băng",freezing,string.format("%.1f°C",lowestTemp))
+                end
+            end
+        end))
+    end
+end
+
+-- ══════════════════════════════════════════════
+--  HEARTBEAT LOOP (0.25s, backup + UI update)
+-- ══════════════════════════════════════════════
+local tickLast=tick()
+addConn(RS.Heartbeat:Connect(function()
+    if tick()-tickLast < 0.05 then return end; tickLast=tick()
+
+    local favRoom=ghostModel:GetAttribute("FavoriteRoom") or "?"
+    local curRoom=ghostModel:GetAttribute("CurrentRoom") or "?"
+    local hunting=ghostModel:GetAttribute("Hunting")
+    if hunting then
+        ghostInfoLabel.Text="⚠️  MA ĐANG ĐI SĂN! TRỐN NGAY!"; ghostInfoLabel.TextColor3=COLORS.red
+    else
+        ghostInfoLabel.Text=string.format("👤 Phòng Thích: %s | Hiện tại: %s",tostring(favRoom),tostring(curRoom)); ghostInfoLabel.TextColor3=COLORS.textSub
+    end
+
+    -- Backup scan (phòng event bị miss)
+    if not evidenceCards["Vết tay"].found and checkHandprints() then setEvidence("Vết tay",true) end
+    if not evidenceCards["Viết ma"].found and checkGhostWriting() then setEvidence("Viết ma",true) end
+    if not evidenceCards["Hộp linh hồn"].found and checkSpiritBox() then setEvidence("Hộp linh hồn",true) end
+    if not evidenceCards["Tàn úa"].found and checkWither() then setEvidence("Tàn úa",true) end
+
+    -- Orb + SCR absent check
+    local orbFound=checkGhostOrb()
+    if orbFound and not evidenceCards["Quả cầu ma"].found then
+        setEvidence("Quả cầu ma",true)
+    elseif orbAbsentConfirmed and not evidenceCards["Quả cầu ma"].found then
+        setEvidence("Quả cầu ma",false,"SCR: Không có ✗",true)
+    end
+
+    -- EMF backup
+    local emf=checkEMF()
+    if emf>highestEMF then
+        highestEMF=emf
+        if highestEMF==5 then setEvidence("Cấp độ EMF 5",true,"Cấp 5 ✓")
+        else setEvidence("Cấp độ EMF 5",false,"Cấp "..highestEMF) end
+    end
+
+    -- Freezing
+    local freezing,temp=checkFreezing()
+    setEvidence("Thời gian đóng băng",freezing,string.format("%.1f°C",lowestTemp))
+
+    -- Glass overlay
+    if glassOverlay.Visible then
+        local foundEv={}
+        for name,data in pairs(evidenceCards) do if data.found then table.insert(foundEv,name) end end
+        local evStr=#foundEv>0 and table.concat(foundEv,", ") or "Chưa có"
+        local ghostPredict=predictGhost()
+        glassContent.RichText=true
+        glassContent.Text=string.format(
+            "👹 <b>Loại Ma:</b> <font color='rgb(255,230,60)'>%s</font>\n"..
+            "🏠 <b>Phòng:</b> <font color='rgb(100,180,255)'>%s</font> (Đang ở: %s)\n"..
+            "🌡️ <b>Nhiệt độ:</b> <font color='rgb(255,100,100)'>%.1f°C</font> | 📡 <b>EMF:</b> Lvl %d\n"..
+            "📝 <b>Đã thấy:</b> <font color='rgb(100,255,150)'>%s</font>",
+            ghostPredict,tostring(favRoom),tostring(curRoom),lowestTemp,highestEMF,evStr)
+    end
+
     if isPlrEsp then updatePlrEsp() end
 end))
+
+-- ══════════════════════════════════════════════
+--  LOAD CONFIG KHI KHỞI ĐỘNG
+-- ══════════════════════════════════════════════
 task.spawn(function()
     task.wait(0.2)
-    local saved = loadSettings()
-    for label, state in pairs(saved) do
+    local saved=loadSettings()
+
+    -- Khôi phục vị trí overlay
+    local pos=saved._overlayPos
+    if pos then
+        glassOverlay.Position=UDim2.new(pos.sx,pos.ox,pos.sy,pos.oy)
+    end
+
+    -- Khôi phục toggles
+    local toggles=saved._toggles or saved  -- tương thích config cũ
+    for label,state in pairs(toggles) do
         if state and toolStates[label] then
-            toolStates[label].state = false
+            toolStates[label].state=false
             pcall(function()
-                toolStates[label].update(true)
-                toolStates[label].state = true
-                if label == "Trốn Khi Đi Săn" then isEscapeHunt = true
-                elseif label == "Bật Độ Sáng Full" then
-                    game:GetService("Lighting").Ambient, game:GetService("Lighting").OutdoorAmbient, game:GetService("Lighting").Brightness, game:GetService("Lighting").GlobalShadows, game:GetService("Lighting").FogEnd = Color3.new(1,1,1), Color3.new(1,1,1), 3, false, 100000
-                elseif label == "Bảng Bằng Chứng" then glassOverlay.Visible = true
-                elseif label == "Định Vị Ma" then
-                    ghostHL = Instance.new("Highlight", ghostModel)
-                    ghostHL.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                    ghostHL.OutlineColor = Color3.fromRGB(255, 50, 50)
-                    ghostHL.FillColor, ghostHL.FillTransparency = Color3.fromRGB(255, 0, 0), 0.7
-                    ghostBB = Instance.new("BillboardGui", game.CoreGui)
-                    ghostBB.Adornee, ghostBB.AlwaysOnTop, ghostBB.Size, ghostBB.StudsOffset = ghostModel, true, UDim2.new(0, 80, 0, 30), Vector3.new(0, 3, 0)
-                    local lbl = Instance.new("TextLabel", ghostBB)
-                    lbl.Size = UDim2.new(1,0,1,0); lbl.BackgroundTransparency = 1; lbl.Text = "👻 MA/GHOST"; lbl.TextColor3 = Color3.fromRGB(255,80,80)
-                    lbl.TextScaled = true; lbl.Font = Enum.Font.GothamBold; lbl.TextStrokeTransparency = 0
-                elseif label == "Định Vị Vật Phẩm" then
-                    isItemEsp = true
-                    for _, v in pairs(workspace:GetDescendants()) do
+                toolStates[label].update(true); toolStates[label].state=true
+                if label=="Trốn Khi Đi Săn" then isEscapeHunt=true
+                elseif label=="Bật Độ Sáng Full" then
+                    local L=game:GetService("Lighting"); L.Ambient,L.OutdoorAmbient,L.Brightness,L.GlobalShadows,L.FogEnd=Color3.new(1,1,1),Color3.new(1,1,1),3,false,100000
+                elseif label=="Bảng Bằng Chứng" then glassOverlay.Visible=true
+                elseif label=="Định Vị Ma" then
+                    ghostHL=Instance.new("Highlight",ghostModel); ghostHL.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop; ghostHL.OutlineColor=Color3.fromRGB(255,50,50); ghostHL.FillColor=Color3.fromRGB(255,0,0); ghostHL.FillTransparency=0.7
+                    ghostBB=Instance.new("BillboardGui",game.CoreGui); ghostBB.Adornee=ghostModel; ghostBB.AlwaysOnTop=true; ghostBB.Size=UDim2.new(0,80,0,30); ghostBB.StudsOffset=Vector3.new(0,3,0)
+                    local lbl=Instance.new("TextLabel",ghostBB); lbl.Size=UDim2.new(1,0,1,0); lbl.BackgroundTransparency=1; lbl.Text="👻 MA/GHOST"; lbl.TextColor3=Color3.fromRGB(255,80,80); lbl.TextScaled=true; lbl.Font=Enum.Font.GothamBold; lbl.TextStrokeTransparency=0
+                elseif label=="Định Vị Vật Phẩm" then
+                    isItemEsp=true
+                    for _,v in pairs(workspace:GetDescendants()) do
                         if v:IsA("Model") and v:GetAttribute("ItemName") then
-                            local hl = Instance.new("Highlight", v)
-                            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                            hl.OutlineColor, hl.FillTransparency = Color3.fromRGB(255, 170, 0), 0.8
-                            local bb = Instance.new("BillboardGui", v)
-                            bb.Adornee, bb.AlwaysOnTop, bb.Size, bb.StudsOffset = v, true, UDim2.new(0, 100, 0, 24), Vector3.new(0, 2, 0)
-                            local lbl = Instance.new("TextLabel", bb)
-                            lbl.Size = UDim2.new(1,0,1,0); lbl.BackgroundTransparency = 1; lbl.Text = v:GetAttribute("ItemName")
-                            lbl.TextColor3, lbl.TextScaled, lbl.Font, lbl.TextStrokeTransparency = Color3.fromRGB(255, 200, 80), true, Enum.Font.GothamBold, 0
-                            table.insert(itemEspList, hl); table.insert(itemEspList, bb)
+                            local hl=Instance.new("Highlight",v); hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop; hl.OutlineColor=Color3.fromRGB(255,170,0); hl.FillTransparency=0.8
+                            local bb=Instance.new("BillboardGui",v); bb.Adornee=v; bb.AlwaysOnTop=true; bb.Size=UDim2.new(0,100,0,24); bb.StudsOffset=Vector3.new(0,2,0)
+                            local lbl=Instance.new("TextLabel",bb); lbl.Size=UDim2.new(1,0,1,0); lbl.BackgroundTransparency=1; lbl.Text=v:GetAttribute("ItemName"); lbl.TextColor3=Color3.fromRGB(255,200,80); lbl.TextScaled=true; lbl.Font=Enum.Font.GothamBold; lbl.TextStrokeTransparency=0
+                            table.insert(itemEspList,hl); table.insert(itemEspList,bb)
                         end
                     end
-                elseif label == "Định Vị Người Chơi" then
-                    isPlrEsp = true; updatePlrEsp()
-                end
+                elseif label=="Định Vị Người Chơi" then isPlrEsp=true; updatePlrEsp() end
             end)
         end
     end
