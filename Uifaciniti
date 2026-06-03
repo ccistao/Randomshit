@@ -1525,9 +1525,6 @@ corner(InfoCard, 9)
 stroke(InfoCard, CFG.Border, 1, 0.91)
 
 addSection(Panes[2], "Main Features", 0)
-addToggle(Panes[2], "◆", "Wallhop view", "Highlights walls around player", false, 1, function(state)
-    if state then WallhopView.start() else WallhopView.stop() end
-end)
 addToggle(Panes[2], "⊙", "Beast tracker", "Tracks beast selections and skill triggers", true, 2, function(state)
     if state then startBeastTracker() else stopBeastTracker() end
 end)
@@ -1549,6 +1546,9 @@ addToggle(Panes[4], "⊘", "Item ESP",    "chest - drop",   false, 2, function(o
 addToggle(Panes[4], "◆", "Tracelines",  "line to player", false, 3, function(on) end)
 
 addSection(Panes[5], "Misc Features", 0)
+addToggle(Panes[5], "◆", "Wallhop view", "Highlights walls around player", false, 4, function(state)
+    if state then WallhopView.start() else WallhopView.stop() end
+end)
 addToggle(Panes[5], "▣", "No Texture", "Replaces world assets with solid plastic layers", false, 1, function(state)
     isPlasticOn = state
     if isPlasticOn then scanMap() else restoreMap() end
@@ -1738,11 +1738,5 @@ task.defer(function()
     isBusy  = false
     Panel.Visible = true
     TBtn.Visible  = false
-
-    SelfMuting.start()
-    startBeastTracker()
-    SurvivorTracker.start()
-    startPCProgress()
 end)
-
 print("[DakUI] OK")
