@@ -796,7 +796,7 @@ local function startPCProgress()
 
         if percent == 0 and (lastPercent[pc] or 0) > 0 then return end
 
-        if percent \~= (lastPercent[pc] or -1) then
+        if percent ~= (lastPercent[pc] or -1) then
             lastPercent[pc] = percent
             pendingUpdate[pc] = percent
         end
@@ -831,7 +831,7 @@ local function startPCProgress()
         local tps = plrInstance:FindFirstChild("TempPlayerStatsModule")
         if not tps then return end
         local currentAnim = tps:FindFirstChild("CurrentAnimation")
-        if not currentAnim or currentAnim.Value \~= "Typing" then return end
+        if not currentAnim or currentAnim.Value ~= "Typing" then return end
         if not plrInstance.Character then return end
         local hrp = plrInstance.Character:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
