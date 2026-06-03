@@ -1525,13 +1525,13 @@ corner(InfoCard, 9)
 stroke(InfoCard, CFG.Border, 1, 0.91)
 
 addSection(Panes[2], "Main Features", 0)
-addToggle(Panes[2], "⊙", "Beast tracker", "Tracks beast selections and skill triggers", true, 2, function(state)
+addToggle(Panes[2], "⊙", "Beast tracker", "Tracks beast selections and skill triggers", false, 2, function(state)
     if state then startBeastTracker() else stopBeastTracker() end
 end)
-addToggle(Panes[2], "∞", "Survivor tracker", "Renders overhead timer templates", true, 3, function(state)
+addToggle(Panes[2], "∞", "Survivor tracker", "Renders overhead timer templates", false, 3, function(state)
     if state then SurvivorTracker.start() else SurvivorTracker.stop() end
 end)
-addToggle(Panes[2], "◉", "PC progress", "Shows real-time computer hacking values", true, 4, function(state)
+addToggle(Panes[2], "◉", "PC progress", "Shows real-time computer hacking values", false, 4, function(state)
     if state then startPCProgress() else stopPCProgress() end
 end)
 
@@ -1556,7 +1556,7 @@ end)
 addToggle(Panes[5], "☼", "Flashlight", "Forces light shifts into bright ambient modes", false, 2, function(state)
     if state then Flashlight.start() else Flashlight.stop() end
 end)
-addToggle(Panes[5], "⊗", "Self muting", "Silences local player character audio triggers", true, 3, function(state)
+addToggle(Panes[5], "⊗", "Self muting", "Silences local player character audio triggers", false, 3, function(state)
     if state then SelfMuting.start() else SelfMuting.stop() end
 end)
 
