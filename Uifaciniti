@@ -697,17 +697,17 @@ end
 local function startPCProgress()
     if pcProgressRunning then return end
     pcProgressRunning = true
+
     for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("BillboardGui") and v.Name == "PCProgressBB" then v.Enabled = true end
+        if v:IsA("BillboardGui") and v.Name == "PCProgressBB" then 
+            v.Enabled = true 
+        end
     end
+
     local Camera = workspace.CurrentCamera
     local pcLabels, finished, pcState, hookedPCs, lastPercent = {}, {}, {}, {}, {}
     local pendingUpdate = {}
     local UPDATE_INTERVAL = 0.1
-    local SHOW_DISTANCE_SURV = 40
-    local SHOW_DISTANCE_BEAST = 20
-    local currentShowDist = SHOW_DISTANCE_SURV
-    local CHECK_OFFSET = Vector3.new(0, 1, 0)
 
     local function findAttachPart(pc)
         if pc:IsA("Model") then
@@ -724,108 +724,90 @@ local function startPCProgress()
     end
 
     local function createBillboard(pc)
-    if pcLabels[pc] then return pcLabels[pc] end
+        if pcLabels[pc] then return pcLabels[pc] end
 
-    local part = findAttachPart(pc)
-    if not part then return end
+        local part = findAttachPart(pc)
+        if not part then return end
 
-    local bb = Instance.new("BillboardGui")
-    bb.Name = "PCProgressBB"
-    bb.Size = UDim2.new(0, 140, 0, 50)        -- Kích thước cố định
-    bb.StudsOffset = Vector3.new(0, 3.5, 0)
-    bb.AlwaysOnTop = true
-    bb.LightInfluence = 0
-    bb.Adornee = part
-    bb.Parent = part
+        local bb = Instance.new("BillboardGui")
+        bb.Name = "PCProgressBB"
+        bb.Size = UDim2.new(0, 160, 0, 55)
+        bb.StudsOffset = Vector3.new(0, 3.8, 0)
+        bb.AlwaysOnTop = true
+        bb.LightInfluence = 0
+        bb.Adornee = part
+        bb.Parent = part
 
-    -- Container Frame
-    local container = Instance.new("Frame")
-    container.Size = UDim2.new(1, 0, 1, 0)
-    container.BackgroundTransparency = 1
-    container.Parent = bb
+        local container = Instance.new("Frame")
+        container.Size = UDim2.new(1,0,1,0)
+        container.BackgroundTransparency = 1
+        container.Parent = bb
 
-    -- Progress Bar Background
-    local barBg = Instance.new("Frame")
-    barBg.Size = UDim2.new(1, -4, 0, 18)
-    barBg.Position = UDim2.new(0, 2, 0, 4)
-    barBg.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    barBg.BorderSizePixel = 0
-    barBg.Parent = container
-    corner(barBg, 6)
+        local barBg = Instance.new("Frame")
+        barBg.Size = UDim2.new(1, -8, 0, 20)
+        barBg.Position = UDim2.new(0, 4, 0, 6)
+        barBg.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        barBg.BorderSizePixel = 0
+        barBg.Parent = container
+        corner(barBg, 8)
 
-    -- Progress Fill
-    local barFill = Instance.new("Frame")
-    barFill.Size = UDim2.new(0, 0, 1, 0)
-    barFill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
-    barFill.BorderSizePixel = 0
-    barFill.Parent = barBg
-    corner(barFill, 6)
+        local barFill = Instance.new("Frame")
+        barFill.Size = UDim2.new(0, 0, 1, 0)
+        barFill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+        barFill.BorderSizePixel = 0
+        barFill.Parent = barBg
+        corner(barFill, 8)
 
-    -- Progress Text
-    local textLabel = Instance.new("TextLabel")
-    textLabel.Size = UDim2.new(1, 0, 0, 22)
-    textLabel.Position = UDim2.new(0, 0, 0, 25)
-    textLabel.BackgroundTransparency = 1
-    textLabel.Text = "0%"
-    textLabel.TextColor3 = Color3.new(1, 1, 1)
-    textLabel.Font = Enum.Font.GothamBold
-    textLabel.TextSize = 16
-    textLabel.TextStrokeTransparency = 0.7
-    textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-    textLabel.Parent = container
+        local textLabel = Instance.new("TextLabel")
+        textLabel.Size = UDim2.new(1, 0, 0, 24)
+        textLabel.Position = UDim2.new(0, 0, 0, 28)
+        textLabel.BackgroundTransparency = 1
+        textLabel.Text = "0%"
+        textLabel.TextColor3 = Color3.new(1, 1, 1)
+        textLabel.Font = Enum.Font.GothamBold
+        textLabel.TextSize = 17
+        textLabel.TextStrokeTransparency = 0.6
+        textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+        textLabel.Parent = container
 
-    pcLabels[pc] = {
-        bb = bb,
-        barFill = barFill,
-        textLabel = textLabel,
-        part = part
-    }
-    lastPercent[pc] = 0
+        pcLabels[pc] = {
+            bb = bb,
+            barFill = barFill,
+            textLabel = textLabel,
+            part = part
+        }
+        lastPercent[pc] = 0
 
-    return pcLabels[pc]
-end
-
-    local function clearAll()
-        for _, v in pairs(pcLabels) do if v.bb then v.bb.Enabled = false end end
-        pcLabels, finished, pcState, hookedPCs, lastPercent, pendingUpdate = {}, {}, {}, {}, {}, {}
+        return pcLabels[pc]
     end
 
-    local function isVisible(part)
-        if not part then return false end
-        local camPos = Camera.CFrame.Position
-        local partPos = part.Position + CHECK_OFFSET
-        local distance = (partPos - camPos).Magnitude
-        local dir = (partPos - camPos).Unit * distance
-        local params = RaycastParams.new()
-        params.FilterDescendantsInstances = {lp.Character}
-        params.FilterType = Enum.RaycastFilterType.Blacklist
-        local result = workspace:Raycast(camPos, dir, params)
-        if not result then return true end
-        if result.Instance:IsDescendantOf(part.Parent) then return true end
-        return false
+    local function clearAll()
+        for _, v in pairs(pcLabels) do 
+            if v.bb then v.bb.Enabled = false end 
+        end
+        pcLabels, finished, pcState, hookedPCs, lastPercent, pendingUpdate = {}, {}, {}, {}, {}, {}
     end
 
     local function queueProgress(pc, value)
         if finished[pc] then return end
-        if pcState[pc] == "ERROR" or pcState[pc] == "DONE" then return end
         local percent = math.floor(value * 100 + 0.5)
-        if percent >= 100 then percent = 100; finished[pc] = true end
-        if percent ~= (lastPercent[pc] or -1) then
-            if percent == 0 and (lastPercent[pc] or 0) > 0 then return end
+        if percent > 100 then percent = 100 end
+        if percent < 0 then percent = 0 end
+
+        if percent == 0 and (lastPercent[pc] or 0) > 0 then return end
+
+        if percent \~= (lastPercent[pc] or -1) then
             lastPercent[pc] = percent
-            pendingUpdate[pc] = tostring(percent) .. "%"
+            pendingUpdate[pc] = percent
         end
     end
 
     table.insert(pcConnections, task.spawn(function()
         while pcProgressRunning do
-            for pc, text in pairs(pendingUpdate) do
+            for pc, percent in pairs(pendingUpdate) do
                 local pack = createBillboard(pc)
                 if pack then
-                    if pack.label.Text ~= text then
-                        pack.label.Text = text
-                        pack.label.TextColor3 = Color3.new(1, 1, 1)
-                    end
+                    lastPercent[pc] = percent
                 end
                 pendingUpdate[pc] = nil
             end
@@ -835,8 +817,8 @@ end
 
     local function nearestPC(pos, maxDist)
         local best, bd = nil, maxDist or 30
-        for pc, _ in pairs(pcLabels) do
-            local part = pcLabels[pc].part
+        for pc, data in pairs(pcLabels) do
+            local part = data.part
             if part then
                 local dist = (part.Position - pos).Magnitude
                 if dist < bd then best, bd = pc, dist end
@@ -849,7 +831,7 @@ end
         local tps = plrInstance:FindFirstChild("TempPlayerStatsModule")
         if not tps then return end
         local currentAnim = tps:FindFirstChild("CurrentAnimation")
-        if not currentAnim or currentAnim.Value ~= "Typing" then return end
+        if not currentAnim or currentAnim.Value \~= "Typing" then return end
         if not plrInstance.Character then return end
         local hrp = plrInstance.Character:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
@@ -872,48 +854,23 @@ end
         local tps = plrInstance:FindFirstChild("TempPlayerStatsModule")
         if tps then attach(tps) end
     end
+
     for _, p in ipairs(Players:GetPlayers()) do hookPlayer(p) end
     table.insert(pcConnections, Players.PlayerAdded:Connect(hookPlayer))
-
-    local function updateRole()
-        local stats = lp:FindFirstChild("TempPlayerStatsModule") or lp:FindFirstChild("PlayerStats")
-        if stats then
-            local isBeastVal = stats:FindFirstChild("IsBeast")
-            if isBeastVal then
-                if isBeastVal.Value == true then currentShowDist = SHOW_DISTANCE_BEAST else currentShowDist = SHOW_DISTANCE_SURV end
-            end
-        end
-    end
-    
-    local function watchStats()
-        local stats = lp:FindFirstChild("TempPlayerStatsModule") or lp:FindFirstChild("PlayerStats")
-        if stats then
-            local isBeastVal = stats:FindFirstChild("IsBeast")
-            if isBeastVal then
-                table.insert(pcConnections, isBeastVal.Changed:Connect(updateRole))
-                updateRole()
-            end
-        end
-    end
-    lp.CharacterAdded:Connect(function() task.wait(0.5); watchStats() end)
-    watchStats()
 
     local function applyScreenState(pc, c)
         local pack = createBillboard(pc)
         if not pack then return end
+
         if c.G > c.R + 0.2 and c.G > c.B + 0.2 then
             pcState[pc] = "DONE"
-            pack.label.Text = "DONE"
-            pack.label.TextColor3 = Color3.new(0, 1, 0)
         elseif c.R > c.G + 0.2 and c.R > c.B + 0.2 then
             pcState[pc] = "ERROR"
-            pack.label.Text = "ERROR"
-            pack.label.TextColor3 = Color3.new(1, 0, 0)
         else
-            if not finished[pc] then pcState[pc] = nil end
+            pcState[pc] = nil
         end
     end
-    
+
     local function watchPC(pc)
         if hookedPCs[pc] then return end
         hookedPCs[pc] = true
@@ -937,47 +894,51 @@ end
                     end
                 end
             end
-            task.wait(1)
+            task.wait(1.2)
         end
     end))
 
     table.insert(pcConnections, RunService.RenderStepped:Connect(function()
-    for pc, pack in pairs(pcLabels) do
-        local barFill = pack.barFill
-        local textLabel = pack.textLabel
-        local percent = lastPercent[pc] or 0
+        for pc, pack in pairs(pcLabels) do
+            local barFill = pack.barFill
+            local textLabel = pack.textLabel
+            local percent = lastPercent[pc] or 0
 
-        if barFill and textLabel then
-            -- Update thanh progress
-            barFill.Size = UDim2.new(percent / 100, 0, 1, 0)
+            if barFill and textLabel then
+                if pcState[pc] == "DONE" then
+                    barFill.Size = UDim2.new(1, 0, 1, 0)
+                else
+                    barFill.Size = UDim2.new(percent / 100, 0, 1, 0)
+                end
 
-            -- Màu thanh: Đỏ → Vàng → Xanh
-            local r, g, b
-            if percent < 50 then
-                r = 255
-                g = math.floor(60 + (percent * 3.9))
-                b = 60
-            else
-                r = math.floor(255 - (percent - 50) * 3.9)
-                g = 255
-                b = 60
-            end
-            barFill.BackgroundColor3 = Color3.fromRGB(math.clamp(r, 60, 255), g, b)
+                local r, g, b
+                if pcState[pc] == "DONE" then
+                    r, g, b = 0, 255, 100
+                elseif percent < 50 then
+                    r = 255
+                    g = math.floor(60 + (percent * 3.9))
+                    b = 60
+                else
+                    r = math.floor(255 - (percent - 50) * 3.9)
+                    g = 255
+                    b = 60
+                end
+                barFill.BackgroundColor3 = Color3.fromRGB(math.clamp(r, 60, 255), g, b)
 
-            -- Text % 
-            textLabel.Text = percent .. "%"
-
-            if pcState[pc] == "ERROR" then
-                textLabel.TextColor3 = Color3.fromRGB(255, 60, 60)     -- Đỏ khi Error
-            elseif pcState[pc] == "DONE" then
-                textLabel.TextColor3 = Color3.fromRGB(0, 255, 120)    -- Xanh khi Done
-            else
-                textLabel.TextColor3 = Color3.new(1, 1, 1)            -- Trắng bình thường
+                if pcState[pc] == "DONE" then
+                    textLabel.Text = "100%"
+                    textLabel.TextColor3 = Color3.fromRGB(0, 255, 120)
+                elseif pcState[pc] == "ERROR" then
+                    textLabel.Text = percent .. "%"
+                    textLabel.TextColor3 = Color3.fromRGB(255, 60, 60)
+                else
+                    textLabel.Text = percent .. "%"
+                    textLabel.TextColor3 = Color3.new(1, 1, 1)
+                end
             end
         end
-    end
-end))
-
+    end))
+end
 local isPlasticOn = false
 local cacheMaterials = {}
 local cacheTextures = {}
