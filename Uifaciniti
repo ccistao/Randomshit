@@ -831,7 +831,7 @@ local function startPCProgress()
         local tps = plrInstance:FindFirstChild("TempPlayerStatsModule")
         if not tps then return end
         local currentAnim = tps:FindFirstChild("CurrentAnimation")
-        if not currentAnim or currentAnim.Value ~= "Typing" then return end
+        if not currentAnim or not currentAnim:IsA("ValueBase") or currentAnim.Value ~= "Typing" then return end
         if not plrInstance.Character then return end
         local hrp = plrInstance.Character:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
