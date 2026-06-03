@@ -915,15 +915,10 @@ local function startPCProgress()
     end))
 
     table.insert(pcConnections, RunService.RenderStepped:Connect(function()
-        local char = lp.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        local camPos = Camera.CFrame.Position
         for pc, pack in pairs(pcLabels) do
-            local part, label = pack.part, pack.label
-            if part and label then
-                local origin = hrp and hrp.Position or camPos
-                local dist = (part.Position - origin).Magnitude
-                if dist <= currentShowDist and isVisible(part) then label.Visible = true else label.Visible = false end
+            local label = pack.label
+            if label then
+                label.Visible = true
             end
         end
     end))
