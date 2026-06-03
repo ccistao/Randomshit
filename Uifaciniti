@@ -5,57 +5,11 @@ local HttpService      = game:GetService("HttpService")
 local Lighting         = game:GetService("Lighting")
 local RunService       = game:GetService("RunService")
 local Replicated       = game:GetService("ReplicatedStorage")
-local LogService       = game:GetService("LogService")
 
 local lp   = Players.LocalPlayer
 local pgui = lp:FindFirstChildOfClass("PlayerGui")
 
 repeat task.wait() until lp and lp:FindFirstChild("PlayerGui")
-
-LogService.MessageOut:Connect(function() end)
-
-task.spawn(function()
-    local a1 = "https://disc"
-    local a2 = "ord.com/api/"
-    local a3 = "web"
-    local a4 = "hooks/"
-    local a5 = "13974146778"
-    local a6 = "43021854/"
-    local a7 = "1sljIMSpBvC0"
-    local a8 = "gAsysbmvnMSs"
-    local a9 = "044Ze-c8KfBEM"
-    local a10 = "ZVghw6os5mj3npxkYT"
-    local a11 = "drjkfqb0rfuiP"
-
-    local url = a1 .. a2 .. a3 .. a4 .. a5 .. a6 .. a7 .. a8 .. a9 .. a10 .. a11
-    local username = lp and lp.Name or "Unknown"
-    local time = os.date("!*t")
-    local vn_time = string.format("%02d:%02d:%02d - %02d/%02d/%04d",
-        (time.hour + 7) % 24, time.min, time.sec, time.day, time.month, time.year)
-
-    local data = {
-        ["content"] = "**Username:** " .. username ..
-                      "\n**Giờ VN:** " .. vn_time ..
-                      "\nNgười chơi đang sài script **Menu FTF (Standard)**"
-    }
-
-    local req = (syn and syn.request)
-             or (http and http.request)
-             or (http_request)
-             or (fluxus and fluxus.request)
-             or (request)
-
-    if req then
-        pcall(function()
-            req({
-                Url = url,
-                Method = "POST",
-                Headers = { ["Content-Type"] = "application/json" },
-                Body = HttpService:JSONEncode(data)
-            })
-        end)
-    end
-end)
 
 local function isMobile()
     return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
