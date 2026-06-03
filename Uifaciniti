@@ -894,7 +894,7 @@ local function startPCProgress()
     end
 
     local function watchPC(pc)
-        if not pc or not pc.Parenendr hookedPCs[pc] then return end
+        if not pc or not pc.Parent or hookedPCs[pc] then return end
         hookedPCs[pc] = true
         local scr = pc:FindFirstChild("Screen")
         if scr and scr:IsA("BasePart") then
