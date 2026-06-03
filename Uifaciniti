@@ -724,39 +724,66 @@ local function startPCProgress()
     end
 
     local function createBillboard(pc)
-        if pcLabels[pc] then return pcLabels[pc] end
-        local part = findAttachPart(pc)
-        if not part then return end
-        local existingBB = part:FindFirstChild("PCProgressBB")
-        if existingBB then
-            existingBB.Enabled = true
-            local tl = existingBB:FindFirstChildOfClass("TextLabel")
-            if tl then
-                pcLabels[pc] = {label = tl, bb = existingBB, part = part}
-                lastPercent[pc] = 0
-                return pcLabels[pc]
-            end
-        end
-        local bb = Instance.new("BillboardGui")
-        bb.Name = "PCProgressBB"
-        bb.Size = UDim2.new(0, 100, 0, 40)
-        bb.StudsOffset = Vector3.new(0, 2, 0)
-        bb.AlwaysOnTop = true
-        bb.Adornee = part
-        bb.Parent = part
-        local tl = Instance.new("TextLabel")
-        tl.Size = UDim2.new(1, 0, 1, 0)
-        tl.BackgroundTransparency = 1
-        tl.TextColor3 = Color3.new(1, 1, 1)
-        tl.Font = Enum.Font.GothamBold
-        tl.TextScaled = true
-        tl.Text = "0%"
-        tl.Visible = true
-        tl.Parent = bb
-        pcLabels[pc] = {label = tl, bb = bb, part = part}
-        lastPercent[pc] = 0
-        return pcLabels[pc]
-    end
+    if pcLabels[pc] then return pcLabels[pc] end
+
+    local part = findAttachPart(pc)
+    if not part then return end
+
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "PCProgressBB"
+    bb.Size = UDim2.new(0, 140, 0, 50)        -- Kích thước cố định
+    bb.StudsOffset = Vector3.new(0, 3.5, 0)
+    bb.AlwaysOnTop = true
+    bb.LightInfluence = 0
+    bb.Adornee = part
+    bb.Parent = part
+
+    -- Container Frame
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, 0, 1, 0)
+    container.BackgroundTransparency = 1
+    container.Parent = bb
+
+    -- Progress Bar Background
+    local barBg = Instance.new("Frame")
+    barBg.Size = UDim2.new(1, -4, 0, 18)
+    barBg.Position = UDim2.new(0, 2, 0, 4)
+    barBg.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    barBg.BorderSizePixel = 0
+    barBg.Parent = container
+    corner(barBg, 6)
+
+    -- Progress Fill
+    local barFill = Instance.new("Frame")
+    barFill.Size = UDim2.new(0, 0, 1, 0)
+    barFill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+    barFill.BorderSizePixel = 0
+    barFill.Parent = barBg
+    corner(barFill, 6)
+
+    -- Progress Text
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Size = UDim2.new(1, 0, 0, 22)
+    textLabel.Position = UDim2.new(0, 0, 0, 25)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Text = "0%"
+    textLabel.TextColor3 = Color3.new(1, 1, 1)
+    textLabel.Font = Enum.Font.GothamBold
+    textLabel.TextSize = 16
+    textLabel.TextStrokeTransparency = 0.7
+    textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+    textLabel.Parent = container
+
+    pcLabels[pc] = {
+        bb = bb,
+        barFill = barFill,
+        textLabel = textLabel,
+        part = part
+    }
+    lastPercent[pc] = 0
+
+    return pcLabels[pc]
+end
 
     local function clearAll()
         for _, v in pairs(pcLabels) do if v.bb then v.bb.Enabled = false end end
@@ -915,18 +942,41 @@ local function startPCProgress()
     end))
 
     table.insert(pcConnections, RunService.RenderStepped:Connect(function()
-        for pc, pack in pairs(pcLabels) do
-            local label = pack.label
-            if label then
-                label.Visible = true
+    for pc, pack in pairs(pcLabels) do
+        local barFill = pack.barFill
+        local textLabel = pack.textLabel
+        local percent = lastPercent[pc] or 0
+
+        if barFill and textLabel then
+            -- Update thanh progress
+            barFill.Size = UDim2.new(percent / 100, 0, 1, 0)
+
+            -- Màu thanh: Đỏ → Vàng → Xanh
+            local r, g, b
+            if percent < 50 then
+                r = 255
+                g = math.floor(60 + (percent * 3.9))
+                b = 60
+            else
+                r = math.floor(255 - (percent - 50) * 3.9)
+                g = 255
+                b = 60
+            end
+            barFill.BackgroundColor3 = Color3.fromRGB(math.clamp(r, 60, 255), g, b)
+
+            -- Text % 
+            textLabel.Text = percent .. "%"
+
+            if pcState[pc] == "ERROR" then
+                textLabel.TextColor3 = Color3.fromRGB(255, 60, 60)     -- Đỏ khi Error
+            elseif pcState[pc] == "DONE" then
+                textLabel.TextColor3 = Color3.fromRGB(0, 255, 120)    -- Xanh khi Done
+            else
+                textLabel.TextColor3 = Color3.new(1, 1, 1)            -- Trắng bình thường
             end
         end
-    end))
-
-    if Replicated:FindFirstChild("CurrentMap") then
-        table.insert(pcConnections, Replicated.CurrentMap.Changed:Connect(function() clearAll() end))
     end
-end
+end))
 
 local isPlasticOn = false
 local cacheMaterials = {}
