@@ -725,80 +725,84 @@ local function startPCProgress()
     end
 
     local function createBillboard(pc)
-            if not pc or not pc.Parent then return nil end
-            if pcLabels[pc] then return pcLabels[pc] end
+        if not pc or not pc.Parent then return nil end
+        if pcLabels[pc] then return pcLabels[pc] end
 
-            local part = findAttachPart(pc)
-            if not part then return nil end
+        local part = findAttachPart(pc)
+        if not part then return nil end
 
-            local bb = Instance.new("BillboardGui")
-            bb.Name = "PCProgressBB"
+        local bb = Instance.new("BillboardGui")
+        bb.Name = "PCProgressBB"
         
-            -- SỬA TẠI ĐÂY: Dùng lại kích thước Scale để đứng xa tự nhỏ lại, nhma chỉnh size vừa phải
-            bb.Size = UDim2.new(4.5, 0, 1.2, 0) 
-            bb.StudsOffset = Vector3.new(0, 3.5, 0)
-            bb.AlwaysOnTop = true
-            bb.LightInfluence = 0
-        
-            -- KHÔNG GIỚI HẠN KHOẢNG CÁCH: Đứng ở góc map vẫn nhìn thấy máy
-            bb.MaxDistance = math.huge 
-        
-            -- GIỚI HẠN ĐỘ TO: Khi lại cực gần, thanh progress chỉ to đến mức này là dừng, ko to thêm nữa
-            bb.DistanceLowerLimit = 20 
-        
-            bb.Adornee = part
-            bb.Parent = part
-  
-            local container = Instance.new("Frame")
-            container.Size = UDim2.new(1, 0, 1, 0)
-            container.BackgroundTransparency = 1
-            container.Parent = bb
+        -- FIX HIỂN THỊ: Chiều rộng co giãn theo tỷ lệ (5), chiều cao giữ nguyên cố định (40 pixel) để không bị dẹt trên Mobile
+        bb.Size = UDim2.new(5, 0, 0, 40) 
+        bb.StudsOffset = Vector3.new(0, 3.8, 0)
+        bb.AlwaysOnTop = true
+        bb.LightInfluence = 0
+        bb.MaxDistance = math.huge -- Đứng đâu trên map cũng thấy
+        bb.DistanceLowerLimit = 15 -- Lại siêu gần thì chặn không cho to quá cỡ
+        bb.Adornee = part
+        bb.Parent = part
 
-            local barBg = Instance.new("Frame")
-            -- Dùng kích thước Scale bên trong để tự động co giãn đồng bộ với khung BillboardGui
-            barBg.Size = UDim2.new(0.9, 0, 0.35, 0)
-            barBg.Position = UDim2.new(0.05, 0, 0.1, 0)
-            barBg.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-            barBg.BackgroundTransparency = 0.75
-            barBg.BorderSizePixel = 0
-            barBg.ZIndex = 1
-            barBg.Parent = container
-            corner(barBg, 6)
-            stroke(barBg, Color3.fromRGB(255, 255, 255), 1, 0.6)
+        local container = Instance.new("Frame")
+        container.Size = UDim2.new(1, 0, 1, 0)
+        container.BackgroundTransparency = 1
+        container.Parent = bb
 
-            local barFill = Instance.new("Frame")
-            barFill.Size = UDim2.new(0, 0, 1, 0)
-            barFill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
-            barFill.BorderSizePixel = 0
-            barFill.ZIndex = 2
-            barFill.Parent = barBg
-            corner(barFill, 6)
+        local barBg = Instance.new("Frame")
+        barBg.Size = UDim2.new(0.9, 0, 0, 14)
+        barBg.Position = UDim2.new(0.05, 0, 0, 2)
+        barBg.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        barBg.BackgroundTransparency = 0.75 -- Màu gương đục (kính mờ) cực đẹp
+        barBg.BorderSizePixel = 0
+        barBg.ZIndex = 1
+        barBg.Parent = container
 
-            local textLabel = Instance.new("TextLabel")
-            -- Căn chữ % dựa theo tỉ lệ Scale để ko bị lệch khi ở xa
-            textLabel.Size = UDim2.new(1, 0, 0.45, 0)
-            textLabel.Position = UDim2.new(0, 0, 0.5, 0)
-            textLabel.BackgroundTransparency = 1
-            textLabel.Text = "0%"
-            textLabel.TextColor3 = Color3.new(1, 1, 1)
-            textLabel.Font = Enum.Font.GothamBold
-        
-            -- Bật TextScaled để chữ tự động thu nhỏ lại khi bạn đứng ở xa, ko bị tràn khung
-            textLabel.TextScaled = true 
-            textLabel.TextStrokeTransparency = 0.4
-            textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-            textLabel.ZIndex = 3
-            textLabel.Parent = container
+        -- SỬA LỖI LINE 766: Dùng UICorner chuẩn của Roblox thay cho hàm corner() bị nil
+        local bgCorner = Instance.new("UICorner")
+        bgCorner.CornerRadius = UDim.new(0, 6)
+        bgCorner.Parent = barBg
 
-            pcLabels[pc] = {
-                bb = bb,
-                barFill = barFill,
-                textLabel = textLabel,
-                part = part
-            }
-            lastPercent[pc] = 0
+        -- SỬA LỖI LINE 766: Dùng UIStroke chuẩn của Roblox thay cho hàm stroke() bị nil
+        local bgStroke = Instance.new("UIStroke")
+        bgStroke.Color = Color3.fromRGB(255, 255, 255)
+        bgStroke.Thickness = 1
+        bgStroke.Transparency = 0.6
+        bgStroke.Parent = barBg
 
-            return pcLabels[pc]
+        local barFill = Instance.new("Frame")
+        barFill.Size = UDim2.new(0, 0, 1, 0)
+        barFill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+        barFill.BorderSizePixel = 0
+        barFill.ZIndex = 2
+        barFill.Parent = barBg
+
+        local fillCorner = Instance.new("UICorner")
+        fillCorner.CornerRadius = UDim.new(0, 6)
+        fillCorner.Parent = barFill
+
+        local textLabel = Instance.new("TextLabel")
+        textLabel.Size = UDim2.new(1, 0, 0, 16)
+        textLabel.Position = UDim2.new(0, 0, 0, 18)
+        textLabel.BackgroundTransparency = 1
+        textLabel.Text = "0%"
+        textLabel.TextColor3 = Color3.new(1, 1, 1)
+        textLabel.Font = Enum.Font.GothamBold
+        textLabel.TextSize = 13 -- Giữ nguyên kích thước chữ rõ nét, không bị bóp méo
+        textLabel.TextStrokeTransparency = 0.3
+        textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+        textLabel.ZIndex = 3
+        textLabel.Parent = container
+
+        pcLabels[pc] = {
+            bb = bb,
+            barFill = barFill,
+            textLabel = textLabel,
+            part = part
+        }
+        lastPercent[pc] = 0
+
+        return pcLabels[pc]
     end
 
     local function queueProgress(pc, value)
@@ -890,7 +894,7 @@ local function startPCProgress()
     end
 
     local function watchPC(pc)
-        if not pc or not pc.Parent or hookedPCs[pc] then return end
+        if not pc or not pc.Parenendr hookedPCs[pc] then return end
         hookedPCs[pc] = true
         local scr = pc:FindFirstChild("Screen")
         if scr and scr:IsA("BasePart") then
