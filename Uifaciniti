@@ -710,179 +710,6 @@ local function startPCProgress()
     local UPDATE_INTERVAL = 0.1
 
     local function findAttachPart(pc)
-        if pc:IsA("Model") then
-            local scr = pc:FindFirstChild("Screen")
-            if scr and scr:IsA("BasePart") then return scr end
-            if pc.PrimaryPart then return pc.PrimaryPart end
-            for _, d in ipairs(pc:GetDescendants()) do
-                if d:IsA("BasePart") then return d end
-            end
-        elseif pc:IsA("BasePart") then
-            return pc
-        end
-        return nil
-    end
-
-    local function createBillboard(pc)
-        if pcLabels[pc] then return pcLabels[pc] end
-
-        local part = findAttachPart(pc)
-        if not part then return end
-
-        local bb = Instance.new("BillboardGui")
-        bb.Name = "PCProgressBB"
-        bb.Size = UDim2.new(0, 160, 0, 55)
-        bb.StudsOffset = Vector3.new(0, 3.8, 0)
-        bb.AlwaysOnTop = true
-        bb.LightInfluence = 0
-        bb.Adornee = part
-        bb.Parent = part
-
-        local container = Instance.new("Frame")
-        container.Size = UDim2.new(1,0,1,0)
-        container.BackgroundTransparency = 1
-        container.Parent = bb
-
-        local barBg = Instance.new("Frame")
-        barBg.Size = UDim2.new(1, -8, 0, 20)
-        barBg.Position = UDim2.new(0, 4, 0, 6)
-        barBg.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-        barBg.BorderSizePixel = 0
-        barBg.Parent = container
-        corner(barBg, 8)
-
-        local barFill = Instance.new("Frame")
-        barFill.Size = UDim2.new(0, 0, 1, 0)
-        barFill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
-        barFill.BorderSizePixel = 0
-        barFill.Parent = barBg
-        corner(barFill, 8)
-
-        local textLabel = Instance.new("TextLabel")
-        textLabel.Size = UDim2.new(1, 0, 0, 24)
-        textLabel.Position = UDim2.new(0, 0, 0, 28)
-        textLabel.BackgroundTransparency = 1
-        textLabel.Text = "0%"
-        textLabel.TextColor3 = Color3.new(1, 1, 1)
-        textLabel.Font = Enum.Font.GothamBold
-        textLabel.TextSize = 17
-        textLabel.TextStrokeTransparency = 0.6
-        textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-        textLabel.Parent = container
-
-        pcLabels[pc] = {
-            bb = bb,
-            barFill = barFill,
-            textLabel = textLabel,
-            part = part
-        }
-        lastPercent[pc] = 0
-
-        return pcLabels[pc]
-    end
-
-    local function clearAll()
-        for _, v in pairs(pcLabels) do 
-            if v.bb then v.bb.Enabled = false end 
-        end
-        pcLabels, finished, pcState, hookedPCs, lastPercent, pendingUpdate = {}, {}, {}, {}, {}, {}
-    end
-
-    local function queueProgress(pc, value)
-        if finished[pc] then return end
-        local percent = math.floor(value * 100 + 0.5)
-        if percent > 100 then percent = 100 end
-        if percent < 0 then percent = 0 end
-
-        if percent == 0 and (lastPercent[pc] or 0) > 0 then return end
-
-        if percent ~= (lastPercent[pc] or -1) then
-            lastPercent[pc] = percent
-            pendingUpdate[pc] = percent
-        end
-    end
-
-    table.insert(pcConnections, task.spawn(function()
-        while pcProgressRunning do
-            for pc, percent in pairs(pendingUpdate) do
-                local pack = createBillboard(pc)
-                if pack then
-                    lastPercent[pc] = percent
-                end
-                pendingUpdate[pc] = nil
-            end
-            task.wait(UPDATE_INTERVAL)
-        end
-    end))
-
-    local function nearestPC(pos, maxDist)
-        local best, bd = nil, maxDist or 30
-        for pc, data in pairs(pcLabels) do
-            local part = data.part
-            if part then
-                local dist = (part.Position - pos).Magnitude
-                if dist < bd then best, bd = pc, dist end
-            end
-        end
-        return best
-    end
-
-    local function onActionProgress(plrInstance, value)
-        local tps = plrInstance:FindFirstChild("TempPlayerStatsModule")
-        if not tps then return end
-        local currentAnim = tps:FindFirstChild("CurrentAnimation")
-        if not currentAnim or not currentAnim:IsA("ValueBase") or currentAnim.Value ~= "Typing" then return end
-        if not plrInstance.Character then return end
-        local hrp = plrInstance.Character:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-        local pc = nearestPC(hrp.Position, 35)
-        if pc then queueProgress(pc, value) end
-    end
-
-    local function hookPlayer(plrInstance)
-        local function attach(c)
-            if c.Name == "TempPlayerStatsModule" then
-                local ap = c:WaitForChild("ActionProgress", 10)
-                if ap and ap:IsA("NumberValue") then
-                    table.insert(pcConnections, ap:GetPropertyChangedSignal("Value"):Connect(function()
-                        onActionProgress(plrInstance, ap.Value)
-                    end))
-                end
-            end
-        end
-        plrInstance.ChildAdded:Connect(attach)
-        local tps = plrInstance:FindFirstChild("TempPlayerStatsModule")
-        if tps then attach(tps) end
-    end
-
-    for _, p in ipairs(Players:GetPlayers()) do hookPlayer(p) end
-    table.insert(pcConnections, Players.PlayerAdded:Connect(hookPlayer))
-
-    local function applyScreenState(pc, c)
-        local pack = createBillboard(pc)
-        if not pack then return end
-
-        if c.G > c.R + 0.2 and c.G > c.B + 0.2 then
-            pcState[pc] = "DONE"
-        elseif c.R > c.G + 0.2 and c.R > c.B + 0.2 then
-            pcState[pc] = "ERROR"
-        else
-local function startPCProgress()
-    if pcProgressRunning then return end
-    pcProgressRunning = true
-
-    for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("BillboardGui") and v.Name == "PCProgressBB" then 
-            v.Enabled = true 
-        end
-    end
-
-    local Camera = workspace.CurrentCamera
-    local pcLabels, finished, pcState, hookedPCs, lastPercent = {}, {}, {}, {}, {}
-    local pendingUpdate = {}
-    local UPDATE_INTERVAL = 0.1
-
-    local function findAttachPart(pc)
         if not pc or not pc.Parent then return nil end
         if pc:IsA("Model") then
             local scr = pc:FindFirstChild("Screen")
@@ -914,22 +741,26 @@ local function startPCProgress()
         bb.Parent = part
 
         local container = Instance.new("Frame")
-        container.Size = UDim2.new(1,0,1,0)
+        container.Size = UDim2.new(1, 0, 1, 0)
         container.BackgroundTransparency = 1
         container.Parent = bb
 
         local barBg = Instance.new("Frame")
         barBg.Size = UDim2.new(1, -8, 0, 20)
         barBg.Position = UDim2.new(0, 4, 0, 6)
-        barBg.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        barBg.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        barBg.BackgroundTransparency = 0.75
         barBg.BorderSizePixel = 0
+        barBg.ZIndex = 1
         barBg.Parent = container
         corner(barBg, 8)
+        stroke(barBg, Color3.fromRGB(255, 255, 255), 1, 0.6)
 
         local barFill = Instance.new("Frame")
         barFill.Size = UDim2.new(0, 0, 1, 0)
         barFill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
         barFill.BorderSizePixel = 0
+        barFill.ZIndex = 2
         barFill.Parent = barBg
         corner(barFill, 8)
 
@@ -941,8 +772,9 @@ local function startPCProgress()
         textLabel.TextColor3 = Color3.new(1, 1, 1)
         textLabel.Font = Enum.Font.GothamBold
         textLabel.TextSize = 17
-        textLabel.TextStrokeTransparency = 0.6
+        textLabel.TextStrokeTransparency = 0.4
         textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+        textLabel.ZIndex = 3
         textLabel.Parent = container
 
         pcLabels[pc] = {
@@ -959,10 +791,7 @@ local function startPCProgress()
     local function queueProgress(pc, value)
         if not pc or not pc.Parent or finished[pc] then return end
         local percent = math.floor(value * 100 + 0.5)
-        if percent > 100 then percent = 100 end
-        if percent < 0 then percent = 0 end
-
-        if percent == 0 and (lastPercent[pc] or 0) > 0 then return end
+        percent = math.clamp(percent, 0, 100)
 
         if percent ~= (lastPercent[pc] or -1) then
             lastPercent[pc] = percent
@@ -974,7 +803,7 @@ local function startPCProgress()
         while pcProgressRunning do
             for pc, percent in pairs(pendingUpdate) do
                 if pc and pc.Parent then
-                    local pack = createBillboard(pc)
+                    local pack = pcLabels[pc] or createBillboard(pc)
                     if pack then
                         lastPercent[pc] = percent
                     end
@@ -1035,7 +864,7 @@ local function startPCProgress()
 
     local function applyScreenState(pc, c)
         if not pc or not pc.Parent then return end
-        local pack = createBillboard(pc)
+        local pack = pcLabels[pc] or createBillboard(pc)
         if not pack then return end
 
         if c.G > c.R + 0.2 and c.G > c.B + 0.2 then
@@ -1126,7 +955,7 @@ local function startPCProgress()
         end
     end))
 end
-
+    
 local isPlasticOn = false
 local cacheMaterials = {}
 local cacheTextures = {}
