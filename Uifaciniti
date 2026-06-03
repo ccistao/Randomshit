@@ -725,67 +725,80 @@ local function startPCProgress()
     end
 
     local function createBillboard(pc)
-        if not pc or not pc.Parent then return nil end
-        if pcLabels[pc] then return pcLabels[pc] end
+            if not pc or not pc.Parent then return nil end
+            if pcLabels[pc] then return pcLabels[pc] end
 
-        local part = findAttachPart(pc)
-        if not part then return nil end
+            local part = findAttachPart(pc)
+            if not part then return nil end
 
-        local bb = Instance.new("BillboardGui")
-        bb.Name = "PCProgressBB"
-        bb.Size = UDim2.new(0, 160, 0, 55)
-        bb.StudsOffset = Vector3.new(0, 3.8, 0)
-        bb.AlwaysOnTop = true
-        bb.LightInfluence = 0
-        bb.Adornee = part
-        bb.Parent = part
+            local bb = Instance.new("BillboardGui")
+            bb.Name = "PCProgressBB"
+        
+            -- SỬA TẠI ĐÂY: Dùng lại kích thước Scale để đứng xa tự nhỏ lại, nhma chỉnh size vừa phải
+            bb.Size = UDim2.new(4.5, 0, 1.2, 0) 
+            bb.StudsOffset = Vector3.new(0, 3.5, 0)
+            bb.AlwaysOnTop = true
+            bb.LightInfluence = 0
+        
+            -- KHÔNG GIỚI HẠN KHOẢNG CÁCH: Đứng ở góc map vẫn nhìn thấy máy
+            bb.MaxDistance = math.huge 
+        
+            -- GIỚI HẠN ĐỘ TO: Khi lại cực gần, thanh progress chỉ to đến mức này là dừng, ko to thêm nữa
+            bb.DistanceLowerLimit = 20 
+        
+            bb.Adornee = part
+            bb.Parent = part
+  
+            local container = Instance.new("Frame")
+            container.Size = UDim2.new(1, 0, 1, 0)
+            container.BackgroundTransparency = 1
+            container.Parent = bb
 
-        local container = Instance.new("Frame")
-        container.Size = UDim2.new(1, 0, 1, 0)
-        container.BackgroundTransparency = 1
-        container.Parent = bb
+            local barBg = Instance.new("Frame")
+            -- Dùng kích thước Scale bên trong để tự động co giãn đồng bộ với khung BillboardGui
+            barBg.Size = UDim2.new(0.9, 0, 0.35, 0)
+            barBg.Position = UDim2.new(0.05, 0, 0.1, 0)
+            barBg.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            barBg.BackgroundTransparency = 0.75
+            barBg.BorderSizePixel = 0
+            barBg.ZIndex = 1
+            barBg.Parent = container
+            corner(barBg, 6)
+            stroke(barBg, Color3.fromRGB(255, 255, 255), 1, 0.6)
 
-        local barBg = Instance.new("Frame")
-        barBg.Size = UDim2.new(1, -8, 0, 20)
-        barBg.Position = UDim2.new(0, 4, 0, 6)
-        barBg.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        barBg.BackgroundTransparency = 0.75
-        barBg.BorderSizePixel = 0
-        barBg.ZIndex = 1
-        barBg.Parent = container
-        corner(barBg, 8)
-        stroke(barBg, Color3.fromRGB(255, 255, 255), 1, 0.6)
+            local barFill = Instance.new("Frame")
+            barFill.Size = UDim2.new(0, 0, 1, 0)
+            barFill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+            barFill.BorderSizePixel = 0
+            barFill.ZIndex = 2
+            barFill.Parent = barBg
+            corner(barFill, 6)
 
-        local barFill = Instance.new("Frame")
-        barFill.Size = UDim2.new(0, 0, 1, 0)
-        barFill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
-        barFill.BorderSizePixel = 0
-        barFill.ZIndex = 2
-        barFill.Parent = barBg
-        corner(barFill, 8)
+            local textLabel = Instance.new("TextLabel")
+            -- Căn chữ % dựa theo tỉ lệ Scale để ko bị lệch khi ở xa
+            textLabel.Size = UDim2.new(1, 0, 0.45, 0)
+            textLabel.Position = UDim2.new(0, 0, 0.5, 0)
+            textLabel.BackgroundTransparency = 1
+            textLabel.Text = "0%"
+            textLabel.TextColor3 = Color3.new(1, 1, 1)
+            textLabel.Font = Enum.Font.GothamBold
+        
+            -- Bật TextScaled để chữ tự động thu nhỏ lại khi bạn đứng ở xa, ko bị tràn khung
+            textLabel.TextScaled = true 
+            textLabel.TextStrokeTransparency = 0.4
+            textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+            textLabel.ZIndex = 3
+            textLabel.Parent = container
 
-        local textLabel = Instance.new("TextLabel")
-        textLabel.Size = UDim2.new(1, 0, 0, 24)
-        textLabel.Position = UDim2.new(0, 0, 0, 28)
-        textLabel.BackgroundTransparency = 1
-        textLabel.Text = "0%"
-        textLabel.TextColor3 = Color3.new(1, 1, 1)
-        textLabel.Font = Enum.Font.GothamBold
-        textLabel.TextSize = 17
-        textLabel.TextStrokeTransparency = 0.4
-        textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-        textLabel.ZIndex = 3
-        textLabel.Parent = container
+            pcLabels[pc] = {
+                bb = bb,
+                barFill = barFill,
+                textLabel = textLabel,
+                part = part
+            }
+            lastPercent[pc] = 0
 
-        pcLabels[pc] = {
-            bb = bb,
-            barFill = barFill,
-            textLabel = textLabel,
-            part = part
-        }
-        lastPercent[pc] = 0
-
-        return pcLabels[pc]
+            return pcLabels[pc]
     end
 
     local function queueProgress(pc, value)
