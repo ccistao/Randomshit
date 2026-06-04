@@ -782,17 +782,18 @@ local function startPCProgress()
         fillCorner.Parent = barFill
 
         local textLabel = Instance.new("TextLabel")
-        textLabel.Size = UDim2.new(1, 0, 0, 16)
-        textLabel.Position = UDim2.new(0, 0, 0, 18)
+        textLabel.Size = UDim2.new(1, 0, 1, 0)
+        textLabel.Position = UDim2.new(0, 0, 0, 0)
         textLabel.BackgroundTransparency = 1
         textLabel.Text = "0%"
         textLabel.TextColor3 = Color3.new(1, 1, 1)
         textLabel.Font = Enum.Font.GothamBold
-        textLabel.TextSize = 13 -- Giữ nguyên kích thước chữ rõ nét, không bị bóp méo
+        textLabel.TextSize = 13
         textLabel.TextStrokeTransparency = 0.3
         textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
         textLabel.ZIndex = 3
         textLabel.Parent = container
+
 
         pcLabels[pc] = {
             bb = bb,
