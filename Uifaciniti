@@ -53,7 +53,6 @@ function WallhopView.start()
     WallhopView.enabled = true
     local overlapParams = OverlapParams.new()
     overlapParams.FilterType = Enum.RaycastFilterType.Exclude
-    
     local scanTask = task.spawn(function()
         while task.wait(SCAN_DELAY) do
             if not WallhopView.enabled then break end
@@ -62,9 +61,8 @@ function WallhopView.start()
             overlapParams.FilterDescendantsInstances = {lp.Character}
             local partsInRadius = workspace:GetPartBoundsInRadius(hrp.Position, RADIUS, overlapParams)
             local seen = {}
-
             for _, part in ipairs(partsInRadius) do
-                if part:IsA("Part") 
+                if part:IsA("Part")
                     and part.Shape == Enum.PartType.Block
                     and not IsCharacterPart(part)
                     and part.Transparency < 0.95
@@ -78,7 +76,6 @@ function WallhopView.start()
                     end
                 end
             end
-
             for part in pairs(WallhopView.cachedParts) do
                 if not seen[part] or not part.Parent then
                     RemoveOutline(part)
@@ -173,11 +170,9 @@ local function applyMuteToSound(s)
     if not s or not s:IsA("Sound") then return end
     if not isLocalCharacterAncestor(s) then return end
     if SelfMuting.muted[s] then return end
-
     local ok, vol = pcall(function() return s.Volume end)
     local orig = (ok and vol) and vol or 1
     pcall(function() s.Volume = 0 s:Stop() end)
-
     local entry = {orig = orig}
     entry.c1 = s:GetPropertyChangedSignal("Volume"):Connect(function()
         if not s or not s.Parent then cleanupMutedEntry(s) return end
@@ -284,9 +279,9 @@ local isCooldown = false
 local cooldownTimeLeft = 0
 local usingTimeLeft = 0
 local progressPercent = nil
-local lastValue = 0 
+local lastValue = 0
 local skillDetected = false
-local canDetectDrop = true 
+local canDetectDrop = true
 local seerEventConnection = nil
 
 local function getDisplaySkill()
@@ -469,7 +464,7 @@ local function startBeastTracker()
                     labelCooldown.Text = "Finding new beast" .. string.rep(".", dots)
                 end
             else
-                dots = 0 
+                dots = 0
             end
             task.wait(0.5)
         end
@@ -477,7 +472,7 @@ local function startBeastTracker()
 
     task.spawn(function()
         while beastTrackerRunning do
-            task.wait(0.2) 
+            task.wait(0.2)
             if foundBeast then
                 if not beast or not Players:FindFirstChild(beast.Name) or not (beast:FindFirstChild("TempPlayerStatsModule") and beast.TempPlayerStatsModule:FindFirstChild("IsBeast") and beast.TempPlayerStatsModule.IsBeast.Value) then
                     beast, foundBeast, skill = nil, false, "Unknown"
@@ -496,12 +491,12 @@ local function startBeastTracker()
                             if power and foundBeast then
                                 skill = tostring(power.Value):lower()
                                 showBanner("Beast chose " .. getDisplaySkill(), "SkillChosenBanner")
-                                table.insert(beastConnections, power:GetPropertyChangedSignal("Value"):Connect(function() 
-                                    if foundBeast then skill = tostring(power.Value):lower() end 
+                                table.insert(beastConnections, power:GetPropertyChangedSignal("Value"):Connect(function()
+                                    if foundBeast then skill = tostring(power.Value):lower() end
                                 end))
                             end
                         end)
-                        setupSeerDetection() 
+                        setupSeerDetection()
                         if labelCooldown then labelCooldown.Text = "Found beast!!!" end
                         task.delay(2.5, function() if foundBeast and labelCooldown then labelCooldown.Text = getDisplaySkill() .. " Ready!!!" end end)
                         break
@@ -529,9 +524,9 @@ local function startBeastTracker()
             if progressPercent then lastValue = progressPercent.Value end
             return
         end
-        if not isGameActive() then 
+        if not isGameActive() then
             if progressPercent then lastValue = progressPercent.Value end
-            return 
+            return
         end
         local char = beast.Character
         local hum = char and char:FindFirstChild("Humanoid")
@@ -699,8 +694,8 @@ local function startPCProgress()
     pcProgressRunning = true
 
     for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("BillboardGui") and v.Name == "PCProgressBB" then 
-            v.Enabled = true 
+        if v:IsA("BillboardGui") and v.Name == "PCProgressBB" then
+            v.Enabled = true
         end
     end
 
@@ -733,7 +728,7 @@ local function startPCProgress()
 
         local bb = Instance.new("BillboardGui")
         bb.Name = "PCProgressBB"
-        bb.Size = UDim2.new(5, 0, 0, 26)  -- gọn hơn, chỉ 1 tầng
+        bb.Size = UDim2.new(5, 0, 0, 26)
         bb.StudsOffset = Vector3.new(0, 3.8, 0)
         bb.AlwaysOnTop = true
         bb.LightInfluence = 0
@@ -782,7 +777,7 @@ local function startPCProgress()
         textLabel.TextSize = 11
         textLabel.TextStrokeTransparency = 0.3
         textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-        textLabel.ZIndex = 5  -- cao hơn barFill để không bị che
+        textLabel.ZIndex = 5
         textLabel.Parent = barBg
 
         pcLabels[pc] = {
@@ -795,11 +790,11 @@ local function startPCProgress()
 
         return pcLabels[pc]
     end
+
     local function queueProgress(pc, value)
         if not pc or not pc.Parent or finished[pc] then return end
         local percent = math.floor(value * 100 + 0.5)
         percent = math.clamp(percent, 0, 100)
-
         if percent ~= (lastPercent[pc] or -1) then
             lastPercent[pc] = percent
             pendingUpdate[pc] = percent
@@ -873,7 +868,6 @@ local function startPCProgress()
         if not pc or not pc.Parent then return end
         local pack = pcLabels[pc] or createBillboard(pc)
         if not pack then return end
-
         if c.G > c.R + 0.2 and c.G > c.B + 0.2 then
             pcState[pc] = "DONE"
         elseif c.R > c.G + 0.2 and c.R > c.B + 0.2 then
@@ -962,13 +956,13 @@ local function startPCProgress()
         end
     end))
 end
-    
+
 local isPlasticOn = false
 local cacheMaterials = {}
 local cacheTextures = {}
 
 local function isProtectedMaterial(mat)
-    return mat == Enum.Material.Neon or mat == Enum.Material.Glass or mat == Enum.Material.ForceField    
+    return mat == Enum.Material.Neon or mat == Enum.Material.Glass or mat == Enum.Material.ForceField
 end
 
 local function isCharacter(obj)
@@ -986,7 +980,7 @@ local function applyToObj(v)
         end
     elseif v:IsA("Texture") then
         if not cacheTextures[v] then cacheTextures[v] = v.Transparency end
-        v.Transparency = 1 
+        v.Transparency = 1
     end
 end
 
@@ -1591,8 +1585,94 @@ addToggle(Panes[5], "⊗", "Self muting", "Silences local player character audio
 end)
 
 addSection(Panes[6], "System", 0)
-addButton(Panes[6], "≡", "Copy Key",   "clipboard", 1, function()
+addButton(Panes[6], "≡", "Copy Key", "clipboard", 1, function()
     pcall(function() setclipboard("YOUR_KEY_HERE") end)
+end)
+
+addSection(Panes[6], "Keybind", 2)
+
+local keybindRow = Instance.new("Frame", Panes[6])
+keybindRow.Size = UDim2.new(1,0,0,42)
+keybindRow.BackgroundColor3 = CFG.Card
+keybindRow.BorderSizePixel = 0
+keybindRow.ZIndex = 15
+keybindRow.LayoutOrder = 3
+corner(keybindRow, 9)
+stroke(keybindRow, CFG.Border, 1, 0.91)
+
+local kib = Instance.new("Frame", keybindRow)
+kib.Size = UDim2.new(0,26,0,26)
+kib.Position = UDim2.new(0,8,0.5,-13)
+kib.BackgroundColor3 = Color3.fromRGB(35,20,20)
+kib.BorderSizePixel = 0; kib.ZIndex = 16
+corner(kib, 7)
+local kil = Instance.new("TextLabel", kib)
+kil.Size = UDim2.new(1,0,1,0)
+kil.BackgroundTransparency = 1
+kil.Text = "⌨"; kil.TextSize = 12
+kil.Font = Enum.Font.GothamBold; kil.ZIndex = 17
+kil.TextColor3 = CFG.Accent
+
+local knl = Instance.new("TextLabel", keybindRow)
+knl.Size = UDim2.new(0,110,0,15)
+knl.Position = UDim2.new(0,42,0,8)
+knl.BackgroundTransparency = 1
+knl.Text = "Toggle UI Key"
+knl.TextColor3 = CFG.Text
+knl.TextSize = 11; knl.Font = Enum.Font.GothamBold
+knl.TextXAlignment = Enum.TextXAlignment.Left; knl.ZIndex = 16
+
+local kdl = Instance.new("TextLabel", keybindRow)
+kdl.Size = UDim2.new(0,110,0,12)
+kdl.Position = UDim2.new(0,42,0,22)
+kdl.BackgroundTransparency = 1
+kdl.Text = "type key then enter"
+kdl.TextColor3 = CFG.TextMute
+kdl.TextSize = 9; kdl.Font = Enum.Font.Code
+kdl.TextXAlignment = Enum.TextXAlignment.Left; kdl.ZIndex = 16
+
+local keyBox = Instance.new("TextBox", keybindRow)
+keyBox.Size = UDim2.new(0,36,0,24)
+keyBox.Position = UDim2.new(1,-44,0.5,-12)
+keyBox.BackgroundColor3 = Color3.fromRGB(30,18,18)
+keyBox.BorderSizePixel = 0
+keyBox.Text = "Tab"
+keyBox.PlaceholderText = "key"
+keyBox.TextColor3 = CFG.Text
+keyBox.PlaceholderColor3 = CFG.TextMute
+keyBox.TextSize = 11
+keyBox.Font = Enum.Font.GothamBold
+keyBox.TextXAlignment = Enum.TextXAlignment.Center
+keyBox.ClearTextOnFocus = true
+keyBox.ZIndex = 18
+corner(keyBox, 6)
+stroke(keyBox, CFG.Accent, 1, 0.6)
+
+local currentKeybind = Enum.KeyCode.Tab
+
+keyBox.FocusLost:Connect(function(enterPressed)
+    if not enterPressed then
+        keyBox.Text = tostring(currentKeybind):gsub("Enum.KeyCode.", "")
+        return
+    end
+    local raw = keyBox.Text:gsub("%s+", "")
+    if #raw == 0 then
+        keyBox.Text = tostring(currentKeybind):gsub("Enum.KeyCode.", "")
+        return
+    end
+    local ok, kc = pcall(function()
+        return Enum.KeyCode[raw] or Enum.KeyCode[raw:sub(1,1):upper() .. raw:sub(2):lower()]
+    end)
+    if ok and kc then
+        currentKeybind = kc
+        keyBox.Text = raw:sub(1,1):upper() .. raw:sub(2):lower()
+        tw(keyBox, fast, {BackgroundColor3 = Color3.fromRGB(20,50,20)})
+        task.delay(0.4, function() tw(keyBox, fast, {BackgroundColor3 = Color3.fromRGB(30,18,18)}) end)
+    else
+        tw(keyBox, fast, {BackgroundColor3 = Color3.fromRGB(60,20,20)})
+        task.delay(0.4, function() tw(keyBox, fast, {BackgroundColor3 = Color3.fromRGB(30,18,18)}) end)
+        keyBox.Text = tostring(currentKeybind):gsub("Enum.KeyCode.", "")
+    end
 end)
 
 local savedPX = -CFG.W/2
@@ -1733,7 +1813,7 @@ end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.Tab then
+    if input.KeyCode == currentKeybind then
         if isBusy then return end
         isBusy = true
         if isOpen then
