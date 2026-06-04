@@ -957,6 +957,168 @@ local function startPCProgress()
     end))
 end
 
+local function getBeast()
+    for _, p in ipairs(Players:GetPlayers()) do
+        local s = p:FindFirstChild("TempPlayerStatsModule")
+        if s and s:FindFirstChild("IsBeast") and s.IsBeast.Value then return p end
+        if p.Character and p.Character:FindFirstChild("BeastPowers") then return p end
+    end
+end
+
+local function getBestPC()
+    local beast = getBeast()
+    if not beast or not beast.Character then return {} end
+    local pcs = {}
+    local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
+    if map then
+        for _, obj in ipairs(map:GetChildren()) do
+            if obj.Name == "ComputerTable" then
+                local scr = obj:FindFirstChild("Screen")
+                if scr and scr.BrickColor ~= BrickColor.new("Dark green") then
+                    local hrp = beast.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local mag = (scr.Position - hrp.Position).Magnitude
+                        table.insert(pcs, {magnitude = mag, pc = obj})
+                    end
+                end
+            end
+        end
+    end
+    table.sort(pcs, function(a, b) return a.magnitude > b.magnitude end)
+    return pcs
+end
+
+local espToggles = {
+    player  = false,
+    pods    = false,
+    pc      = false,
+    bestpc  = false,
+    exits   = false,
+}
+
+local function reloadESP()
+    task.spawn(function()
+        local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
+        if map then
+            for _, obj in ipairs(map:GetChildren()) do
+                if obj.Name == "ComputerTable" then
+                    local h = obj:FindFirstChildOfClass("Highlight")
+                    if h and not espToggles.pc then h:Destroy()
+                    elseif not h and espToggles.pc then
+                        local a = Instance.new("Highlight", obj)
+                        a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                        a.FillColor = Color3.fromRGB(13, 105, 172)
+                        a.OutlineColor = Color3.fromRGB(20, 165, 255)
+                        task.spawn(function()
+                            while a and a.Parent do
+                                local scr = obj:FindFirstChild("Screen")
+                                if scr then
+                                    if espToggles.bestpc then
+                                        local best = getBestPC()
+                                        if best[1] and obj == best[1].pc then
+                                            a.FillColor = scr.Color
+                                            a.OutlineColor = Color3.fromRGB(200, 0, 255)
+                                        else
+                                            a.FillColor = scr.Color
+                                            a.OutlineColor = Color3.fromRGB(
+                                                math.clamp(scr.Color.R*400,0,255),
+                                                math.clamp(scr.Color.G*400,0,255),
+                                                math.clamp(scr.Color.B*400,0,255))
+                                        end
+                                    else
+                                        a.FillColor = scr.Color
+                                        a.OutlineColor = Color3.fromRGB(
+                                            math.clamp(scr.Color.R*400,0,255),
+                                            math.clamp(scr.Color.G*400,0,255),
+                                            math.clamp(scr.Color.B*400,0,255))
+                                    end
+                                end
+                                task.wait(1)
+                            end
+                        end)
+                    end
+                end
+                if obj.Name == "FreezePod" then
+                    local h = obj:FindFirstChildOfClass("Highlight")
+                    if h and not espToggles.pods then h:Destroy()
+                    elseif not h and espToggles.pods then
+                        local a = Instance.new("Highlight", obj)
+                        a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                        a.FillColor = Color3.fromRGB(120, 200, 255)
+                        a.OutlineColor = Color3.fromRGB(160, 255, 255)
+                    end
+                end
+                if obj.Name == "ExitDoor" then
+                    local h = obj:FindFirstChildOfClass("Highlight")
+                    if h and not espToggles.exits then h:Destroy()
+                    elseif not h and espToggles.exits then
+                        local a = Instance.new("Highlight", obj)
+                        a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                        a.FillColor = Color3.fromRGB(252, 255, 100)
+                        a.OutlineColor = Color3.fromRGB(255, 255, 160)
+                    end
+                end
+            end
+        end
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= lp and p.Character then
+                local char = p.Character
+                local h = char:FindFirstChildOfClass("Highlight")
+                if h and not espToggles.player then h:Destroy()
+                elseif not h and espToggles.player then
+                    local a = Instance.new("Highlight", char)
+                    a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                    a.FillColor = Color3.fromRGB(0, 255, 0)
+                    a.OutlineColor = Color3.fromRGB(127, 255, 127)
+                    task.spawn(function()
+                        while a and a.Parent do
+                            task.wait(0.1)
+                            if getBeast() == p then
+                                a.FillColor = Color3.fromRGB(255, 0, 0)
+                                a.OutlineColor = Color3.fromRGB(255, 127, 127)
+                            else
+                                a.FillColor = Color3.fromRGB(0, 255, 0)
+                                a.OutlineColor = Color3.fromRGB(127, 255, 127)
+                            end
+                        end
+                    end)
+                end
+            end
+        end
+    end)
+end
+
+task.spawn(function()
+    Replicated:WaitForChild("CurrentMap").Changed:Connect(function()
+        task.wait(5)
+        reloadESP()
+    end)
+end)
+task.spawn(function()
+    local iga = Replicated:WaitForChild("IsGameActive")
+    iga.Changed:Connect(function() reloadESP() end)
+end)
+task.spawn(function()
+    Players.PlayerAdded:Connect(function(p)
+        p.CharacterAdded:Connect(function() reloadESP() end)
+        p.CharacterRemoving:Connect(function() reloadESP() end)
+    end)
+end)
+
+local neverfailEnabled = false
+task.spawn(function()
+    local mt = getrawmetatable(game)
+    local old = mt.__namecall
+    setreadonly(mt, false)
+    mt.__namecall = newcclosure(function(self, ...)
+        local args = {...}
+        if getnamecallmethod() == "FireServer" and args[1] == "SetPlayerMinigameResult" and neverfailEnabled then
+            args[2] = true
+        end
+        return old(self, unpack(args))
+    end)
+end)
+
 local isPlasticOn = false
 local cacheMaterials = {}
 local cacheTextures = {}
@@ -1555,8 +1717,9 @@ end)
 addToggle(Panes[2], "∞", "Survivor tracker", "Renders overhead timer templates", false, 3, function(state)
     if state then SurvivorTracker.start() else SurvivorTracker.stop() end
 end)
-addToggle(Panes[2], "◉", "PC progress", "Shows real-time computer hacking values", false, 4, function(state)
-    if state then startPCProgress() else stopPCProgress() end
+
+addToggle(Panes[2], "⊘", "Never Fail", "Auto pass minigame result to server", false, 5, function(state)
+    neverfailEnabled = state
 end)
 
 addSection(Panes[3], "Auto Farm", 0)
@@ -1565,9 +1728,29 @@ addToggle(Panes[3], "⊗", "Collect Items", "auto - range", false, 2, function(o
 addButton(Panes[3], "▣", "Collect All",   "one-shot",            3, function() end)
 
 addSection(Panes[4], "Visuals", 0)
-addToggle(Panes[4], "◉", "Player ESP",  "box - name",     false, 1, function(on) end)
-addToggle(Panes[4], "⊘", "Item ESP",    "chest - drop",   false, 2, function(on) end)
-addToggle(Panes[4], "◆", "Tracelines",  "line to player", false, 3, function(on) end)
+addToggle(Panes[4], "◉", "Player ESP", "highlight survivors and beast", false, 1, function(state)
+    espToggles.player = state
+    reloadESP()
+end)
+addToggle(Panes[4], "⊙", "Pods ESP", "highlight freeze pods on map", false, 2, function(state)
+    espToggles.pods = state
+    reloadESP()
+end)
+addToggle(Panes[4], "▣", "PC ESP", "highlight computers on map", false, 3, function(state)
+    espToggles.pc = state
+    reloadESP()
+end)
+addToggle(Panes[4], "◆", "Best PC", "mark farthest PC from beast", false, 4, function(state)
+    espToggles.bestpc = state
+    reloadESP()
+end)
+addToggle(Panes[4], "⊘", "Exits ESP", "highlight exit doors", false, 5, function(state)
+    espToggles.exits = state
+    reloadESP()
+end)
+addToggle(Panes[4], "∞", "PC Progress", "shows hacking progress bars above PCs", false, 6, function(state)
+    if state then startPCProgress() else stopPCProgress() end
+end)
 
 addSection(Panes[5], "Misc Features", 0)
 addToggle(Panes[5], "◆", "Wallhop view", "Highlights walls around player", false, 4, function(state)
@@ -1584,19 +1767,14 @@ addToggle(Panes[5], "⊗", "Self muting", "Silences local player character audio
     if state then SelfMuting.start() else SelfMuting.stop() end
 end)
 
-addSection(Panes[6], "System", 0)
-addButton(Panes[6], "≡", "Copy Key", "clipboard", 1, function()
-    pcall(function() setclipboard("YOUR_KEY_HERE") end)
-end)
-
-addSection(Panes[6], "Keybind", 2)
+addSection(Panes[6], "Keybind", 0)
 
 local keybindRow = Instance.new("Frame", Panes[6])
 keybindRow.Size = UDim2.new(1,0,0,42)
 keybindRow.BackgroundColor3 = CFG.Card
 keybindRow.BorderSizePixel = 0
 keybindRow.ZIndex = 15
-keybindRow.LayoutOrder = 3
+keybindRow.LayoutOrder = 1
 corner(keybindRow, 9)
 stroke(keybindRow, CFG.Border, 1, 0.91)
 
