@@ -791,8 +791,9 @@ local function startPCProgress()
         textLabel.TextSize = 13
         textLabel.TextStrokeTransparency = 0.3
         textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-        textLabel.ZIndex = 5
-        textLabel.Parent = BarBg
+        textLabel.ZIndex = 99
+        textLabel.Parent = container
+
 
 
         pcLabels[pc] = {
