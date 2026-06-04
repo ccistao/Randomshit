@@ -733,37 +733,28 @@ local function startPCProgress()
 
         local bb = Instance.new("BillboardGui")
         bb.Name = "PCProgressBB"
-        
-        -- FIX HIỂN THỊ: Chiều rộng co giãn theo tỷ lệ (5), chiều cao giữ nguyên cố định (40 pixel) để không bị dẹt trên Mobile
-        bb.Size = UDim2.new(5, 0, 0, 40) 
+        bb.Size = UDim2.new(5, 0, 0, 26)  -- gọn hơn, chỉ 1 tầng
         bb.StudsOffset = Vector3.new(0, 3.8, 0)
         bb.AlwaysOnTop = true
         bb.LightInfluence = 0
-        bb.MaxDistance = math.huge -- Đứng đâu trên map cũng thấy
-        bb.DistanceLowerLimit = 15 -- Lại siêu gần thì chặn không cho to quá cỡ
+        bb.MaxDistance = math.huge
+        bb.DistanceLowerLimit = 15
         bb.Adornee = part
         bb.Parent = part
 
-        local container = Instance.new("Frame")
-        container.Size = UDim2.new(1, 0, 1, 0)
-        container.BackgroundTransparency = 1
-        container.Parent = bb
-
         local barBg = Instance.new("Frame")
-        barBg.Size = UDim2.new(0.9, 0, 0, 14)
-        barBg.Position = UDim2.new(0.05, 0, 0, 2)
+        barBg.Size = UDim2.new(1, -8, 0, 14)
+        barBg.Position = UDim2.new(0, 4, 0, 6)
         barBg.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        barBg.BackgroundTransparency = 0.75 -- Màu gương đục (kính mờ) cực đẹp
+        barBg.BackgroundTransparency = 0.75
         barBg.BorderSizePixel = 0
         barBg.ZIndex = 1
-        barBg.Parent = container
+        barBg.Parent = bb
 
-        -- SỬA LỖI LINE 766: Dùng UICorner chuẩn của Roblox thay cho hàm corner() bị nil
         local bgCorner = Instance.new("UICorner")
         bgCorner.CornerRadius = UDim.new(0, 6)
         bgCorner.Parent = barBg
 
-        -- SỬA LỖI LINE 766: Dùng UIStroke chuẩn của Roblox thay cho hàm stroke() bị nil
         local bgStroke = Instance.new("UIStroke")
         bgStroke.Color = Color3.fromRGB(255, 255, 255)
         bgStroke.Thickness = 1
@@ -788,13 +779,11 @@ local function startPCProgress()
         textLabel.Text = "0%"
         textLabel.TextColor3 = Color3.new(1, 1, 1)
         textLabel.Font = Enum.Font.GothamBold
-        textLabel.TextSize = 13
+        textLabel.TextSize = 11
         textLabel.TextStrokeTransparency = 0.3
         textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-        textLabel.ZIndex = 99
-        textLabel.Parent = container
-
-
+        textLabel.ZIndex = 5  -- cao hơn barFill để không bị che
+        textLabel.Parent = barBg
 
         pcLabels[pc] = {
             bb = bb,
@@ -806,7 +795,6 @@ local function startPCProgress()
 
         return pcLabels[pc]
     end
-
     local function queueProgress(pc, value)
         if not pc or not pc.Parent or finished[pc] then return end
         local percent = math.floor(value * 100 + 0.5)
