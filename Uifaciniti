@@ -1529,57 +1529,123 @@ for i = 1, #CFG.Tabs do
         pp.PaddingTop = UDim.new(0,10); pp.PaddingBottom = UDim.new(0,10)
         pp.PaddingLeft = UDim.new(0,12); pp.PaddingRight = UDim.new(0,12)
 
-        local scrollTrack = Instance.new("Frame", Body)
-        scrollTrack.Size = UDim2.new(0,3,1,-16)
-        scrollTrack.Position = UDim2.new(1,-5,0,8)
-        scrollTrack.BackgroundColor3 = Color3.fromRGB(40,20,20)
-        scrollTrack.BorderSizePixel = 0
-        scrollTrack.ZIndex = 20
-        scrollTrack.Visible = false
-        corner(scrollTrack, 2)
-
-        local scrollThumb = Instance.new("Frame", scrollTrack)
-        scrollThumb.Size = UDim2.new(1,0,0,40)
-        scrollThumb.Position = UDim2.new(0,0,0,0)
-        scrollThumb.BackgroundColor3 = Color3.fromRGB(185,45,45)
-        scrollThumb.BorderSizePixel = 0
-        scrollThumb.ZIndex = 21
-        corner(scrollThumb, 2)
-
-        local UIGrad = Instance.new("UIGradient", scrollThumb)
-        UIGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(220,60,60)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(140,25,25)),
-        })
-        UIGrad.Rotation = 90
-
-        local _pane = pane
-        RunService.RenderStepped:Connect(function()
-            if not _pane.Visible then
-                scrollTrack.Visible = false
-                return
-            end
-            local canvasH = _pane.AbsoluteCanvasSize.Y
-            local frameH  = _pane.AbsoluteSize.Y
-            if canvasH <= frameH then
-                scrollTrack.Visible = false
-                return
-            end
-            scrollTrack.Visible = true
-            local ratio      = frameH / canvasH
-            local thumbH     = math.max(ratio * frameH, 24)
-            local scrollRatio = _pane.CanvasPosition.Y / (canvasH - frameH)
-            local maxTop     = frameH - thumbH
-            local topY       = scrollRatio * maxTop
-            scrollThumb.Size     = UDim2.new(1,0,0,thumbH)
-            scrollThumb.Position = UDim2.new(0,0,0,topY)
-        end)
     end
     pane.Name = "Pane"..i
     Panes[i] = pane
 end
 
 local ContentScroll = Panes[1]
+
+-- Custom scrollbar - parent vào SG để tránh bị Panel.ClipsDescendants cắt
+local scrollTrack = Instance.new("Frame", SG)
+scrollTrack.Size = UDim2.new(0, 3, 0, 100)
+scrollTrack.BackgroundColor3 = Color3.fromRGB(40, 20, 20)
+scrollTrack.BorderSizePixel = 0
+scrollTrack.ZIndex = 50
+scrollTrack.Visible = false
+corner(scrollTrack, 2)
+
+local scrollThumb = Instance.new("Frame", scrollTrack)
+scrollThumb.Size = UDim2.new(1, 0, 0, 40)
+scrollThumb.Position = UDim2.new(0, 0, 0, 0)
+scrollThumb.BackgroundColor3 = Color3.fromRGB(185, 45, 45)
+scrollThumb.BorderSizePixel = 0
+scrollThumb.ZIndex = 51
+corner(scrollThumb, 2)
+
+local scrollGrad = Instance.new("UIGradient", scrollThumb)
+scrollGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(220, 60, 60)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(140, 25, 25)),
+})
+scrollGrad.Rotation = 90
+
+RunService.RenderStepped:Connect(function()
+    if not Panel.Visible then
+        scrollTrack.Visible = false
+        return
+    end
+    local activePane = nil
+    for i = 2, #Panes do
+        if Panes[i].Visible then activePane = Panes[i] break end
+    end
+    if not activePane then
+        scrollTrack.Visible = false
+        return
+    end
+    local canvasH = activePane.AbsoluteCanvasSize.Y
+    local frameH  = activePane.AbsoluteSize.Y
+    if canvasH <= frameH + 2 then
+        scrollTrack.Visible = false
+        return
+    end
+    -- Tính vị trí tuyệt đối dựa theo Panel
+    local panelPos  = Panel.AbsolutePosition
+    local panelSize = Panel.AbsoluteSize
+    local trackH    = panelSize.Y - 64
+    local trackX    = panelPos.X + panelSize.X - 5
+    local trackY    = panelPos.Y + 52
+
+    scrollTrack.Position = UDim2.new(0, trackX, 0, trackY)
+    scrollTrack.Size     = UDim2.new(0, 3, 0, trackH)
+    scrollTrack.Visible  = true
+
+    local ratio       = frameH / canvasH
+    local thumbH      = math.max(ratio * trackH, 24)
+    local scrollRatio = activePane.CanvasPosition.Y / (canvasH - frameH)
+    local topY        = scrollRatio * (trackH - thumbH)
+    scrollThumb.Size     = UDim2.new(1, 0, 0, thumbH)
+    scrollThumb.Position = UDim2.new(0, 0, 0, topY)
+end)
+
+local scrollTrack = Instance.new("Frame", Panel)
+scrollTrack.Size = UDim2.new(0,3,1,-64)
+scrollTrack.Position = UDim2.new(1,-4,0,50)
+scrollTrack.BackgroundColor3 = Color3.fromRGB(40,20,20)
+scrollTrack.BorderSizePixel = 0
+scrollTrack.ZIndex = 50
+scrollTrack.Visible = false
+corner(scrollTrack, 2)
+
+local scrollThumb = Instance.new("Frame", scrollTrack)
+scrollThumb.Size = UDim2.new(1,0,0,40)
+scrollThumb.Position = UDim2.new(0,0,0,0)
+scrollThumb.BackgroundColor3 = Color3.fromRGB(185,45,45)
+scrollThumb.BorderSizePixel = 0
+scrollThumb.ZIndex = 51
+corner(scrollThumb, 2)
+
+local scrollGrad = Instance.new("UIGradient", scrollThumb)
+scrollGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(220,60,60)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(140,25,25)),
+})
+scrollGrad.Rotation = 90
+
+RunService.RenderStepped:Connect(function()
+    local activePane = nil
+    for i = 2, #Panes do
+        if Panes[i].Visible then activePane = Panes[i] break end
+    end
+    if not activePane then
+        scrollTrack.Visible = false
+        return
+    end
+    local canvasH = activePane.AbsoluteCanvasSize.Y
+    local frameH  = activePane.AbsoluteSize.Y
+    if canvasH <= frameH + 2 then
+        scrollTrack.Visible = false
+        return
+    end
+    scrollTrack.Visible = true
+    local ratio       = frameH / canvasH
+    local thumbH      = math.max(ratio * frameH, 24)
+    local scrollRatio = activePane.CanvasPosition.Y / (canvasH - frameH)
+    local maxTop      = scrollTrack.AbsoluteSize.Y - thumbH
+    local topY        = scrollRatio * maxTop
+    scrollThumb.Size     = UDim2.new(1,0,0,thumbH)
+    scrollThumb.Position = UDim2.new(0,0,0,topY)
+end)
 
 local function addSection(pane, text, order)
     local f = Instance.new("Frame", pane)
@@ -1833,186 +1899,90 @@ addToggle(Panes[3], "⊗", "Collect Items", "auto - range", false, 2, function(o
 addButton(Panes[3], "▣", "Collect All",   "one-shot",            3, function() end)
 
 addSection(Panes[4], "Visuals", 0)
+addSection(Panes[4], "Normal ESP", 1)
 do
-    local espRow = Instance.new("Frame", Panes[4])
-    espRow.Size = UDim2.new(1,0,0,42)
-    espRow.BackgroundColor3 = CFG.Card
-    espRow.BorderSizePixel = 0
-    espRow.ZIndex = 15
-    espRow.LayoutOrder = 1
-    corner(espRow, 9)
-    stroke(espRow, CFG.Border, 1, 0.91)
-
-    local eib = Instance.new("Frame", espRow)
-    eib.Size = UDim2.new(0,26,0,26)
-    eib.Position = UDim2.new(0,8,0.5,-13)
-    eib.BackgroundColor3 = Color3.fromRGB(35,20,20)
-    eib.BorderSizePixel = 0; eib.ZIndex = 16
-    corner(eib, 7)
-    local eil = Instance.new("TextLabel", eib)
-    eil.Size = UDim2.new(1,0,1,0)
-    eil.BackgroundTransparency = 1
-    eil.Text = "◉"; eil.TextSize = 12
-    eil.Font = Enum.Font.GothamBold; eil.ZIndex = 17
-    eil.TextColor3 = CFG.Accent
-
-    local enl = Instance.new("TextLabel", espRow)
-    enl.Size = UDim2.new(0,130,0,15)
-    enl.Position = UDim2.new(0,42,0,8)
-    enl.BackgroundTransparency = 1
-    enl.Text = "Normal ESP"
-    enl.TextColor3 = CFG.Text
-    enl.TextSize = 11; enl.Font = Enum.Font.GothamBold
-    enl.TextXAlignment = Enum.TextXAlignment.Left; enl.ZIndex = 16
-
-    local edl = Instance.new("TextLabel", espRow)
-    edl.Size = UDim2.new(0,130,0,12)
-    edl.Position = UDim2.new(0,42,0,22)
-    edl.BackgroundTransparency = 1
-    edl.Text = "tap to expand options"
-    edl.TextColor3 = CFG.TextMute
-    edl.TextSize = 9; edl.Font = Enum.Font.Code
-    edl.TextXAlignment = Enum.TextXAlignment.Left; edl.ZIndex = 16
-
-    local arrowLbl = Instance.new("TextLabel", espRow)
-    arrowLbl.Size = UDim2.new(0,24,0,24)
-    arrowLbl.Position = UDim2.new(1,-32,0.5,-12)
-    arrowLbl.BackgroundTransparency = 1
-    arrowLbl.Text = "↓"
-    arrowLbl.TextColor3 = CFG.TextMute
-    arrowLbl.TextSize = 16
-    arrowLbl.Font = Enum.Font.GothamBold
-    arrowLbl.ZIndex = 16
-
-    local espDropdown = Instance.new("Frame", Panes[4])
-    espDropdown.Size = UDim2.new(1,0,0,0)
-    espDropdown.BackgroundColor3 = Color3.fromRGB(20,18,18)
-    espDropdown.BorderSizePixel = 0
-    espDropdown.ClipsDescendants = true
-    espDropdown.ZIndex = 15
-    espDropdown.LayoutOrder = 2
-    corner(espDropdown, 9)
-    stroke(espDropdown, CFG.Border, 1, 0.93)
-
-    local espScroll = Instance.new("ScrollingFrame", espDropdown)
-    espScroll.Size = UDim2.new(1,-4,1,0)
-    espScroll.Position = UDim2.new(0,2,0,0)
-    espScroll.BackgroundTransparency = 1
-    espScroll.BorderSizePixel = 0
-    espScroll.ScrollBarThickness = 2
-    espScroll.ScrollBarImageColor3 = Color3.fromRGB(160,50,50)
-    espScroll.CanvasSize = UDim2.new(0,0,0,0)
-    espScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    espScroll.ZIndex = 16
-
-    local espLayout = Instance.new("UIListLayout", espScroll)
-    espLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    espLayout.Padding = UDim.new(0,4)
-    local espPad = Instance.new("UIPadding", espScroll)
-    espPad.PaddingTop = UDim.new(0,6)
-    espPad.PaddingBottom = UDim.new(0,6)
-    espPad.PaddingLeft = UDim.new(0,6)
-    espPad.PaddingRight = UDim.new(0,6)
-
     local ESP_OPTIONS = {
-        {key="player", label="Player ESP",  icon="◉", desc="survivors green / beast red"},
-        {key="pods",   label="Pods ESP",    icon="⊙", desc="highlight freeze pods"},
-        {key="pc",     label="PC ESP",      icon="▣", desc="highlight computers"},
-        {key="exits",  label="Exits ESP",   icon="⊘", desc="highlight exit doors"},
+        {key="player", label="Player ESP",  icon="◉", desc="survivors green / beast red",  order=2},
+        {key="pods",   label="Pods ESP",    icon="⊙", desc="highlight freeze pods",        order=3},
+        {key="pc",     label="PC ESP",      icon="▣", desc="highlight computers",           order=4},
+        {key="exits",  label="Exits ESP",   icon="⊘", desc="highlight exit doors",          order=5},
     }
 
     local espCheckStates = {}
     for _, opt in ipairs(ESP_OPTIONS) do
         espCheckStates[opt.key] = false
-        local row = Instance.new("Frame", espScroll)
-        row.Size = UDim2.new(1,0,0,34)
+        local row = Instance.new("Frame", Panes[4])
+        row.Size = UDim2.new(1,0,0,42)
         row.BackgroundColor3 = CFG.Card
         row.BorderSizePixel = 0
-        row.ZIndex = 17
-        corner(row, 7)
-        stroke(row, CFG.Border, 1, 0.93)
+        row.ZIndex = 15
+        row.LayoutOrder = opt.order
+        corner(row, 9)
+        stroke(row, CFG.Border, 1, 0.91)
 
-        local ric = Instance.new("TextLabel", row)
-        ric.Size = UDim2.new(0,22,0,22)
-        ric.Position = UDim2.new(0,6,0.5,-11)
-        ric.BackgroundTransparency = 1
-        ric.Text = opt.icon; ric.TextSize = 11
-        ric.Font = Enum.Font.GothamBold; ric.ZIndex = 18
-        ric.TextColor3 = CFG.Accent
+        local ib = Instance.new("Frame", row)
+        ib.Size = UDim2.new(0,26,0,26)
+        ib.Position = UDim2.new(0,8,0.5,-13)
+        ib.BackgroundColor3 = Color3.fromRGB(35,20,20)
+        ib.BorderSizePixel = 0; ib.ZIndex = 16
+        corner(ib, 7)
+        local il = Instance.new("TextLabel", ib)
+        il.Size = UDim2.new(1,0,1,0)
+        il.BackgroundTransparency = 1
+        il.Text = opt.icon; il.TextSize = 12
+        il.Font = Enum.Font.GothamBold; il.ZIndex = 17
+        il.TextColor3 = CFG.Accent
 
-        local rlbl = Instance.new("TextLabel", row)
-        rlbl.Size = UDim2.new(0,120,0,14)
-        rlbl.Position = UDim2.new(0,32,0,5)
-        rlbl.BackgroundTransparency = 1
-        rlbl.Text = opt.label; rlbl.TextColor3 = CFG.Text
-        rlbl.TextSize = 10; rlbl.Font = Enum.Font.GothamBold
-        rlbl.TextXAlignment = Enum.TextXAlignment.Left; rlbl.ZIndex = 18
+        local nl = Instance.new("TextLabel", row)
+        nl.Size = UDim2.new(0,130,0,15)
+        nl.Position = UDim2.new(0,42,0,8)
+        nl.BackgroundTransparency = 1
+        nl.Text = opt.label; nl.TextColor3 = CFG.Text
+        nl.TextSize = 11; nl.Font = Enum.Font.GothamBold
+        nl.TextXAlignment = Enum.TextXAlignment.Left; nl.ZIndex = 16
 
-        local rdesc = Instance.new("TextLabel", row)
-        rdesc.Size = UDim2.new(0,120,0,11)
-        rdesc.Position = UDim2.new(0,32,0,18)
-        rdesc.BackgroundTransparency = 1
-        rdesc.Text = opt.desc; rdesc.TextColor3 = CFG.TextMute
-        rdesc.TextSize = 8; rdesc.Font = Enum.Font.Code
-        rdesc.TextXAlignment = Enum.TextXAlignment.Left; rdesc.ZIndex = 18
+        local dl = Instance.new("TextLabel", row)
+        dl.Size = UDim2.new(0,130,0,12)
+        dl.Position = UDim2.new(0,42,0,22)
+        dl.BackgroundTransparency = 1
+        dl.Text = opt.desc; dl.TextColor3 = CFG.TextMute
+        dl.TextSize = 9; dl.Font = Enum.Font.Code
+        dl.TextXAlignment = Enum.TextXAlignment.Left; dl.ZIndex = 16
 
-        local chk = Instance.new("Frame", row)
-        chk.Size = UDim2.new(0,16,0,16)
-        chk.Position = UDim2.new(1,-24,0.5,-8)
-        chk.BackgroundColor3 = Color3.fromRGB(42,36,36)
-        chk.BorderSizePixel = 0; chk.ZIndex = 18
-        corner(chk, 4)
-        stroke(chk, CFG.Border, 1, 0.7)
-        local chkMark = Instance.new("TextLabel", chk)
-        chkMark.Size = UDim2.new(1,0,1,0)
-        chkMark.BackgroundTransparency = 1
-        chkMark.Text = ""; chkMark.TextSize = 10
-        chkMark.Font = Enum.Font.GothamBold
-        chkMark.TextColor3 = CFG.Text; chkMark.ZIndex = 19
+        local pill = Instance.new("Frame", row)
+        pill.Size = UDim2.new(0,32,0,18)
+        pill.Position = UDim2.new(1,-40,0.5,-9)
+        pill.BackgroundColor3 = Color3.fromRGB(42,36,36)
+        pill.BorderSizePixel = 0; pill.ZIndex = 16
+        corner(pill, 9)
+        local knob = Instance.new("Frame", pill)
+        knob.Size = UDim2.new(0,12,0,12)
+        knob.Position = UDim2.new(0,3,0.5,-6)
+        knob.BackgroundColor3 = Color3.fromRGB(255,255,255)
+        knob.BorderSizePixel = 0; knob.ZIndex = 17
+        corner(knob, 6)
 
-        local rbtn = Instance.new("TextButton", row)
-        rbtn.Size = UDim2.new(1,0,1,0)
-        rbtn.BackgroundTransparency = 1
-        rbtn.Text = ""; rbtn.ZIndex = 20
+        local btn = Instance.new("TextButton", row)
+        btn.Size = UDim2.new(1,0,1,0)
+        btn.BackgroundTransparency = 1
+        btn.Text = ""; btn.ZIndex = 18
 
         local optKey = opt.key
-        rbtn.MouseButton1Click:Connect(function()
+        btn.MouseButton1Click:Connect(function()
             espCheckStates[optKey] = not espCheckStates[optKey]
             local on = espCheckStates[optKey]
-            tw(chk, fast, {BackgroundColor3 = on and CFG.Accent or Color3.fromRGB(42,36,36)})
-            chkMark.Text = on and "✓" or ""
+            tw(pill, fast, {BackgroundColor3 = on and CFG.Accent or Color3.fromRGB(42,36,36)})
+            tw(knob, fast, {Position = on and UDim2.new(1,-15,0.5,-6) or UDim2.new(0,3,0.5,-6)})
             tw(row, fast, {BackgroundColor3 = on and Color3.fromRGB(28,20,20) or CFG.Card})
             espToggles[optKey] = on
             reloadESP()
             saveSettings()
         end)
-        rbtn.MouseEnter:Connect(function() tw(row, fast, {BackgroundColor3=CFG.CardHov}) end)
-        rbtn.MouseLeave:Connect(function()
+        btn.MouseEnter:Connect(function() tw(row, fast, {BackgroundColor3=CFG.CardHov}) end)
+        btn.MouseLeave:Connect(function()
             tw(row, fast, {BackgroundColor3 = espCheckStates[optKey] and Color3.fromRGB(28,20,20) or CFG.Card})
         end)
     end
-
-    local ddOpen = false
-    local DD_H = 170
-
-    local function toggleDD(open)
-        ddOpen = open
-        tw(espDropdown, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-            {Size = UDim2.new(1,0,0, open and DD_H or 0)})
-        arrowLbl.Text = open and "↑" or "↓"
-        tw(arrowLbl, fast, {TextColor3 = open and CFG.Accent or CFG.TextMute})
-        tw(espRow, fast, {BackgroundColor3 = open and Color3.fromRGB(28,20,20) or CFG.Card})
-    end
-
-    local ebtn = Instance.new("TextButton", espRow)
-    ebtn.Size = UDim2.new(1,0,1,0)
-    ebtn.BackgroundTransparency = 1
-    ebtn.Text = ""; ebtn.ZIndex = 18
-    ebtn.MouseButton1Click:Connect(function()
-        toggleDD(not ddOpen)
-    end)
-    ebtn.MouseEnter:Connect(function() tw(espRow, fast, {BackgroundColor3=CFG.CardHov}) end)
-    ebtn.MouseLeave:Connect(function() tw(espRow, fast, {BackgroundColor3=CFG.Card}) end)
 end
 addToggle(Panes[4], "∞", "PC Progress", "shows hacking progress bars above PCs", false, 6, function(state)
     if state then startPCProgress() else stopPCProgress() end
