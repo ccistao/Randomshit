@@ -691,8 +691,7 @@ local function startPCProgress()
         end
     end
 
-    local Camera = workspace.CurrentCamera
-    local pcLabels, finished, pcState, hookedPCs, lastPercent = {}, {}, {}, {}, {}
+    local pcLabels, pcState, hookedPCs, lastPercent = {}, {}, {}, {}
     local pendingUpdate = {}
     local UPDATE_INTERVAL = 0.1
 
@@ -1272,35 +1271,6 @@ local PARTICLE_COLORS = {
     Color3.fromRGB(230, 180, 180),
     Color3.fromRGB(255, 200, 200),
 }
-
-local function spawnParticles(cx, cy)
-    for i = 1, 14 do
-        local size  = math.random(5, 14)
-        local angle = (i / 14) * math.pi * 2 + math.random() * 0.5
-        local dist  = math.random(55, 160)
-        local color = PARTICLE_COLORS[math.random(#PARTICLE_COLORS)]
-        local p = Instance.new("Frame", ParticleLayer)
-        p.Size = UDim2.new(0, size, 0, size)
-        p.Position = UDim2.new(0, cx - size/2, 0, cy - size/2)
-        p.BackgroundColor3 = color
-        p.BorderSizePixel = 0
-        p.ZIndex = 101
-        p.Rotation = math.random(0, 360)
-        if math.random() > 0.4 then corner(p, size/2) end
-        local tx = cx + math.cos(angle) * dist
-        local ty = cy + math.sin(angle) * dist
-        tw(p, TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            Position = UDim2.new(0, tx - size/2, 0, ty - size/2),
-            Rotation = math.random(200, 540),
-        })
-        task.delay(0.35, function()
-            tw(p, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {BackgroundTransparency = 1})
-            task.delay(0.32, function()
-                if p and p.Parent then p:Destroy() end
-            end)
-        end)
-    end
-end
 
 local function animateClose(panel, savedPX, savedPY, onDone)
     local cx = savedPX + CFG.W / 2
