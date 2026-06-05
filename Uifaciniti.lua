@@ -442,10 +442,13 @@ local function setupSeerDetection()
         table.insert(beastConnections, seerEventConnection)
     end
 end
+local _beastCheckAccum = 0
+local BEAST_CHECK_INTERVAL = 0.1
 
 local function startBeastTracker()
     if beastTrackerRunning then return end
     beastTrackerRunning = true
+    _beastCheckAccum = 0
     labelCooldown = pgui:FindFirstChild("BeastCooldownUI") and pgui.BeastCooldownUI:FindFirstChild("CooldownLabel") or ensureCooldownUI()
     setBeastTrackerVisible(true)
     if labelCooldown then labelCooldown.Text = "Finding beast..." end
@@ -509,6 +512,7 @@ local function startBeastTracker()
     _G.BeastHeartbeat = RunService.Heartbeat:Connect(function(dt)
         if not foundBeast or not beast or not Players:FindFirstChild(beast.Name) then return end
         if not labelCooldown or not labelCooldown.Parent then return end
+
         if isUsingSkill then
             usingTimeLeft = usingTimeLeft - dt
             labelCooldown.Text = string.format("Using %s: %.1fs", getDisplaySkill(), math.max(0, usingTimeLeft))
@@ -523,6 +527,12 @@ local function startBeastTracker()
             if progressPercent then lastValue = progressPercent.Value end
             return
         end
+
+        -- Throttle skill detection xuống 10/s
+        _beastCheckAccum = _beastCheckAccum + dt
+        if _beastCheckAccum < BEAST_CHECK_INTERVAL then return end
+        _beastCheckAccum = 0
+
         if not isGameActive() then
             if progressPercent then lastValue = progressPercent.Value end
             return
@@ -551,7 +561,6 @@ local function startBeastTracker()
         end
     end)
 end
-
 local function stopBeastTracker()
     beastTrackerRunning = false
     setBeastTrackerVisible(false)
@@ -627,28 +636,38 @@ end
 function SurvivorTracker.start()
     if SurvivorTracker.enabled then return end
     SurvivorTracker.enabled = true
-    local heartbeatConn = RunService.Heartbeat:Connect(function()
-        if not SurvivorTracker.enabled then return end
-        local bst = getBeast()
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= lp and plr ~= bst then
-                local char = plr.Character
-                local humanoid = char and char:FindFirstChild("Humanoid")
-                if humanoid then
-                    if humanoid.PlatformStand or humanoid.JumpPower == 0 then startTimer(plr) else stopTimer(plr) end
-                else
-                    stopTimer(plr)
+
+    local loopTask = task.spawn(function()
+        while SurvivorTracker.enabled do
+            task.wait(0.1) -- 10 lần/s, đủ mượt cho timer
+            local bst = getBeast()
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= lp and plr ~= bst then
+                    local char = plr.Character
+                    local humanoid = char and char:FindFirstChild("Humanoid")
+                    if humanoid then
+                        if humanoid.PlatformStand or humanoid.JumpPower == 0 then
+                            startTimer(plr)
+                        else
+                            stopTimer(plr)
+                        end
+                    else
+                        stopTimer(plr)
+                    end
                 end
             end
-        end
-        for player, data in pairs(SurvivorTracker.activeTimers) do
-            local elapsed = os.clock() - data.startTime
-            local timeLeft = math.max(0, 28.050 - elapsed)
-            if data.label then data.label.Text = shortenName(player.Name) .. "\n" .. math.ceil(timeLeft) .. "s" end
-            if timeLeft <= 0 then stopTimer(player) end
+            for player, data in pairs(SurvivorTracker.activeTimers) do
+                local elapsed = os.clock() - data.startTime
+                local timeLeft = math.max(0, 28.050 - elapsed)
+                if data.label then
+                    data.label.Text = shortenName(player.Name) .. "\n" .. math.ceil(timeLeft) .. "s"
+                end
+                if timeLeft <= 0 then stopTimer(player) end
+            end
         end
     end)
-    table.insert(SurvivorTracker.connections, heartbeatConn)
+    table.insert(SurvivorTracker.connections, loopTask)
+
     local prConn = Players.PlayerRemoving:Connect(function(player) stopTimer(player) end)
     table.insert(SurvivorTracker.connections, prConn)
 end
@@ -1145,7 +1164,7 @@ task.spawn(function()
     local remoteEvent = Replicated:WaitForChild("RemoteEvent", 10)
     if not remoteEvent then return end
     while true do
-        task.wait(0.1)
+        task.wait(0.5)
         if not neverfailEnabled then task.wait(0.5) continue end
         pcall(function()
             remoteEvent:FireServer("SetPlayerMinigameResult", true)
