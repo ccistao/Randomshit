@@ -1738,7 +1738,6 @@ addToggle(Panes[2], "∞", "Survivor tracker", "Renders overhead timer templates
 end)
 
 addToggle(Panes[2], "⊘", "Never Fail", "Auto pass minigame result to server", false, 5, function(state)
-    addToggle(Panes[2], "⊘", "Never Fail", "Auto pass minigame result to server", false, 5, function(state)
     neverfailEnabled = state
     saveSettings()
 end, "neverfail")
