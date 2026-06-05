@@ -568,14 +568,6 @@ SurvivorTracker.enabled = false
 SurvivorTracker.connections = {}
 SurvivorTracker.activeTimers = {}
 
-local function getBeast()
-    for _, player in ipairs(Players:GetPlayers()) do
-        local stats = player:FindFirstChild("TempPlayerStatsModule")
-        if stats and stats:FindFirstChild("IsBeast") and stats.IsBeast.Value then return player end
-    end
-    return nil
-end
-
 local function shortenName(name)
     if #name > 8 then return string.sub(name, 1, 8) .. "..." else return name end
 end
@@ -1533,70 +1525,6 @@ for i = 1, #CFG.Tabs do
     pane.Name = "Pane"..i
     Panes[i] = pane
 end
-
-local ContentScroll = Panes[1]
-
--- Custom scrollbar - parent vào SG để tránh bị Panel.ClipsDescendants cắt
-local scrollTrack = Instance.new("Frame", SG)
-scrollTrack.Size = UDim2.new(0, 3, 0, 100)
-scrollTrack.BackgroundColor3 = Color3.fromRGB(40, 20, 20)
-scrollTrack.BorderSizePixel = 0
-scrollTrack.ZIndex = 50
-scrollTrack.Visible = false
-corner(scrollTrack, 2)
-
-local scrollThumb = Instance.new("Frame", scrollTrack)
-scrollThumb.Size = UDim2.new(1, 0, 0, 40)
-scrollThumb.Position = UDim2.new(0, 0, 0, 0)
-scrollThumb.BackgroundColor3 = Color3.fromRGB(185, 45, 45)
-scrollThumb.BorderSizePixel = 0
-scrollThumb.ZIndex = 51
-corner(scrollThumb, 2)
-
-local scrollGrad = Instance.new("UIGradient", scrollThumb)
-scrollGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(220, 60, 60)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(140, 25, 25)),
-})
-scrollGrad.Rotation = 90
-
-RunService.RenderStepped:Connect(function()
-    if not Panel.Visible then
-        scrollTrack.Visible = false
-        return
-    end
-    local activePane = nil
-    for i = 2, #Panes do
-        if Panes[i].Visible then activePane = Panes[i] break end
-    end
-    if not activePane then
-        scrollTrack.Visible = false
-        return
-    end
-    local canvasH = activePane.AbsoluteCanvasSize.Y
-    local frameH  = activePane.AbsoluteSize.Y
-    if canvasH <= frameH + 2 then
-        scrollTrack.Visible = false
-        return
-    end
-    -- Tính vị trí tuyệt đối dựa theo Panel
-    local panelPos  = Panel.AbsolutePosition
-    local panelSize = Panel.AbsoluteSize
-    local trackH    = panelSize.Y - 64
-    local trackX    = panelPos.X + panelSize.X - 5
-    local trackY    = panelPos.Y + 52
-
-    scrollTrack.Position = UDim2.new(0, trackX, 0, trackY)
-    scrollTrack.Size     = UDim2.new(0, 3, 0, trackH)
-    scrollTrack.Visible  = true
-
-    local ratio       = frameH / canvasH
-    local thumbH      = math.max(ratio * trackH, 24)
-    local scrollRatio = activePane.CanvasPosition.Y / (canvasH - frameH)
-    local topY        = scrollRatio * (trackH - thumbH)
-    scrollThumb.Size     = UDim2.new(1, 0, 0, thumbH)
-    scrollThumb.Position = UDim2.new(0, 0, 0, topY)
-end)
 
 local scrollTrack = Instance.new("Frame", Panel)
 scrollTrack.Size = UDim2.new(0,3,1,-64)
