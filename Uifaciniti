@@ -1454,7 +1454,7 @@ for i = 1, #CFG.Tabs do
         local pl = Instance.new("UIListLayout", pane)
         pl.SortOrder = Enum.SortOrder.LayoutOrder
         pl.Padding = UDim.new(0,5)
-        local pp = Instance.new("UIPadding", pane)
+        locaendp = Instance.new("UIPadding", pane)
         pp.PaddingTop = UDim.new(0,10); pp.PaddingBottom = UDim.new(0,10)
         pp.PaddingLeft = UDim.new(0,12); pp.PaddingRight = UDim.new(0,12)
     else
@@ -1482,55 +1482,6 @@ for i = 1, #CFG.Tabs do
     pane.Name = "Pane"..i
     Panes[i] = pane
 end
-
-local scrollTrack = Instance.new("Frame", Panel)
-scrollTrack.Size = UDim2.new(0,3,1,-64)
-scrollTrack.Position = UDim2.new(1,-4,0,50)
-scrollTrack.BackgroundColor3 = Color3.fromRGB(40,20,20)
-scrollTrack.BorderSizePixel = 0
-scrollTrack.ZIndex = 50
-scrollTrack.Visible = false
-corner(scrollTrack, 2)
-
-local scrollThumb = Instance.new("Frame", scrollTrack)
-scrollThumb.Size = UDim2.new(1,0,0,40)
-scrollThumb.Position = UDim2.new(0,0,0,0)
-scrollThumb.BackgroundColor3 = Color3.fromRGB(185,45,45)
-scrollThumb.BorderSizePixel = 0
-scrollThumb.ZIndex = 51
-corner(scrollThumb, 2)
-
-local scrollGrad = Instance.new("UIGradient", scrollThumb)
-scrollGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(220,60,60)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(140,25,25)),
-})
-scrollGrad.Rotation = 90
-
-RunService.RenderStepped:Connect(function()
-    local activePane = nil
-    for i = 2, #Panes do
-        if Panes[i].Visible then activePane = Panes[i] break end
-    end
-    if not activePane then
-        scrollTrack.Visible = false
-        return
-    end
-    local canvasH = activePane.AbsoluteCanvasSize.Y
-    local frameH  = activePane.AbsoluteSize.Y
-    if canvasH <= frameH + 2 then
-        scrollTrack.Visible = false
-        return
-    end
-    scrollTrack.Visible = true
-    local ratio       = frameH / canvasH
-    local thumbH      = math.max(ratio * frameH, 24)
-    local scrollRatio = activePane.CanvasPosition.Y / (canvasH - frameH)
-    local maxTop      = scrollTrack.AbsoluteSize.Y - thumbH
-    local topY        = scrollRatio * maxTop
-    scrollThumb.Size     = UDim2.new(1,0,0,thumbH)
-    scrollThumb.Position = UDim2.new(0,0,0,topY)
-end)
 
 local function addSection(pane, text, order)
     local f = Instance.new("Frame", pane)
