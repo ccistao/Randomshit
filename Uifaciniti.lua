@@ -1941,6 +1941,88 @@ end)
 addToggle(Panes[5], "⊗", "Self muting", "Silences local player character audio triggers", false, 3, function(state)
     if state then SelfMuting.start() else SelfMuting.stop() end
 end)
+local bC=Instance.new("TextButton")
+bC.Name="JSPBtn"
+bC.Size=UDim2.new(1,0,0,42)
+bC.BackgroundColor3=Color3.fromRGB(24,23,23)
+bC.Text=""
+bC.AutoButtonColor=false
+bC.Parent=Panes[5]
+local cR=Instance.new("UICorner",bC)
+cR.CornerRadius=UDim.new(0,9)
+local sT=Instance.new("UIStroke",bC)
+sT.Color=Color3.fromRGB(255,255,255)
+sT.Thickness=1
+sT.Transparency=0.91
+local tL=Instance.new("TextLabel",bC)
+tL.Size=UDim2.new(1,-60,1,0)
+tL.Position=UDim2.new(0,15,0,0)
+tL.BackgroundTransparency=1
+tL.Text="Join Server Pro"
+tL.TextColor3=Color3.fromRGB(225,218,218)
+tL.Font=Enum.Font.GothamBold
+tL.TextSize=13
+tL.TextXAlignment=Enum.TextXAlignment.Left
+local cT=Instance.new("TextLabel",bC)
+cT.Size=UDim2.new(0,40,1,0)
+cT.Position=UDim2.new(1,-55,0,0)
+cT.BackgroundTransparency=1
+cT.Text="click"
+cT.TextColor3=Color3.fromRGB(130,130,130)
+cT.Font=Enum.Font.Gotham
+cT.TextSize=11
+cT.TextXAlignment=Enum.TextXAlignment.Right
+local iT=Instance.new("TextLabel",bC)
+iT.Size=UDim2.new(1,-60,0,15)
+iT.Position=UDim2.new(0,15,1,-15)
+iT.BackgroundTransparency=1
+iT.Text="Auto Join hoac Leave sv pro"
+iT.TextColor3=Color3.fromRGB(150,150,150)
+iT.Font=Enum.Font.Gotham
+iT.TextSize=9
+iT.TextXAlignment=Enum.TextXAlignment.Left
+local twS=game:GetService("TweenService")
+local fT=TweenInfo.new(0.15,Enum.EasingStyle.Quad,Enum.EasingDirection.Out)
+bC.MouseEnter:Connect(function() twS:Create(bC,fT,{BackgroundColor3=Color3.fromRGB(30,28,28)}):Play() end)
+bC.MouseLeave:Connect(function() twS:Create(bC,fT,{BackgroundColor3=Color3.fromRGB(24,23,23)}):Play() end)
+bC.MouseButton1Click:Connect(function()
+    twS:Create(bC,fT,{BackgroundColor3=Color3.fromRGB(40,18,18)}):Play()
+    task.delay(0.18,function() twS:Create(bC,fT,{BackgroundColor3=Color3.fromRGB(30,28,28)}):Play() end)
+    local a=game:GetService("Players").LocalPlayer
+    local b=a.Character or a.CharacterAdded:Wait()
+    local c=b:WaitForChild("HumanoidRootPart")
+    local d=workspace:FindFirstChild("FTFLobbySpring")
+    local e=a:WaitForChild("PlayerGui"):WaitForChild("MenusScreenGui")
+    local function cQJ()
+        for i=1,20 do
+            for _,w in pairs(e:GetChildren()) do
+                if w:IsA("Frame") and w.Visible then
+                    local qj=w:FindFirstChild("QuickJoinButton",true)
+                    if qj and qj:IsA("TextButton") then
+                        firesignal(qj.MouseButton1Click)
+                        return true
+                    end
+                end
+            end
+            task.wait(0.3)
+        end
+        return false
+    end
+    local sg=d and d:FindFirstChild("Signs")
+    if sg then
+        local ts=sg:FindFirstChild("ProServerSign") or sg:FindFirstChild("LeaveProServerSign")
+        if ts then
+            local pr=ts:FindFirstChildWhichIsA("ProximityPrompt",true)
+            local bd=ts:FindFirstChild("Board")
+            if pr and bd then
+                c.CFrame=bd.CFrame*CFrame.new(0,1,3)
+                task.wait(0.5)
+                if fireproximityprompt then fireproximityprompt(pr) else pr:InputHoldBegin() task.wait(pr.HoldDuration) pr:InputHoldEnd() end
+                cQJ()
+            end
+        end
+    end
+end)
 
 addSection(Panes[6], "Keybind", 0)
 
