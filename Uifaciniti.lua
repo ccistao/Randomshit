@@ -1143,16 +1143,15 @@ end)
 
 local neverfailEnabled = false
 task.spawn(function()
-    local mt = getrawmetatable(game)
-    local old = mt.__namecall
-    setreadonly(mt, false)
-    mt.__namecall = newcclosure(function(self, ...)
-        local args = {...}
-        if getnamecallmethod() == "FireServer" and args[1] == "SetPlayerMinigameResult" and neverfailEnabled then
-            args[2] = true
-        end
-        return old(self, unpack(args))
-    end)
+    local remoteEvent = Replicated:WaitForChild("RemoteEvent", 10)
+    if not remoteEvent then return end
+    while true do
+        task.wait(0.1)
+        if not neverfailEnabled then task.wait(0.5) continue end
+        pcall(function()
+            remoteEvent:FireServer("SetPlayerMinigameResult", true)
+        end)
+    end
 end)
 
 local isPlasticOn = false
