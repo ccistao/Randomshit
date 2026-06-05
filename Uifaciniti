@@ -14,7 +14,7 @@ repeat task.wait() until lp and lp:FindFirstChild("PlayerGui")
 local function isMobile()
     return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 end
-
+local syncFns = {}
 local WallhopView = {}
 WallhopView.enabled = false
 WallhopView.connections = {}
@@ -1024,6 +1024,11 @@ local function loadSettings()
             end
         end
         reloadESP()
+        if syncFns.neverfail then syncFns.neverfail(neverfailEnabled) end
+        if syncFns.espPlayer then syncFns.espPlayer(espToggles.player) end
+        if syncFns.espPods   then syncFns.espPods(espToggles.pods)    end
+        if syncFns.espPc     then syncFns.espPc(espToggles.pc)        end
+        if syncFns.espExits  then syncFns.espExits(espToggles.exits)  end
     end)
 end
 
@@ -1503,7 +1508,7 @@ local function addSection(pane, text, order)
     corner(dash, 1)
 end
 
-local function addToggle(pane, icon, name, desc, defaultOn, order, cb)
+local function addToggle(pane, icon, name, desc, defaultOn, order, cb, key)
     local row = Instance.new("Frame", pane)
     row.Size  = UDim2.new(1,0,0,42)
     row.BackgroundColor3 = CFG.Card
@@ -1570,6 +1575,16 @@ local function addToggle(pane, icon, name, desc, defaultOn, order, cb)
     end)
     btn.MouseEnter:Connect(function() tw(row, fast, {BackgroundColor3=CFG.CardHov}) end)
     btn.MouseLeave:Connect(function() tw(row, fast, {BackgroundColor3= isOn and Color3.fromRGB(28,20,20) or CFG.Card}) end)
+
+    if key then
+        syncFns[key] = function(val)
+            isOn = val
+            pill.BackgroundColor3 = val and CFG.Accent or Color3.fromRGB(42,36,36)
+            knob.Position = val and UDim2.new(1,-15,0.5,-6) or UDim2.new(0,3,0.5,-6)
+            row.BackgroundColor3 = val and Color3.fromRGB(28,20,20) or CFG.Card
+        end
+    end
+
     return row
 end
 
