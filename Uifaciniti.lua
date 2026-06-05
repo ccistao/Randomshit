@@ -1457,7 +1457,7 @@ for i = 1, #CFG.Tabs do
         local pl = Instance.new("UIListLayout", pane)
         pl.SortOrder = Enum.SortOrder.LayoutOrder
         pl.Padding = UDim.new(0,5)
-        locaendp = Instance.new("UIPadding", pane)
+        local pp = Instance.new("UIPadding", pane)
         pp.PaddingTop = UDim.new(0,10); pp.PaddingBottom = UDim.new(0,10)
         pp.PaddingLeft = UDim.new(0,12); pp.PaddingRight = UDim.new(0,12)
     else
