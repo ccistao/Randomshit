@@ -1759,15 +1759,84 @@ do
         {key="exits",  label="Exits ESP",   icon="⊘", desc="highlight exit doors",          order=5},
     }
 
+    -- Header row
+    local groupOpen = false
+    local headerRow = Instance.new("Frame", Panes[4])
+    headerRow.Size = UDim2.new(1,0,0,42)
+    headerRow.BackgroundColor3 = CFG.Card
+    headerRow.BorderSizePixel = 0
+    headerRow.ZIndex = 15
+    headerRow.LayoutOrder = 1
+    corner(headerRow, 9)
+    stroke(headerRow, CFG.Border, 1, 0.91)
+
+    local hib = Instance.new("Frame", headerRow)
+    hib.Size = UDim2.new(0,26,0,26)
+    hib.Position = UDim2.new(0,8,0.5,-13)
+    hib.BackgroundColor3 = Color3.fromRGB(35,20,20)
+    hib.BorderSizePixel = 0; hib.ZIndex = 16
+    corner(hib, 7)
+    local hil = Instance.new("TextLabel", hib)
+    hil.Size = UDim2.new(1,0,1,0)
+    hil.BackgroundTransparency = 1
+    hil.Text = "◉"; hil.TextSize = 12
+    hil.Font = Enum.Font.GothamBold; hil.ZIndex = 17
+    hil.TextColor3 = CFG.Accent
+
+    local hnl = Instance.new("TextLabel", headerRow)
+    hnl.Size = UDim2.new(0,130,0,15)
+    hnl.Position = UDim2.new(0,42,0,8)
+    hnl.BackgroundTransparency = 1
+    hnl.Text = "Normal ESP"
+    hnl.TextColor3 = CFG.Text
+    hnl.TextSize = 11; hnl.Font = Enum.Font.GothamBold
+    hnl.TextXAlignment = Enum.TextXAlignment.Left; hnl.ZIndex = 16
+
+    local hdl = Instance.new("TextLabel", headerRow)
+    hdl.Size = UDim2.new(0,130,0,12)
+    hdl.Position = UDim2.new(0,42,0,22)
+    hdl.BackgroundTransparency = 1
+    hdl.Text = "4 esp options"
+    hdl.TextColor3 = CFG.TextMute
+    hdl.TextSize = 9; hdl.Font = Enum.Font.Code
+    hdl.TextXAlignment = Enum.TextXAlignment.Left; hdl.ZIndex = 16
+
+    local arrowLbl = Instance.new("TextLabel", headerRow)
+    arrowLbl.Size = UDim2.new(0,20,0,20)
+    arrowLbl.Position = UDim2.new(1,-28,0.5,-10)
+    arrowLbl.BackgroundTransparency = 1
+    arrowLbl.Text = "↓"
+    arrowLbl.TextColor3 = CFG.TextMute
+    arrowLbl.TextSize = 13; arrowLbl.Font = Enum.Font.GothamBold
+    arrowLbl.ZIndex = 16
+
+    -- Container chứa 4 toggle con
+    local groupContent = Instance.new("Frame", Panes[4])
+    groupContent.Size = UDim2.new(1,0,0,0)
+    groupContent.BackgroundTransparency = 1
+    groupContent.BorderSizePixel = 0
+    groupContent.ClipsDescendants = true
+    groupContent.ZIndex = 15
+    groupContent.LayoutOrder = 2
+    local gcLayout = Instance.new("UIListLayout", groupContent)
+    gcLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    gcLayout.Padding = UDim.new(0,5)
+    local gcPad = Instance.new("UIPadding", groupContent)
+    gcPad.PaddingTop = UDim.new(0,5)
+
+    local ITEM_H = 42
+    local GAP = 5
+    local fullH = #ESP_OPTIONS * ITEM_H + (#ESP_OPTIONS - 1) * GAP + 5
+
     local espCheckStates = {}
-    for _, opt in ipairs(ESP_OPTIONS) do
+    for i, opt in ipairs(ESP_OPTIONS) do
         espCheckStates[opt.key] = false
-        local row = Instance.new("Frame", Panes[4])
-        row.Size = UDim2.new(1,0,0,42)
+        local row = Instance.new("Frame", groupContent)
+        row.Size = UDim2.new(1,0,0,ITEM_H)
         row.BackgroundColor3 = CFG.Card
         row.BorderSizePixel = 0
         row.ZIndex = 15
-        row.LayoutOrder = opt.order
+        row.LayoutOrder = i
         corner(row, 9)
         stroke(row, CFG.Border, 1, 0.91)
 
@@ -1833,7 +1902,29 @@ do
         btn.MouseLeave:Connect(function()
             tw(row, fast, {BackgroundColor3 = espCheckStates[optKey] and Color3.fromRGB(28,20,20) or CFG.Card})
         end)
+
+        syncFns["esp"..optKey:sub(1,1):upper()..optKey:sub(2)] = function(val)
+            espCheckStates[optKey] = val
+            pill.BackgroundColor3 = val and CFG.Accent or Color3.fromRGB(42,36,36)
+            knob.Position = val and UDim2.new(1,-15,0.5,-6) or UDim2.new(0,3,0.5,-6)
+            row.BackgroundColor3 = val and Color3.fromRGB(28,20,20) or CFG.Card
+        end
     end
+
+    -- Header click để dropdown
+    local hBtn = Instance.new("TextButton", headerRow)
+    hBtn.Size = UDim2.new(1,0,1,0)
+    hBtn.BackgroundTransparency = 1
+    hBtn.Text = ""; hBtn.ZIndex = 18
+    hBtn.MouseButton1Click:Connect(function()
+        groupOpen = not groupOpen
+        tw(arrowLbl, fast, {TextColor3 = groupOpen and CFG.Accent or CFG.TextMute})
+        arrowLbl.Text = groupOpen and "↑" or "↓"
+        tw(groupContent, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {Size = UDim2.new(1,0,0, groupOpen and fullH or 0)})
+    end)
+    hBtn.MouseEnter:Connect(function() tw(headerRow, fast, {BackgroundColor3=CFG.CardHov}) end)
+    hBtn.MouseLeave:Connect(function() tw(headerRow, fast, {BackgroundColor3=CFG.Card}) end)
 end
 addToggle(Panes[4], "∞", "PC Progress", "shows hacking progress bars above PCs", false, 6, function(state)
     if state then startPCProgress() else stopPCProgress() end
