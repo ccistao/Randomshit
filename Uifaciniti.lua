@@ -570,6 +570,13 @@ local function stopBeastTracker()
     progressPercent = nil; lastValue = 0
     skillDetected = false; canDetectDrop = true
 end
+local function getBeast()
+    for _, p in ipairs(Players:GetPlayers()) do
+        local s = p:FindFirstChild("TempPlayerStatsModule")
+        if s and s:FindFirstChild("IsBeast") and s.IsBeast.Value then return p end
+        if p.Character and p.Character:FindFirstChild("BeastPowers") then return p end
+    end
+end
 
 local SurvivorTracker = {}
 SurvivorTracker.enabled = false
@@ -964,14 +971,6 @@ local function startPCProgress()
             end
         end
     end))
-end
-
-local function getBeast()
-    for _, p in ipairs(Players:GetPlayers()) do
-        local s = p:FindFirstChild("TempPlayerStatsModule")
-        if s and s:FindFirstChild("IsBeast") and s.IsBeast.Value then return p end
-        if p.Character and p.Character:FindFirstChild("BeastPowers") then return p end
-    end
 end
 
 local function getBestPC()
