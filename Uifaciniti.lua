@@ -7,10 +7,9 @@ local RunService       = game:GetService("RunService")
 local Replicated       = game:GetService("ReplicatedStorage")
 
 local lp   = Players.LocalPlayer
-local pgui = lp:FindFirstChildOfClass("PlayerGui")
 
 repeat task.wait() until lp and lp:FindFirstChild("PlayerGui")
-
+local pgui = lp:FindFirstChildOfClass("PlayerGui")
 local function isMobile()
     return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 end
