@@ -783,7 +783,7 @@ local function startPCProgress()
     end
 
     local function queueProgress(pc, value)
-        if not pc or not pc.Parent or finished[pc] then return end
+        if not pc or not pc.Parent then return end
         local percent = math.floor(value * 100 + 0.5)
         percent = math.clamp(percent, 0, 100)
         if percent ~= (lastPercent[pc] or -1) then
@@ -1258,19 +1258,6 @@ SG.IgnoreGuiInset = true
 SG.DisplayOrder = 999
 pcall(function() syn.protect_gui(SG) end)
 SG.Parent = pgui
-
-local ParticleLayer = Instance.new("Frame", SG)
-ParticleLayer.Size = UDim2.new(1, 0, 1, 0)
-ParticleLayer.BackgroundTransparency = 1
-ParticleLayer.ZIndex = 100
-
-local PARTICLE_COLORS = {
-    Color3.fromRGB(185, 45,  45),
-    Color3.fromRGB(255, 90,  90),
-    Color3.fromRGB(120, 28,  28),
-    Color3.fromRGB(230, 180, 180),
-    Color3.fromRGB(255, 200, 200),
-}
 
 local function animateClose(panel, savedPX, savedPY, onDone)
     local cx = savedPX + CFG.W / 2
