@@ -1740,9 +1740,10 @@ addToggle(Panes[2], "∞", "Survivor tracker", "Renders overhead timer templates
 end)
 
 addToggle(Panes[2], "⊘", "Never Fail", "Auto pass minigame result to server", false, 5, function(state)
+    addToggle(Panes[2], "⊘", "Never Fail", "Auto pass minigame result to server", false, 5, function(state)
     neverfailEnabled = state
     saveSettings()
-end)
+end, "neverfail")
 
 addSection(Panes[3], "Auto Farm", 0)
 addToggle(Panes[3], "∞", "Auto Farm",     "loop - idle",  false, 1, function(on) end)
@@ -1750,7 +1751,6 @@ addToggle(Panes[3], "⊗", "Collect Items", "auto - range", false, 2, function(o
 addButton(Panes[3], "▣", "Collect All",   "one-shot",            3, function() end)
 
 addSection(Panes[4], "Visuals", 0)
-addSection(Panes[4], "Normal ESP", 1)
 do
     local ESP_OPTIONS = {
         {key="player", label="Player ESP",  icon="◉", desc="survivors green / beast red",  order=2},
