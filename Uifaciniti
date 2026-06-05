@@ -244,7 +244,7 @@ function SelfMuting.start()
     local scanTask = task.spawn(function()
         while true do
             if not SelfMuting.enabled then break end
-            if SelfMuting.enabled then scanCharacterSounds() end
+            scanCharacterSounds()  -- không cần check nữa
             task.wait(SelfMuting.scanInterval)
         end
     end)
