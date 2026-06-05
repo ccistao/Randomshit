@@ -1004,6 +1004,19 @@ local espToggles = {
     exits   = false,
 }
 
+local neverfailEnabled = false
+task.spawn(function()
+    local remoteEvent = Replicated:WaitForChild("RemoteEvent", 10)
+    if not remoteEvent then return end
+    while true do
+        task.wait(0.5)
+        if not neverfailEnabled then task.wait(0.5) continue end
+        pcall(function()
+            remoteEvent:FireServer("SetPlayerMinigameResult", true)
+        end)
+    end
+end)
+
 local SAVE_FILE = "dakui_settings.json"
 local currentKeybind = Enum.KeyCode.Tab
 
@@ -1042,11 +1055,13 @@ local function loadSettings()
             end
         end
         reloadESP()
-        if syncFns.neverfail then syncFns.neverfail(neverfailEnabled) end
-        if syncFns.espPlayer then syncFns.espPlayer(espToggles.player) end
-        if syncFns.espPods   then syncFns.espPods(espToggles.pods)    end
-        if syncFns.espPc     then syncFns.espPc(espToggles.pc)        end
-        if syncFns.espExits  then syncFns.espExits(espToggles.exits)  end
+        task.defer(function()
+            if syncFns.neverfail then syncFns.neverfail(neverfailEnabled) end
+            if syncFns.espPlayer then syncFns.espPlayer(espToggles.player) end
+            if syncFns.espPods   then syncFns.espPods(espToggles.pods)    end
+            if syncFns.espPc     then syncFns.espPc(espToggles.pc)        end
+            if syncFns.espExits  then syncFns.espExits(espToggles.exits)  end
+        end)
     end)
 end
 
@@ -1157,19 +1172,6 @@ task.spawn(function()
         p.CharacterAdded:Connect(function() reloadESP() end)
         p.CharacterRemoving:Connect(function() reloadESP() end)
     end)
-end)
-
-local neverfailEnabled = false
-task.spawn(function()
-    local remoteEvent = Replicated:WaitForChild("RemoteEvent", 10)
-    if not remoteEvent then return end
-    while true do
-        task.wait(0.5)
-        if not neverfailEnabled then task.wait(0.5) continue end
-        pcall(function()
-            remoteEvent:FireServer("SetPlayerMinigameResult", true)
-        end)
-    end
 end)
 
 local isPlasticOn = false
@@ -2326,6 +2328,6 @@ task.defer(function()
     isBusy  = false
     Panel.Visible = true
     TBtn.Visible  = false
-    task.delay(0.2, loadSettings)
+    task.delay(0.6, loadSettings)
 end)
 print("[DakUI] OK")
