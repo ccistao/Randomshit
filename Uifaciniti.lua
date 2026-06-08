@@ -1022,13 +1022,20 @@ local currentKeybind = Enum.KeyCode.Tab
 local function saveSettings()
     pcall(function()
         local data = {
-            espPlayer = espToggles.player,
-            espPods   = espToggles.pods,
-            espPc     = espToggles.pc,
-            espExits  = espToggles.exits,
-            neverfail = neverfailEnabled,
-            autoRope  = ropeEnabled,
-            keybind   = tostring(currentKeybind):gsub("Enum%.KeyCode%.", ""),
+            espPlayer      = espToggles.player,
+            espPods        = espToggles.pods,
+            espPc          = espToggles.pc,
+            espExits       = espToggles.exits,
+            neverfail      = neverfailEnabled,
+            autoRope       = ropeEnabled,
+            pcProgress     = pcProgressRunning,
+            beastTracker   = beastTrackerRunning,
+            survivorTracker= SurvivorTracker.enabled,
+            wallhop        = WallhopView.enabled,
+            noTexture      = isPlasticOn,
+            flashlight     = Flashlight.enabled,
+            selfMuting     = SelfMuting.enabled,
+            keybind        = tostring(currentKeybind):gsub("Enum%.KeyCode%.", ""),
         }
         writefile(SAVE_FILE, game:GetService("HttpService"):JSONEncode(data))
     end)
@@ -1063,6 +1070,13 @@ local function loadSettings()
             if syncFns.espPc     then syncFns.espPc(espToggles.pc)        end
             if syncFns.espExits  then syncFns.espExits(espToggles.exits)  end
             if syncFns.autoRope then syncFns.autoRope(ropeEnabled) end
+            if pcProgressRunning     then startPCProgress()       end
+            if beastTrackerRunning   then startBeastTracker()     end
+            if SurvivorTracker.enabled then SurvivorTracker.start() end
+            if WallhopView.enabled   then WallhopView.start()     end
+            if isPlasticOn           then scanMap()               end
+            if Flashlight.enabled    then Flashlight.start()      end
+            if SelfMuting.enabled    then SelfMuting.start()      end
         end)
     end)
 end
@@ -1755,11 +1769,12 @@ stroke(InfoCard, CFG.Border, 1, 0.91)
 addSection(Panes[2], "Main Features", 0)
 addToggle(Panes[2], "⊙", "Beast tracker", "Tracks beast selections and skill triggers", false, 2, function(state)
     if state then startBeastTracker() else stopBeastTracker() end
-end)
+    saveSettings()
+end, "beastTracker")
 addToggle(Panes[2], "∞", "Survivor tracker", "Renders overhead timer templates", false, 3, function(state)
     if state then SurvivorTracker.start() else SurvivorTracker.stop() end
-end)
-
+    saveSettings()
+end, "survivorTracker")
 addToggle(Panes[2], "⊘", "Never Fail", "Auto pass minigame result to server", false, 5, function(state)
     neverfailEnabled = state
     saveSettings()
@@ -2016,22 +2031,27 @@ do
 end
 addToggle(Panes[4], "∞", "PC Progress", "shows hacking progress bars above PCs", false, 6, function(state)
     if state then startPCProgress() else stopPCProgress() end
-end)
+    saveSettings()
+end, "pcProgress")
 
 addSection(Panes[5], "Misc Features", 0)
 addToggle(Panes[5], "◆", "Wallhop view", "Highlights walls around player", false, 4, function(state)
     if state then WallhopView.start() else WallhopView.stop() end
-end)
+    saveSettings()
+end, "wallhop")
 addToggle(Panes[5], "▣", "No Texture", "Replaces world assets with solid plastic layers", false, 1, function(state)
     isPlasticOn = state
     if isPlasticOn then scanMap() else restoreMap() end
-end)
+    saveSettings()
+end, "noTexture")
 addToggle(Panes[5], "☼", "Flashlight", "Forces light shifts into bright ambient modes", false, 2, function(state)
     if state then Flashlight.start() else Flashlight.stop() end
-end)
+    saveSettings()
+end, "flashlight")
 addToggle(Panes[5], "⊗", "Self muting", "Silences local player character audio triggers", false, 3, function(state)
     if state then SelfMuting.start() else SelfMuting.stop() end
-end)
+    saveSettings()
+end, "selfMuting")
 do
     local row = Instance.new("Frame", Panes[5])
     row.Name = "JSPBtn"
