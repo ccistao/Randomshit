@@ -1226,7 +1226,7 @@ local CFG = {
     Tabs = {
         { name = "Info",   icon = "≡" },
         { name = "Main",   icon = "⌂" },
-        { name = "Farm",   icon = "∞" },
+        { name = "Auto",   icon = "∞" },
         { name = "ESP",    icon = "◉" },
         { name = "Misc",   icon = "▣" },
         { name = "Config", icon = "⊙" },
@@ -1762,11 +1762,78 @@ addToggle(Panes[2], "⊘", "Never Fail", "Auto pass minigame result to server", 
     saveSettings()
 end, "neverfail")
 
-addSection(Panes[3], "Auto Farm", 0)
-addToggle(Panes[3], "∞", "Auto Farm",     "loop - idle",  false, 1, function(on) end)
-addToggle(Panes[3], "⊗", "Collect Items", "auto - range", false, 2, function(on) end)
-addButton(Panes[3], "▣", "Collect All",   "one-shot",            3, function() end)
+-- ===== AUTO ROPE LOGIC =====
+local ropeEnabled = false
 
+local function isSelfBeast()
+    local stats = lp:FindFirstChild("TempPlayerStatsModule")
+    if not stats then return false end
+    local flag = stats:FindFirstChild("IsBeast")
+    return flag and flag.Value == true
+end
+
+local function getHammerEvent()
+    local char = lp.Character
+    local hammer = char and char:FindFirstChild("Hammer")
+    return hammer and hammer:FindFirstChild("HammerEvent")
+end
+
+local function getNearestRagdoll()
+    local char = lp.Character
+    if not char then return nil end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+    local nearest, nearestDist = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= lp and p.Character then
+            local hum = p.Character:FindFirstChild("Humanoid")
+            local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
+            if hum and torso and hum.PlatformStand then
+                local dist = (root.Position - torso.Position).Magnitude
+                if dist < nearestDist then
+                    nearest = p
+                    nearestDist = dist
+                end
+            end
+        end
+    end
+    return nearest
+end
+
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        -- Chỉ chạy khi bật VÀ đang là beast
+        if not ropeEnabled or not isSelfBeast() then continue end
+
+        local remote = getHammerEvent()
+        if not remote then continue end
+
+        local char = lp.Character
+        if not char then continue end
+        if char:FindFirstChild("RopeConstraint", true) then continue end
+
+        local target = getNearestRagdoll()
+        if not target or not target.Character then continue end
+
+        local torso = target.Character:FindFirstChild("UpperTorso") or target.Character:FindFirstChild("Torso")
+        if not torso then continue end
+
+        local timer = 0
+        while timer < 2 do
+            remote:FireServer("HammerTieUp", torso, torso.Position)
+            if lp.Character and lp.Character:FindFirstChild("RopeConstraint", true) then break end
+            task.wait(0.15)
+            timer = timer + 0.15
+        end
+    end
+end)
+
+-- ===== TAB AUTO =====
+addSection(Panes[3], "Auto", 0)
+addToggle(Panes[3], "⊕", "Auto Rope", "Beast: auto rope ragdoll survivors", false, 1, function(on)
+    ropeEnabled = on
+end)
 addSection(Panes[4], "Visuals", 0)
 do
     local ESP_OPTIONS = {
