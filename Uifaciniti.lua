@@ -1027,6 +1027,7 @@ local function saveSettings()
             espPc     = espToggles.pc,
             espExits  = espToggles.exits,
             neverfail = neverfailEnabled,
+            autoRope  = ropeEnabled,
             keybind   = tostring(currentKeybind):gsub("Enum%.KeyCode%.", ""),
         }
         writefile(SAVE_FILE, game:GetService("HttpService"):JSONEncode(data))
@@ -1044,6 +1045,7 @@ local function loadSettings()
         if data.espPc     ~= nil then espToggles.pc     = data.espPc     end
         if data.espExits  ~= nil then espToggles.exits  = data.espExits  end
         if data.neverfail ~= nil then neverfailEnabled  = data.neverfail  end
+        if data.autoRope  ~= nil then ropeEnabled = data.autoRope end
         if data.keybind   ~= nil then
             local ok, kc = pcall(function() return Enum.KeyCode[data.keybind] end)
             if ok and kc then
@@ -1060,6 +1062,7 @@ local function loadSettings()
             if syncFns.espPods   then syncFns.espPods(espToggles.pods)    end
             if syncFns.espPc     then syncFns.espPc(espToggles.pc)        end
             if syncFns.espExits  then syncFns.espExits(espToggles.exits)  end
+            if syncFns.autoRope then syncFns.autoRope(ropeEnabled) end
         end)
     end)
 end
@@ -1833,7 +1836,8 @@ end)
 addSection(Panes[3], "Auto", 0)
 addToggle(Panes[3], "⊕", "Auto Rope", "Beast: auto rope ragdoll survivors", false, 1, function(on)
     ropeEnabled = on
-end)
+    saveSettings()
+end, "autoRope")
 addSection(Panes[4], "Visuals", 0)
 do
     local ESP_OPTIONS = {
