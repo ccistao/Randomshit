@@ -1532,7 +1532,7 @@ addSection(Panes[3], "Auto", 0)
 addToggle(Panes[3], "⊕", "Auto Rope", "Beast: auto rope ragdoll survivors", false, 1, function(s)
     ropeEnabled = s; saveSettings()
 end, "autoRope")
-addToggle(Panes[3], "⚡", "Hit Aura", "Beast: Auto hit survivors trong 10 studs", false, 2, function(s)
+addToggle(Panes[3], "⊙", "Hit Aura", "Beast: Auto hit survivors trong 10 studs", false, 2, function(s)
     auraEnabled = s; saveSettings()
 end, "hitAura")
 
