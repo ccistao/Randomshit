@@ -875,6 +875,53 @@ task.spawn(function()
         end
     end
 end)
+local auraEnabled = false
+local hitRadius = 10
+
+local function getValidTargetPart()
+    local char = lp.Character
+    if not char then return nil end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+
+    local bestPart = nil
+    local nearestDist = hitRadius
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= lp and p.Character then
+            local hum = p.Character:FindFirstChild("Humanoid")
+            local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
+            
+            -- Kiểm tra survivor còn sống và chưa bị ragdoll/PlatformStand
+            if hum and torso and not hum.PlatformStand and hum.Health > 0 then
+                local dist = (root.Position - torso.Position).Magnitude
+                if dist <= nearestDist then
+                    bestPart = torso
+                    nearestDist = dist
+                end
+            end
+        end
+    end
+    return bestPart
+end
+
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if not auraEnabled or not isSelfBeast() then continue end
+        
+        local remote = getHammerEvent()
+        if not remote then continue end
+        
+        local targetPart = getValidTargetPart()
+        if targetPart then
+            pcall(function()
+                remote:FireServer("HammerClick", true)
+                remote:FireServer("HammerHit", targetPart)
+            end)
+        end
+    end
+end)
 
 local isPlasticOn = false
 local cacheMaterials, cacheTextures = {}, {}
@@ -927,6 +974,7 @@ local function saveSettings()
             espExits        = espToggles.exits,
             neverfail       = neverfailEnabled,
             autoRope        = ropeEnabled,
+            hitAura         = auraEnabled,
             pcProgress      = pcProgressRunning,
             beastTracker    = beastTrackerRunning,
             survivorTracker = SurvivorTracker.enabled,
@@ -1030,6 +1078,7 @@ local function loadSettings()
         if data.espExits        ~= nil then espToggles.exits       = data.espExits        end
         if data.neverfail       ~= nil then neverfailEnabled       = data.neverfail       end
         if data.autoRope        ~= nil then ropeEnabled            = data.autoRope        end
+        if data.hitAura         ~= nil then auraEnabled            = data.hitAura         end
         if data.pcProgress      ~= nil then pcProgressRunning      = data.pcProgress      end
         if data.beastTracker    ~= nil then beastTrackerRunning    = data.beastTracker    end
         if data.survivorTracker ~= nil then SurvivorTracker.enabled= data.survivorTracker end
@@ -1052,6 +1101,7 @@ local function loadSettings()
             if syncFns.espPc           then syncFns.espPc(espToggles.pc)                   end
             if syncFns.espExits        then syncFns.espExits(espToggles.exits)             end
             if syncFns.autoRope        then syncFns.autoRope(ropeEnabled)                  end
+            if syncFns.hitAura         then syncFns.hitAura(auraEnabled).                  end
             if syncFns.pcProgress      then syncFns.pcProgress(pcProgressRunning)          end
             if syncFns.beastTracker    then syncFns.beastTracker(beastTrackerRunning)      end
             if syncFns.survivorTracker then syncFns.survivorTracker(SurvivorTracker.enabled) end
@@ -1478,6 +1528,9 @@ addSection(Panes[3], "Auto", 0)
 addToggle(Panes[3], "⊕", "Auto Rope", "Beast: auto rope ragdoll survivors", false, 1, function(s)
     ropeEnabled = s; saveSettings()
 end, "autoRope")
+addToggle(Panes[3], "⚡", "Hit Aura", "Beast: Auto hit survivors trong 10 studs", false, 2, function(s)
+    auraEnabled = s; saveSettings()
+end, "hitAura")
 
 addSection(Panes[4], "Visuals", 0)
 do
