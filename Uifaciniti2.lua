@@ -12,11 +12,7 @@ local pgui = lp:FindFirstChildOfClass("PlayerGui")
 local function isMobile()
     return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 end
-local function tw(obj, info, prop)
-    local t = TweenService:Create(obj, info, prop)
-    t:Play()
-    return t
-end
+
 local syncFns = {}
 
 local WallhopView = {enabled=false, connections={}, cachedParts={}}
