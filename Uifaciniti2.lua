@@ -1099,7 +1099,8 @@ local function loadSettings()
         end
         reloadESP()
         task.defer(function()
-            if syncFns.neverfail       then syncFns.neverfail(neverfailEnabled)            if syncFns.espPlayer       then syncFns.espPlayer(espToggles.player)           end
+            if syncFns.neverfail       then syncFns.neverfail(neverfailEnabled)            end
+            if syncFns.espPlayer       then syncFns.espPlayer(espToggles.player)           end
             if syncFns.espPods         then syncFns.espPods(espToggles.pods)               end
             if syncFns.espPc           then syncFns.espPc(espToggles.pc)                   end
             if syncFns.espExits        then syncFns.espExits(espToggles.exits)             end
