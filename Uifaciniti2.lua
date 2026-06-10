@@ -1099,8 +1099,7 @@ local function loadSettings()
         end
         reloadESP()
         task.defer(function()
-            if syncFns.neverfail       then syncFns.neverfail(neverfailEnabled)            end
-            if syncFns.espPlayer       then syncFns.espPlayer(espToggles.player)           end
+            if syncFns.neverfail       then syncFns.neverfail(neverfailEnabled)            if syncFns.espPlayer       then syncFns.espPlayer(espToggles.player)           end
             if syncFns.espPods         then syncFns.espPods(espToggles.pods)               end
             if syncFns.espPc           then syncFns.espPc(espToggles.pc)                   end
             if syncFns.espExits        then syncFns.espExits(espToggles.exits)             end
@@ -1113,13 +1112,13 @@ local function loadSettings()
             if syncFns.noTexture       then syncFns.noTexture(isPlasticOn)                 end
             if syncFns.flashlight      then syncFns.flashlight(Flashlight.enabled)         end
             if syncFns.selfMuting      then syncFns.selfMuting(SelfMuting.enabled)         end
-            if pcProgressRunning       then startPCProgress()     end
-            if beastTrackerRunning     then startBeastTracker()   end
-            if SurvivorTracker.enabled then SurvivorTracker.start() end
-            if WallhopView.enabled     then WallhopView.start()   end
-            if isPlasticOn             then scanMap()              end
-            if Flashlight.enabled      then Flashlight.start()    end
-            if SelfMuting.enabled      then SelfMuting.start()    end
+            if pcProgressRunning       then stopPCProgress(); startPCProgress()     end
+            if beastTrackerRunning     then stopBeastTracker(); startBeastTracker()   end
+            if SurvivorTracker.enabled then SurvivorTracker.stop(); SurvivorTracker.start() end
+            if WallhopView.enabled     then WallhopView.stop(); WallhopView.start()   end
+            if isPlasticOn             then restoreMap(); scanMap()              end
+            if Flashlight.enabled      then Flashlight.stop(); Flashlight.start()    end
+            if SelfMuting.enabled      then SelfMuting.stop(); SelfMuting.start()    end
         end)
     end)
 end
