@@ -1105,7 +1105,7 @@ local function loadSettings()
             if syncFns.espPc           then syncFns.espPc(espToggles.pc)                   end
             if syncFns.espExits        then syncFns.espExits(espToggles.exits)             end
             if syncFns.autoRope        then syncFns.autoRope(ropeEnabled)                  end
-            if syncFns.hitAura         then syncFns.hitAura(auraEnabled).                  end
+            if syncFns.hitAura         then syncFns.hitAura(auraEnabled)                   end
             if syncFns.pcProgress      then syncFns.pcProgress(pcProgressRunning)          end
             if syncFns.beastTracker    then syncFns.beastTracker(beastTrackerRunning)      end
             if syncFns.survivorTracker then syncFns.survivorTracker(SurvivorTracker.enabled) end
