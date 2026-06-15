@@ -1546,7 +1546,11 @@ local InfoCard = Instance.new("Frame", Panes[1])
 InfoCard.Size=UDim2.new(1,0,0,60); InfoCard.BackgroundColor3=CFG.Card
 InfoCard.BorderSizePixel=0; InfoCard.ZIndex=15; InfoCard.LayoutOrder=1
 corner(InfoCard,9); stroke(InfoCard,CFG.Border,1,0.91)
-
+print("corner", corner)
+print("stroke", stroke)
+print("addSection", addSection)
+print("CopyText", CopyText)
+print("TypeGlitch", TypeGlitch)
 local TEXT_SPEED = 0.015
 local lineH = 11 * 1.18
 
