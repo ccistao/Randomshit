@@ -11,6 +11,40 @@ local lp = Players.LocalPlayer
 repeat task.wait() until lp and lp:FindFirstChild("PlayerGui")
 local pgui = lp:FindFirstChildOfClass("PlayerGui")
 
+local DISCORD_LINK = "https://discord.gg/Ep8rjFC7DM"
+
+local function CopyText(text)
+     if setclipboard then pcall(function() setclipboard(text) end) return true end
+     if writeclipboard then pcall(function() writeclipboard(text) end) return true end
+     if toclipboard then pcall(function() toclipboard(text) end) return true end
+     local ok = pcall(function() StarterGui:SetCore("Clipboard", text) end)
+     return ok
+end
+local function TypeGlitch(lbl, text, speed)
+    speed = speed or 0.015
+    local g = {"!","@","#","$","%","&","*","0","1","X","Z"}
+    lbl.Text = ""
+    local charsPerStep = speed <= 0.005 and 3 or speed <= 0.01 and 2 or 1
+    local i = 1
+    while i <= #text do
+        local currentEnd = math.min(i + charsPerStep - 1, #text)
+        local pre = text:sub(1, currentEnd - 1)
+        local nx = text:sub(currentEnd, currentEnd)
+        if speed > 0.005 and nx ~= " " and nx ~= "\n" then
+            lbl.Text = pre .. g[math.random(#g)]
+            task.wait(speed * 0.4)
+        end
+        lbl.Text = text:sub(1, currentEnd)
+        i = currentEnd + 1
+        task.wait(speed)   
+    end
+end
+
+
+local lp = Players.LocalPlayer
+repeat task.wait() until lp and lp:FindFirstChild("PlayerGui")
+local pgui = lp:FindFirstChildOfClass("PlayerGui")
+
 local function isMobile()
     return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 end
