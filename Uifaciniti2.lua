@@ -1,4 +1,4 @@
-warn("=== START ===")
+
 local Players          = game:GetService("Players")
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -1547,126 +1547,168 @@ local InfoCard = Instance.new("Frame", Panes[1])
 InfoCard.Size=UDim2.new(1,0,0,60); InfoCard.BackgroundColor3=CFG.Card
 InfoCard.BorderSizePixel=0; InfoCard.ZIndex=15; InfoCard.LayoutOrder=1
 corner(InfoCard,9); stroke(InfoCard,CFG.Border,1,0.91)
-print("corner", corner)
-print("stroke", stroke)
-print("addSection", addSection)
-print("CopyText", CopyText)
-print("TypeGlitch", TypeGlitch)
-local TEXT_SPEED = 0.015
-local lineH = 11 * 1.18
 
-local Af = Instance.new("Frame", InfoCard)
-Af.Size=UDim2.new(0,74,0,74); Af.Position=UDim2.new(0,12,0,12)
-Af.BackgroundColor3=CFG.Accent; corner(Af,50)
-local Av = Instance.new("ImageLabel", Af)
-Av.Size=UDim2.new(1,-4,1,-4); Av.Position=UDim2.new(0,2,0,2)
-Av.BackgroundColor3=CFG.Card
-Av.Image = "rbxthumb://type=AvatarHeadShot&id="..lp.UserId.."&w=150&h=150"
-corner(Av,50)
+local success, errorMessage = pcall(function()
+    -- [1] KIỂM TRA CÁC BIẾN VÀ HÀM TOÀN CỤC TRƯỚC KHI CHẠY
+    -- Nếu thiếu cái nào, script sẽ in ra log ngay lập tức
+    local requiredGlobals = {
+        {name = "CFG", value = CFG},
+        {name = "lp", value = lp},
+        {name = "corner", value = corner},
+        {name = "stroke", value = stroke},
+        {name = "addSection", value = addSection},
+        {name = "Panes", value = Panes},
+        {name = "InfoCard", value = InfoCard},
+        {name = "TypeGlitch", value = TypeGlitch},
+        {name = "DISCORD_LINK", value = DISCORD_LINK},
+        {name = "CopyText", value = CopyText},
+        {name = "TextService", value = game:GetService("TextService")}
+    }
 
-local function mk(y)
-    local x = Instance.new("TextLabel", InfoCard)
-    x.Size=UDim2.new(1,-110,0,16); x.Position=UDim2.new(0,105,0,y)
-    x.BackgroundTransparency=1; x.TextColor3=CFG.Text
-    x.TextSize=11; x.Font=Enum.Font.GothamBold; x.TextXAlignment="Left"
-    return x
+    for _, item in ipairs(requiredGlobals) do
+        if item.value == nil then
+            warn("⚠️ [Kiểm tra] Biến hoặc Hàm bị NIL: " .. item.name)
+        end
+    end
+
+    -- [2] BẮT ĐẦU ĐOẠN CODE CHÍNH CỦA BẠN
+    local TEXT_SPEED = 0.015
+    local lineH = 11 * 1.18
+
+    local Af = Instance.new("Frame", InfoCard)
+    Af.Size=UDim2.new(0,74,0,74); Af.Position=UDim2.new(0,12,0,12)
+    Af.BackgroundColor3=CFG.Accent; corner(Af,50)
+    local Av = Instance.new("ImageLabel", Af)
+    Av.Size=UDim2.new(1,-4,1,-4); Av.Position=UDim2.new(0,2,0,2)
+    Av.BackgroundColor3=CFG.Card
+    Av.Image = "rbxthumb://type=AvatarHeadShot&id="..lp.UserId.."&w=150&h=150"
+    corner(Av,50)
+
+    local function mk(y)
+        local x = Instance.new("TextLabel", InfoCard)
+        x.Size=UDim2.new(1,-110,0,16); x.Position=UDim2.new(0,105,0,y)
+        x.BackgroundTransparency=1; x.TextColor3=CFG.Text
+        x.TextSize=11; x.Font=Enum.Font.GothamBold; x.TextXAlignment="Left"
+        return x
+    end
+    local Nm = mk(10)
+    local Mn = mk(28)
+    local Lv = mk(46)
+    local Ty = mk(64)
+    local Ex = mk(82)
+
+    local Pb = Instance.new("Frame", InfoCard)
+    Pb.Size=UDim2.new(0,80,0,14); Pb.BackgroundColor3=Color3.fromRGB(45,20,20)
+    corner(Pb,4); stroke(Pb,CFG.Accent,1,.6)
+    local Pt = Instance.new("TextLabel", Pb)
+    Pt.Size=UDim2.new(1,0,1,0); Pt.BackgroundTransparency=1
+    Pt.Text="PREMIUM USER"; Pt.TextColor3=CFG.Accent; Pt.TextSize=8; Pt.Font=Enum.Font.GothamBold
+    Pb.Visible = false
+
+    addSection(Panes[1], "Welcome", 2)
+    local Wp = Instance.new("Frame", Panes[1])
+    Wp.Size=UDim2.new(1,0,0,175); Wp.BackgroundColor3=CFG.Card
+    Wp.BorderSizePixel=0; Wp.ZIndex=15; Wp.LayoutOrder=3
+    corner(Wp,10); stroke(Wp,CFG.Border,1,.94)
+
+    local Wt = Instance.new("TextLabel", Wp)
+    Wt.Size=UDim2.new(1,-24,0,85); Wt.Position=UDim2.new(0,12,0,8)
+    Wt.BackgroundTransparency=1; Wt.TextColor3=CFG.TextMute
+    Wt.TextSize=11; Wt.Font=Enum.Font.Code; Wt.TextXAlignment="Left"; Wt.TextYAlignment="Top"
+    Wt.TextWrapped=false; Wt.LineHeight=1.18
+
+    local HereBtn = Instance.new("TextButton", Wp)
+    HereBtn.Size = UDim2.new(0,40,0,lineH)
+    HereBtn.BackgroundTransparency=1; HereBtn.TextColor3=CFG.Accent
+    HereBtn.TextSize=11; HereBtn.Font=Enum.Font.Code; HereBtn.AutoButtonColor=false
+    HereBtn.ZIndex=20; HereBtn.Visible=false
+
+    local CL = Instance.new("TextLabel", Wp)
+    CL.Size=UDim2.new(1,-24,0,14); CL.Position=UDim2.new(0,12,0,0)
+    CL.BackgroundTransparency=1; CL.TextColor3=Color3.fromRGB(165,155,155)
+    CL.TextSize=11; CL.Font=Enum.Font.GothamBold; CL.TextXAlignment="Left"
+
+    local KB = Instance.new("TextLabel", Wp)
+    KB.Size=UDim2.new(1,-24,0,14); KB.Position=UDim2.new(0,12,0,0)
+    KB.BackgroundTransparency=1; KB.TextColor3=CFG.TextMute
+    KB.TextSize=11; KB.Font=Enum.Font.Code; KB.TextXAlignment="Left"
+
+    HereBtn.MouseButton1Click:Connect(function()
+        -- Bọc pcall nhỏ riêng cho nút bấm đề phòng lỗi khi click
+        local bSuccess, bError = pcall(function()
+            CopyText(DISCORD_LINK)
+            local old = HereBtn.TextColor3
+            HereBtn.Text = "copied!"
+            HereBtn.TextColor3 = Color3.fromRGB(60,220,90)
+            task.delay(1.5, function() HereBtn.Text="here"; HereBtn.TextColor3=old end)
+        end)
+        if not bSuccess then warn("❌ Lỗi khi nhấn nút Sao chép:", bError) end
+    end)
+
+    -- [3] BỌC PCALL CHO CÁC TIẾN TRÌNH BẤT ĐỒNG BỘ (task.spawn)
+    task.spawn(function()
+        local s, e = pcall(function()
+            local money="0", level="0"
+            local m = lp:WaitForChild("SavedPlayerStatsModule",3)
+            if m then
+                local cr=m:FindFirstChild("Credits"); local lv=m:FindFirstChild("Level")
+                if cr then money=tostring(cr.Value) end
+                if lv then level=tostring(lv.Value) end
+            end
+            TypeGlitch(Nm, "---- Name: "..lp.Name, TEXT_SPEED)
+            TypeGlitch(Mn, "---- Money: "..money, TEXT_SPEED)
+            TypeGlitch(Lv, "---- Level: "..level, TEXT_SPEED)
+            local tStr = "---- Type: "
+            TypeGlitch(Ty, tStr, TEXT_SPEED)
+            
+            local TextService = game:GetService("TextService")
+            local w = TextService:GetTextSize(tStr,11,Enum.Font.GothamBold,Vector2.new(999,16)).X
+            Pb.Position=UDim2.new(0,105+w+4,0,74); Pb.Visible=true
+            TypeGlitch(Ex, "---- Expires: ∞", TEXT_SPEED)
+
+            task.wait(.01)
+            local first="Welcome to ExFTF!"
+            local rest="Thank you very much for trusting and using our script. We commit to being one of the best FTF scripts out there. If you find any bugs or issues, report to us on our Discord "
+            local maxW=315; local lines={first}; local cur=""
+            for wd in rest:gmatch("%S+") do
+                local tst=cur=="" and wd or cur.." "..wd
+                if TextService:GetTextSize(tst,11,Enum.Font.Code,Vector2.new(9999,16)).X<=maxW then cur=tst
+                else table.insert(lines,cur); cur=wd end
+            end
+            if cur~="" then table.insert(lines,cur) end
+            local FULL=table.concat(lines,"\n"); local nL=#lines
+            TypeGlitch(Wt,FULL,TEXT_SPEED)
+            local llw=TextService:GetTextSize(lines[nL].." ",11,Enum.Font.Code,Vector2.new(9999,16)).X
+            HereBtn.Position=UDim2.new(0,12+llw,0,8+lineH*(nL-1)-1)
+            HereBtn.Visible=true
+            TypeGlitch(HereBtn,"here",TEXT_SPEED)
+            local dy=8+(lineH*nL)+12
+            CL.Position=UDim2.new(0,12,0,dy); KB.Position=UDim2.new(0,12,0,dy+16)
+            TypeGlitch(CL,"- Change Logs -",TEXT_SPEED)
+            TypeGlitch(KB,"+ kilo beo",TEXT_SPEED)
+            Wp.Size=UDim2.new(1,0,0,dy+42)
+        end)
+        if not s then warn("❌ Lỗi trong luồng task.spawn (Hiển thị chữ/Glitch):", e) end
+    end)
+
+    task.spawn(function()
+        local s, e = pcall(function()
+            local m=lp:WaitForChild("SavedPlayerStatsModule",5) if not m then return end
+            local cr=m:FindFirstChild("Credits"); local lv=m:FindFirstChild("Level")
+            if cr then cr.Changed:Connect(function(v) Mn.Text="---- Money: "..v end) end
+            if lv then lv.Changed:Connect(function(v) Lv.Text="---- Level: "..v end) end
+        end)
+        if not s then warn("❌ Lỗi trong luồng task.spawn (Cập nhật Stats):", e) end
+    end)
+
+end)
+
+-- [4] IN LỖI RA LOG NẾU ĐOẠN CHÍNH BỊ CRASH
+if not success then
+    warn("🔴 CRASH LOG - Phát hiện lỗi nghiêm trọng trong script:")
+    print(errorMessage)
 end
-local Nm = mk(10)
-local Mn = mk(28)
-local Lv = mk(46)
-local Ty = mk(64)
-local Ex = mk(82)
 
-local Pb = Instance.new("Frame", InfoCard)
-Pb.Size=UDim2.new(0,80,0,14); Pb.BackgroundColor3=Color3.fromRGB(45,20,20)
-corner(Pb,4); stroke(Pb,CFG.Accent,1,.6)
-local Pt = Instance.new("TextLabel", Pb)
-Pt.Size=UDim2.new(1,0,1,0); Pt.BackgroundTransparency=1
-Pt.Text="PREMIUM USER"; Pt.TextColor3=CFG.Accent; Pt.TextSize=8; Pt.Font=Enum.Font.GothamBold
-Pb.Visible = false
-
-addSection(Panes[1], "Welcome", 2)
-local Wp = Instance.new("Frame", Panes[1])
-Wp.Size=UDim2.new(1,0,0,175); Wp.BackgroundColor3=CFG.Card
-Wp.BorderSizePixel=0; Wp.ZIndex=15; Wp.LayoutOrder=3
-corner(Wp,10); stroke(Wp,CFG.Border,1,.94)
-
-local Wt = Instance.new("TextLabel", Wp)
-Wt.Size=UDim2.new(1,-24,0,85); Wt.Position=UDim2.new(0,12,0,8)
-Wt.BackgroundTransparency=1; Wt.TextColor3=CFG.TextMute
-Wt.TextSize=11; Wt.Font=Enum.Font.Code; Wt.TextXAlignment="Left"; Wt.TextYAlignment="Top"
-Wt.TextWrapped=false; Wt.LineHeight=1.18
-
-local HereBtn = Instance.new("TextButton", Wp)
-HereBtn.Size = UDim2.new(0,40,0,lineH)
-HereBtn.BackgroundTransparency=1; HereBtn.TextColor3=CFG.Accent
-HereBtn.TextSize=11; HereBtn.Font=Enum.Font.Code; HereBtn.AutoButtonColor=false
-HereBtn.ZIndex=20; HereBtn.Visible=false
-
-local CL = Instance.new("TextLabel", Wp)
-CL.Size=UDim2.new(1,-24,0,14); CL.Position=UDim2.new(0,12,0,0)
-CL.BackgroundTransparency=1; CL.TextColor3=Color3.fromRGB(165,155,155)
-CL.TextSize=11; CL.Font=Enum.Font.GothamBold; CL.TextXAlignment="Left"
-
-local KB = Instance.new("TextLabel", Wp)
-KB.Size=UDim2.new(1,-24,0,14); KB.Position=UDim2.new(0,12,0,0)
-KB.BackgroundTransparency=1; KB.TextColor3=CFG.TextMute
-KB.TextSize=11; KB.Font=Enum.Font.Code; KB.TextXAlignment="Left"
-
-HereBtn.MouseButton1Click:Connect(function()
-    CopyText(DISCORD_LINK)
-    local old = HereBtn.TextColor3
-    HereBtn.Text = "copied!"
-    HereBtn.TextColor3 = Color3.fromRGB(60,220,90)
-    task.delay(1.5, function() HereBtn.Text="here"; HereBtn.TextColor3=old end)
-end)
-
-task.spawn(function()
-    local money="0", level="0"
-    local m = lp:WaitForChild("SavedPlayerStatsModule",3)
-    if m then
-        local cr=m:FindFirstChild("Credits"); local lv=m:FindFirstChild("Level")
-        if cr then money=tostring(cr.Value) end
-        if lv then level=tostring(lv.Value) end
-    end
-    TypeGlitch(Nm, "---- Name: "..lp.Name, TEXT_SPEED)
-    TypeGlitch(Mn, "---- Money: "..money, TEXT_SPEED)
-    TypeGlitch(Lv, "---- Level: "..level, TEXT_SPEED)
-    local tStr = "---- Type: "
-    TypeGlitch(Ty, tStr, TEXT_SPEED)
-    local w = TextService:GetTextSize(tStr,11,Enum.Font.GothamBold,Vector2.new(999,16)).X
-    Pb.Position=UDim2.new(0,105+w+4,0,74); Pb.Visible=true
-    TypeGlitch(Ex, "---- Expires: ∞", TEXT_SPEED)
-
-    task.wait(.01)
-    local first="Welcome to ExFTF!"
-    local rest="Thank you very much for trusting and using our script. We commit to being one of the best FTF scripts out there. If you find any bugs or issues, report to us on our Discord "
-    local maxW=315; local lines={first}; local cur=""
-    for wd in rest:gmatch("%S+") do
-        local tst=cur=="" and wd or cur.." "..wd
-        if TextService:GetTextSize(tst,11,Enum.Font.Code,Vector2.new(9999,16)).X<=maxW then cur=tst
-        else table.insert(lines,cur); cur=wd end
-    end
-    if cur~="" then table.insert(lines,cur) end
-    local FULL=table.concat(lines,"\n"); local nL=#lines
-    TypeGlitch(Wt,FULL,TEXT_SPEED)
-    local llw=TextService:GetTextSize(lines[nL].." ",11,Enum.Font.Code,Vector2.new(9999,16)).X
-    HereBtn.Position=UDim2.new(0,12+llw,0,8+lineH*(nL-1)-1)
-    HereBtn.Visible=true
-    TypeGlitch(HereBtn,"here",TEXT_SPEED)
-    local dy=8+(lineH*nL)+12
-    CL.Position=UDim2.new(0,12,0,dy); KB.Position=UDim2.new(0,12,0,dy+16)
-    TypeGlitch(CL,"- Change Logs -",TEXT_SPEED)
-    TypeGlitch(KB,"+ kilo beo",TEXT_SPEED)
-    Wp.Size=UDim2.new(1,0,0,dy+42)
-end)
-
-task.spawn(function()
-    local m=lp:WaitForChild("SavedPlayerStatsModule",5) if not m then return end
-    local cr=m:FindFirstChild("Credits"); local lv=m:FindFirstChild("Level")
-    if cr then cr.Changed:Connect(function(v) Mn.Text="---- Money: "..v end) end
-    if lv then lv.Changed:Connect(function(v) Lv.Text="---- Level: "..v end) end
-end)
 
 addSection(Panes[2], "Main Features", 0)
 addToggle(Panes[2], "⊙", "Beast tracker",    "Tracks beast selections and skill triggers", false, 2, function(s)
