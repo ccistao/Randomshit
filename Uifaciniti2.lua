@@ -42,10 +42,20 @@ local DISCORD_LINK = "https://discord.gg/Ep8rjFC7DM"
 local function isMobile()
     return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 end
-local function tw(obj, info, prop)
-    local t = TweenService:Create(obj, info, prop)
-    t:Play()
-    return t
+local function tw(obj, info, props)
+    local t = TweenService:Create(obj, info, props); t:Play(); return t
+end
+local function corner(p, r)
+    local c = Instance.new("UICorner", p); c.CornerRadius = UDim.new(0, r or 8); return c
+end
+local function stroke(p, col, thick, trans)
+    local s = Instance.new("UIStroke", p)
+    s.Color=col or Color3.new(1,1,1); s.Thickness=thick or 1; s.Transparency=trans or 0.88; return s
+end
+local function pad(p, t, b, l, r)
+    local u = Instance.new("UIPadding", p)
+    u.PaddingTop=UDim.new(0,t or 0); u.PaddingBottom=UDim.new(0,b or 0)
+    u.PaddingLeft=UDim.new(0,l or 0); u.PaddingRight=UDim.new(0,r or 0)
 end
 local syncFns = {}
 
@@ -1191,22 +1201,6 @@ local CFG = {
 }
 
 local fast = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-
-local function tw(obj, info, props)
-    local t = TweenService:Create(obj, info, props); t:Play(); return t
-end
-local function corner(p, r)
-    local c = Instance.new("UICorner", p); c.CornerRadius = UDim.new(0, r or 8); return c
-end
-local function stroke(p, col, thick, trans)
-    local s = Instance.new("UIStroke", p)
-    s.Color=col or Color3.new(1,1,1); s.Thickness=thick or 1; s.Transparency=trans or 0.88; return s
-end
-local function pad(p, t, b, l, r)
-    local u = Instance.new("UIPadding", p)
-    u.PaddingTop=UDim.new(0,t or 0); u.PaddingBottom=UDim.new(0,b or 0)
-    u.PaddingLeft=UDim.new(0,l or 0); u.PaddingRight=UDim.new(0,r or 0)
-end
 
 pcall(function() if pgui:FindFirstChild("DakUI") then pgui.DakUI:Destroy() end end)
 
