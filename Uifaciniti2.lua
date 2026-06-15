@@ -1,4 +1,3 @@
-
 local Players          = game:GetService("Players")
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -1549,29 +1548,6 @@ InfoCard.BorderSizePixel=0; InfoCard.ZIndex=15; InfoCard.LayoutOrder=1
 corner(InfoCard,9); stroke(InfoCard,CFG.Border,1,0.91)
 
 local success, errorMessage = pcall(function()
-    -- [1] KIỂM TRA CÁC BIẾN VÀ HÀM TOÀN CỤC TRƯỚC KHI CHẠY
-    -- Nếu thiếu cái nào, script sẽ in ra log ngay lập tức
-    local requiredGlobals = {
-        {name = "CFG", value = CFG},
-        {name = "lp", value = lp},
-        {name = "corner", value = corner},
-        {name = "stroke", value = stroke},
-        {name = "addSection", value = addSection},
-        {name = "Panes", value = Panes},
-        {name = "InfoCard", value = InfoCard},
-        {name = "TypeGlitch", value = TypeGlitch},
-        {name = "DISCORD_LINK", value = DISCORD_LINK},
-        {name = "CopyText", value = CopyText},
-        {name = "TextService", value = game:GetService("TextService")}
-    }
-
-    for _, item in ipairs(requiredGlobals) do
-        if item.value == nil then
-            warn("⚠️ [Kiểm tra] Biến hoặc Hàm bị NIL: " .. item.name)
-        end
-    end
-
-    -- [2] BẮT ĐẦU ĐOẠN CODE CHÍNH CỦA BẠN
     local TEXT_SPEED = 0.015
     local lineH = 11 * 1.18
 
@@ -1634,7 +1610,6 @@ local success, errorMessage = pcall(function()
     KB.TextSize=11; KB.Font=Enum.Font.Code; KB.TextXAlignment="Left"
 
     HereBtn.MouseButton1Click:Connect(function()
-        -- Bọc pcall nhỏ riêng cho nút bấm đề phòng lỗi khi click
         local bSuccess, bError = pcall(function()
             CopyText(DISCORD_LINK)
             local old = HereBtn.TextColor3
@@ -1642,10 +1617,9 @@ local success, errorMessage = pcall(function()
             HereBtn.TextColor3 = Color3.fromRGB(60,220,90)
             task.delay(1.5, function() HereBtn.Text="here"; HereBtn.TextColor3=old end)
         end)
-        if not bSuccess then warn("❌ Lỗi khi nhấn nút Sao chép:", bError) end
+        if not bSuccess then warn(bError) end
     end)
 
-    -- [3] BỌC PCALL CHO CÁC TIẾN TRÌNH BẤT ĐỒNG BỘ (task.spawn)
     task.spawn(function()
         local s, e = pcall(function()
             local money="0", level="0"
@@ -1660,8 +1634,6 @@ local success, errorMessage = pcall(function()
             TypeGlitch(Lv, "---- Level: "..level, TEXT_SPEED)
             local tStr = "---- Type: "
             TypeGlitch(Ty, tStr, TEXT_SPEED)
-            
-            local TextService = game:GetService("TextService")
             local w = TextService:GetTextSize(tStr,11,Enum.Font.GothamBold,Vector2.new(999,16)).X
             Pb.Position=UDim2.new(0,105+w+4,0,74); Pb.Visible=true
             TypeGlitch(Ex, "---- Expires: ∞", TEXT_SPEED)
@@ -1688,7 +1660,7 @@ local success, errorMessage = pcall(function()
             TypeGlitch(KB,"+ kilo beo",TEXT_SPEED)
             Wp.Size=UDim2.new(1,0,0,dy+42)
         end)
-        if not s then warn("❌ Lỗi trong luồng task.spawn (Hiển thị chữ/Glitch):", e) end
+        if not s then warn(e) end
     end)
 
     task.spawn(function()
@@ -1698,17 +1670,13 @@ local success, errorMessage = pcall(function()
             if cr then cr.Changed:Connect(function(v) Mn.Text="---- Money: "..v end) end
             if lv then lv.Changed:Connect(function(v) Lv.Text="---- Level: "..v end) end
         end)
-        if not s then warn("❌ Lỗi trong luồng task.spawn (Cập nhật Stats):", e) end
+        if not s then warn(e) end
     end)
-
 end)
 
--- [4] IN LỖI RA LOG NẾU ĐOẠN CHÍNH BỊ CRASH
 if not success then
-    warn("🔴 CRASH LOG - Phát hiện lỗi nghiêm trọng trong script:")
-    print(errorMessage)
+    warn(errorMessage)
 end
-
 
 addSection(Panes[2], "Main Features", 0)
 addToggle(Panes[2], "⊙", "Beast tracker",    "Tracks beast selections and skill triggers", false, 2, function(s)
@@ -2073,4 +2041,3 @@ task.defer(function()
 end)
 
 print("[DakUI] OK")
-warn("=== END ===")
