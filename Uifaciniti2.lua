@@ -833,26 +833,6 @@ local function startPCProgress()
     end))
 end
 
-local function getBestPC()
-    local bst = getBeast()
-    if not bst or not bst.Character then return {} end
-    local pcs = {}
-    local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
-    if map then
-        for _, obj in ipairs(map:GetChildren()) do
-            if obj.Name == "ComputerTable" then
-                local scr = obj:FindFirstChild("Screen")
-                if scr and scr.BrickColor ~= BrickColor.new("Dark green") then
-                    local hrp = bst.Character:FindFirstChild("HumanoidRootPart")
-                    if hrp then table.insert(pcs, {magnitude=(scr.Position-hrp.Position).Magnitude, pc=obj}) end
-                end
-            end
-        end
-    end
-    table.sort(pcs, function(a,b) return a.magnitude > b.magnitude end)
-    return pcs
-end
-
 local espToggles = {player=false, pods=false, pc=false, exits=false}
 
 local neverfailEnabled = false
