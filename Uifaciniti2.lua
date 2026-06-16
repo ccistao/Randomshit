@@ -969,6 +969,62 @@ task.spawn(function()
     end
 end)
 
+local autoSaveEnabled = false
+task.spawn(function()
+    local re = Replicated:WaitForChild("RemoteEvent", 10)
+    if not re then return end
+    while true do
+        task.wait(0.05)
+        if not autoSaveEnabled then continue end
+
+        local stats = lp:FindFirstChild("TempPlayerStatsModule")
+        if not stats then continue end
+        local isBeast = stats:FindFirstChild("IsBeast")
+        if isBeast and isBeast.Value then continue end 
+
+        local hp = stats:FindFirstChild("Health")
+        local ragdoll = stats:FindFirstChild("Ragdoll")
+        local captured = stats:FindFirstChild("Captured")
+
+        if (hp and hp.Value <= 0) or (ragdoll and ragdoll.Value) or (captured and captured.Value) then
+            continue
+        end
+
+        local map = Replicated:FindFirstChild("CurrentMap")
+        if not map or not map.Value then continue end
+
+        local eventToTrigger = nil
+        for _, obj in ipairs(map.Value:GetChildren()) do
+            if obj.Name == "FreezePod" then
+                local trigger = obj:FindFirstChild("PodTrigger", true)
+                if trigger then
+                    local capTorso = trigger:FindFirstChild("CapturedTorso")
+                    local evt = trigger:FindFirstChild("Event")
+                    if capTorso and evt and capTorso:IsA("ObjectValue") and capTorso.Value then
+                        eventToTrigger = evt
+                        break
+                    end
+                end
+            end
+        end
+
+        if eventToTrigger then
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p == lp then continue end
+                local pStats = p:FindFirstChild("TempPlayerStatsModule")
+                local pCap = pStats and pStats:FindFirstChild("Captured")
+                if pCap and pCap.Value then
+                    pcall(function()
+                        re:FireServer("Input", "Trigger", true, eventToTrigger)
+                        re:FireServer("Input", "Action", true)
+                    end)
+                    break
+                end
+            end
+        end
+    end
+end)
+
 local isPlasticOn = false
 local cacheMaterials, cacheTextures = {}, {}
 
@@ -1733,13 +1789,15 @@ addToggle(Panes[2], "⊘", "Never Fail",       "Auto pass minigame result to ser
 end, "neverfail")
 
 addSection(Panes[3], "Auto", 0)
-addToggle(Panes[3], "⊕", "Auto Rope", "Beast: auto rope ragdoll survivors", false, 1, function(s)
+addToggle(Panes[3], "⊕", "Auto Rope", "For Beast: auto rope ragdoll survivors", false, 1, function(s)
     ropeEnabled = s; saveSettings()
 end, "autoRope")
-addToggle(Panes[3], "⊙", "Hit Aura", "Beast: Auto hit survivors trong 10 studs", false, 2, function(s)
+addToggle(Panes[3], "⊙", "Hit Aura", "For Beast: Auto hit nearby survivors", false, 2, function(s)
     auraEnabled = s; saveSettings()
 end, "hitAura")
-
+addToggle(Panes[3], "⛑", "Auto Save", "For Survivor: Auto save survivors from afar without getting close", false, 3, function(s)
+    autoSaveEnabled = s; saveSettings()
+end, "autoSave")
 addSection(Panes[4], "Visuals", 0)
 do
     local ESP_OPTIONS = {
