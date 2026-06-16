@@ -1006,11 +1006,22 @@ task.spawn(function()
         end
     end
 end)
+
 local autoBeastFullEnabled = false
 
 task.spawn(function()
     local re = Replicated:WaitForChild("RemoteEvent", 10)
     if not re then return end
+
+    local function isGameActive()
+        local gs = ReplicatedStorage:FindFirstChild("GameStatus")
+        if not gs then return false end
+        local txt = tostring(gs.Value):upper()
+        if txt:find("GAME OVER") then
+            return false
+        end
+        return true
+    end
 
     local function getEmptyCage()
         local map = Replicated:FindFirstChild("CurrentMap")
@@ -1027,36 +1038,46 @@ task.spawn(function()
         return nil, nil
     end
 
-    local function getTarget()
+    local function getBeastNearestSurvivor()
         local root = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
         if not root then return nil end
-        
-        local best, dist = nil, math.huge
+        local nearest, nearestDist = nil, math.huge
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= lp and p.Character then
-                local t = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
-                local h = p.Character:FindFirstChild("Humanoid")
-                
-                if t and h and h.Health > 0 then
-                    local stats = p:FindFirstChild("TempPlayerStatsModule")
-                    if stats then
-                        local isSurvivor = stats:FindFirstChild("IsSurvivor")
-                        local cap = stats:FindFirstChild("Captured")
-                        
-                        if isSurvivor and isSurvivor.Value == true and cap and cap.Value == false then
-                            local d = (root.Position - t.Position).Magnitude
-                            if d < dist then best = p; dist = d end
+                local hum = p.Character:FindFirstChild("Humanoid")
+                local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
+                if hum and torso and hum.Health > 0 then
+                    local captured = false
+                    local map = ReplicatedStorage:FindFirstChild("CurrentMap")
+                    if map and map.Value then
+                        for _, v in ipairs(map.Value:GetChildren()) do
+                            if v.Name == "FreezePod" then
+                                local ct = v:FindFirstChild("CapturedTorso", true)
+                                if ct and ct.Value == torso then
+                                    captured = true
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    if not captured then
+                        local dist = (root.Position - torso.Position).Magnitude
+                        if dist < nearestDist then
+                            nearest = p
+                            nearestDist = dist
                         end
                     end
                 end
             end
         end
-        return best
+        return nearest
     end
 
     while true do
         task.wait(0.05)
         if not autoBeastFullEnabled then continue end
+
+        if not isGameActive() then continue end
 
         local stats = lp:FindFirstChild("TempPlayerStatsModule")
         if not stats then continue end
@@ -1091,7 +1112,7 @@ task.spawn(function()
             continue
         end
 
-        local target = getTarget()
+        local target = getBeastNearestSurvivor()
         if target and target.Character then
             local tTorso = target.Character:FindFirstChild("UpperTorso") or target.Character:FindFirstChild("Torso")
             local tHum = target.Character:FindFirstChild("Humanoid")
@@ -1116,7 +1137,7 @@ task.spawn(function()
                 end
             end
         end
-    end       
+    end
 end)
 
 local isPlasticOn = false
