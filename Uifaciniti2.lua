@@ -1700,7 +1700,7 @@ task.spawn(function()
     TypeGlitch(Wt, FULL, TEXT_SPEED)
     
         local llw = TextService:GetTextSize(lines[nL], 11, Enum.Font.Code, Vector2.new(9999, 16)).X
-        HereBtn.Position = UDim2.new(0, 12 + llw - 1, 0, 12 + lineH * (nL - 1) - 1)
+        HereBtn.Position = UDim2.new(0, 12 + llw - 2, 0, 12 + lineH * (nL - 1) - 1)
         HereBtn.Visible = true
         TypeGlitch(HereBtn, "here", TEXT_SPEED)
     
