@@ -802,7 +802,9 @@ local function startPCProgress()
             local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
             if map and map.Parent then
                 for _, d in ipairs(map:GetDescendants()) do
-                    if d.Name == "ComputerTable" then createBillboard(d); watchPC(d) end
+                    if d.Name == "ComputerTable" and not d:GetFullName():lower():find("prefab") then 
+                        createBillboard(d); watchPC(d) 
+                    end
                 end
             end
             task.wait(1.2)
