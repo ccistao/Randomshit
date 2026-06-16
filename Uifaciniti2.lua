@@ -1595,7 +1595,7 @@ Pt.Font = Enum.Font.GothamBold
 Pb.Visible = false
 
 local Wp = Instance.new("Frame", Panes[1])
-Wp.Size = UDim2.new(1, 0, 0, 140)
+Wp.Size = UDim2.new(1, 0, 0, 145)
 Wp.BackgroundColor3 = CFG.Card
 Wp.BorderSizePixel = 0
 Wp.ZIndex = 15
@@ -1704,9 +1704,9 @@ task.spawn(function()
         HereBtn.Visible = true
         TypeGlitch(HereBtn, "here", TEXT_SPEED)
     
-    local dy = 12 + (lineH * nL) + 12
-    CL.Position = UDim2.new(0, 25, 0, dy)
-    KB.Position = UDim2.new(0, 25, 0, dy + 16)
+    local dy = 12 + (lineH * nL) + 7
+    CL.Position = UDim2.new(0, 12, 0, dy)
+    KB.Position = UDim2.new(0, 12, 0, dy + 16)
     
     TypeGlitch(CL, "- Change Logs -", TEXT_SPEED)
     TypeGlitch(KB, "+ kilo beo", TEXT_SPEED)
