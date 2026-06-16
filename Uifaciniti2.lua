@@ -1006,15 +1006,15 @@ task.spawn(function()
         end
     end
 end)
-
 local autoBeastFullEnabled = false
+
 task.spawn(function()
     local re = Replicated:WaitForChild("RemoteEvent", 10)
     if not re then return end
 
     local function getEmptyCage()
         local map = Replicated:FindFirstChild("CurrentMap")
-        if not map or not map.Value then return nil end
+        if not map or not map.Value then return nil, nil end
         for _, v in ipairs(map.Value:GetChildren()) do
             if v.Name == "FreezePod" then
                 local ct = v:FindFirstChild("CapturedTorso", true)
@@ -1030,17 +1030,23 @@ task.spawn(function()
     local function getTarget()
         local root = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
         if not root then return nil end
+        
         local best, dist = nil, math.huge
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= lp and p.Character then
                 local t = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
                 local h = p.Character:FindFirstChild("Humanoid")
+                
                 if t and h and h.Health > 0 then
                     local stats = p:FindFirstChild("TempPlayerStatsModule")
-                    local cap = stats and stats:FindFirstChild("Captured")
-                    if not (cap and cap.Value) then
-                        local d = (root.Position - t.Position).Magnitude
-                        if d < dist then best = p; dist = d end
+                    if stats then
+                        local isSurvivor = stats:FindFirstChild("IsSurvivor")
+                        local cap = stats:FindFirstChild("Captured")
+                        
+                        if isSurvivor and isSurvivor.Value == true and cap and cap.Value == false then
+                            local d = (root.Position - t.Position).Magnitude
+                            if d < dist then best = p; dist = d end
+                        end
                     end
                 end
             end
@@ -1066,13 +1072,21 @@ task.spawn(function()
         if char:FindFirstChild("RopeConstraint", true) then
             local cage, trigger = getEmptyCage()
             if cage and trigger then
-                pcall(function()
-                    firetouchinterest(root, trigger, 0)
-                    task.wait(0.02)
-                    firetouchinterest(root, trigger, 1)
-                    re:FireServer("Input", "Action", true)
-                end)
-                task.wait(0.15)
+                local t = 0
+                while t < 2 do
+                    pcall(function() firetouchinterest(root, trigger, 0) end)
+                    pcall(function() firetouchinterest(root, trigger, 1) end)
+                    pcall(function() re:FireServer("Input", "Action", true) end)
+                    if trigger:FindFirstChild("Event") then
+                        pcall(function() re:FireServer("Input", "Trigger", true, trigger.Event) end)
+                    end
+
+                    local ct = cage:FindFirstChild("CapturedTorso", true)
+                    if ct and ct.Value ~= nil then break end
+                    
+                    task.wait(0.1)
+                    t = t + 0.1
+                end
             end
             continue
         end
@@ -1085,6 +1099,8 @@ task.spawn(function()
                 local dir = (root.Position - tTorso.Position)
                 dir = dir.Magnitude > 0 and dir.Unit or Vector3.new(0,0,1)
                 root.CFrame = CFrame.new(tTorso.Position + dir * 1.5)
+                root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
 
                 if not tHum.PlatformStand then
                     pcall(function()
@@ -1096,11 +1112,11 @@ task.spawn(function()
                     pcall(function()
                         he:FireServer("HammerTieUp", tTorso, tTorso.Position)
                     end)
-                    task.wait(0.1)
+                    task.wait(0.2) 
                 end
             end
         end
-    end
+    end       
 end)
 
 local isPlasticOn = false
@@ -1876,7 +1892,7 @@ end, "hitAura")
 addToggle(Panes[3], "⛑", "Auto Save", "For Survivor: Auto save survivors without getting close", false, 3, function(s)
     autoSaveEnabled = s; saveSettings()
 end, "autoSave")
-addToggle(Panes[3], "⌖", "Auto Cafaured All", "For Beast: Auto win if u are beast", false, 4, function(s)
+addToggle(Panes[3], "◈", "Auto Cafaured All", "For Beast: Auto win if u are beast", false, 4, function(s)
     autoBeastFullEnabled = s; saveSettings()
 end, "autoBeastFull")
 
