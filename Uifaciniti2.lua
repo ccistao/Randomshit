@@ -1014,7 +1014,7 @@ task.spawn(function()
     if not re then return end
 
     local function isGameActive()
-        local gs = ReplicatedStorage:FindFirstChild("GameStatus")
+        local gs = game.ReplicatedStorage:FindFirstChild("GameStatus")
         if not gs then return false end
         local txt = tostring(gs.Value):upper()
         if txt:find("GAME OVER") then
