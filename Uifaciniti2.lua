@@ -1025,6 +1025,102 @@ task.spawn(function()
     end
 end)
 
+local autoBeastFullEnabled = false
+task.spawn(function()
+    local re = Replicated:WaitForChild("RemoteEvent", 10)
+    if not re then return end
+
+    local function getEmptyCage()
+        local map = Replicated:FindFirstChild("CurrentMap")
+        if not map or not map.Value then return nil end
+        for _, v in ipairs(map.Value:GetChildren()) do
+            if v.Name == "FreezePod" then
+                local ct = v:FindFirstChild("CapturedTorso", true)
+                if ct and ct.Value == nil then
+                    local trig = v:FindFirstChild("PodTrigger", true)
+                    if trig then return v, trig end
+                end
+            end
+        end
+        return nil, nil
+    end
+
+    local function getTarget()
+        local root = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+        if not root then return nil end
+        local best, dist = nil, math.huge
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= lp and p.Character then
+                local t = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
+                local h = p.Character:FindFirstChild("Humanoid")
+                if t and h and h.Health > 0 then
+                    local stats = p:FindFirstChild("TempPlayerStatsModule")
+                    local cap = stats and stats:FindFirstChild("Captured")
+                    if not (cap and cap.Value) then
+                        local d = (root.Position - t.Position).Magnitude
+                        if d < dist then best = p; dist = d end
+                    end
+                end
+            end
+        end
+        return best
+    end
+
+    while true do
+        task.wait(0.05)
+        if not autoBeastFullEnabled then continue end
+
+        local stats = lp:FindFirstChild("TempPlayerStatsModule")
+        if not stats then continue end
+        local isBeast = stats:FindFirstChild("IsBeast")
+        if not isBeast or not isBeast.Value then continue end
+
+        local char = lp.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local hammer = char and char:FindFirstChild("Hammer")
+        local he = hammer and hammer:FindFirstChild("HammerEvent")
+        if not root or not he then continue end
+
+        if char:FindFirstChild("RopeConstraint", true) then
+            local cage, trigger = getEmptyCage()
+            if cage and trigger then
+                pcall(function()
+                    firetouchinterest(root, trigger, 0)
+                    task.wait(0.02)
+                    firetouchinterest(root, trigger, 1)
+                    re:FireServer("Input", "Action", true)
+                end)
+                task.wait(0.15)
+            end
+            continue
+        end
+
+        local target = getTarget()
+        if target and target.Character then
+            local tTorso = target.Character:FindFirstChild("UpperTorso") or target.Character:FindFirstChild("Torso")
+            local tHum = target.Character:FindFirstChild("Humanoid")
+            if tTorso and tHum then
+                local dir = (root.Position - tTorso.Position)
+                dir = dir.Magnitude > 0 and dir.Unit or Vector3.new(0,0,1)
+                root.CFrame = CFrame.new(tTorso.Position + dir * 1.5)
+
+                if not tHum.PlatformStand then
+                    pcall(function()
+                        he:FireServer("HammerClick", true)
+                        he:FireServer("HammerHit", tTorso)
+                    end)
+                    task.wait(0.05)
+                else
+                    pcall(function()
+                        he:FireServer("HammerTieUp", tTorso, tTorso.Position)
+                    end)
+                    task.wait(0.1)
+                end
+            end
+        end
+    end
+end)
+
 local isPlasticOn = false
 local cacheMaterials, cacheTextures = {}, {}
 
@@ -1798,6 +1894,10 @@ end, "hitAura")
 addToggle(Panes[3], "⛑", "Auto Save", "For Survivor: Auto save survivors from afar without getting close", false, 3, function(s)
     autoSaveEnabled = s; saveSettings()
 end, "autoSave")
+addToggle(Panes[3], "☠", "Auto Catch All", "For Beast: Auto win if u are beast", false, 4, function(s)
+    autoBeastFullEnabled = s; saveSettings()
+end, "autoBeastFull")
+
 addSection(Panes[4], "Visuals", 0)
 do
     local ESP_OPTIONS = {
