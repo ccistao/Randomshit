@@ -1678,7 +1678,9 @@ task.spawn(function()
 
     local TextService = game:GetService("TextService")
     local w = TextService:GetTextSize(tStr, 11, Enum.Font.GothamBold, Vector2.new(999, 16)).X
-    Pb.Position = UDim2.new(0, 105 + w + 4, 0, 74)
+    
+    -- Tọa độ PREMIUM USER đã được set về 65 để ngang hàng với Type (64)
+    Pb.Position = UDim2.new(0, 105 + w + 4, 0, 65)
     Pb.Visible = true
     TypeGlitch(Ex, "---- Expires: ∞", TEXT_SPEED)
 
