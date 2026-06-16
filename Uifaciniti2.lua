@@ -1701,19 +1701,17 @@ task.spawn(function()
     local nL = #lines
     TypeGlitch(Wt, FULL, TEXT_SPEED)
     
-    local llw = TextService:GetTextSize(lines[nL] .. " ", 11, Enum.Font.Code, Vector2.new(9999, 16)).X
-    HereBtn.Position = UDim2.new(0, 12 + llw, 0, 12 + lineH * (nL - 1) - 1)
-    HereBtn.Visible = true
-    TypeGlitch(HereBtn, "here", TEXT_SPEED)
+        local llw = TextService:GetTextSize(lines[nL], 11, Enum.Font.Code, Vector2.new(9999, 16)).X
+        HereBtn.Position = UDim2.new(0, 12 + llw + 4, 0, 12 + lineH * (nL - 1) - 1)
+        HereBtn.Visible = true
+        TypeGlitch(HereBtn, "here", TEXT_SPEED)
     
     local dy = 12 + (lineH * nL) + 12
-    CL.Position = UDim2.new(0, 12, 0, dy)
-    KB.Position = UDim2.new(0, 12, 0, dy + 16)
+    CL.Position = UDim2.new(0, 18, 0, dy)
+    KB.Position = UDim2.new(0, 20, 0, dy + 16)
     
     TypeGlitch(CL, "- Change Logs -", TEXT_SPEED)
     TypeGlitch(KB, "+ kilo beo", TEXT_SPEED)
-    
-    Wp.Size = UDim2.new(1, 0, 0, dy + 42)
 end)
 
 task.spawn(function()
