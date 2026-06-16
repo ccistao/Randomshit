@@ -20,6 +20,7 @@ local function CopyText(text)
      local ok = pcall(function() StarterGui:SetCore("Clipboard", text) end)
      return ok
 end
+
 local function TypeGlitch(lbl, text, speed)
     speed = speed or 0.015
     local g = {"!","@","#","$","%","&","*","0","1","X","Z"}
@@ -39,11 +40,6 @@ local function TypeGlitch(lbl, text, speed)
         task.wait(speed)   
     end
 end
-
-
-local lp = Players.LocalPlayer
-repeat task.wait() until lp and lp:FindFirstChild("PlayerGui")
-local pgui = lp:FindFirstChildOfClass("PlayerGui")
 
 local function isMobile()
     return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
@@ -925,6 +921,7 @@ task.spawn(function()
         end
     end
 end)
+
 local auraEnabled = false
 local hitRadius = 10
 
@@ -942,7 +939,6 @@ local function getValidTargetPart()
             local hum = p.Character:FindFirstChild("Humanoid")
             local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
             
-            -- Kiểm tra survivor còn sống và chưa bị ragdoll/PlatformStand
             if hum and torso and not hum.PlatformStand and hum.Health > 0 then
                 local dist = (root.Position - torso.Position).Magnitude
                 if dist <= nearestDist then
@@ -1548,6 +1544,28 @@ InfoCard.BorderSizePixel=0; InfoCard.ZIndex=15; InfoCard.LayoutOrder=1
 corner(InfoCard,9); stroke(InfoCard,CFG.Border,1,0.91)
 
 local success, errorMessage = pcall(function()
+    -- [1] KIỂM TRA CÁC BIẾN VÀ HÀM TOÀN CỤC TRƯỚC KHI CHẠY
+    local requiredGlobals = {
+        {name = "CFG", value = CFG},
+        {name = "lp", value = lp},
+        {name = "corner", value = corner},
+        {name = "stroke", value = stroke},
+        {name = "addSection", value = addSection},
+        {name = "Panes", value = Panes},
+        {name = "InfoCard", value = InfoCard},
+        {name = "TypeGlitch", value = TypeGlitch},
+        {name = "DISCORD_LINK", value = DISCORD_LINK},
+        {name = "CopyText", value = CopyText},
+        {name = "TextService", value = game:GetService("TextService")}
+    }
+
+    for _, item in ipairs(requiredGlobals) do
+        if item.value == nil then
+            warn("⚠️ [Kiểm tra] Biến hoặc Hàm bị NIL: " .. item.name)
+        end
+    end
+
+    -- [2] BẮT ĐẦU ĐOẠN CODE CHÍNH
     local TEXT_SPEED = 0.015
     local lineH = 11 * 1.18
 
@@ -1617,12 +1635,13 @@ local success, errorMessage = pcall(function()
             HereBtn.TextColor3 = Color3.fromRGB(60,220,90)
             task.delay(1.5, function() HereBtn.Text="here"; HereBtn.TextColor3=old end)
         end)
-        if not bSuccess then warn(bError) end
+        if not bSuccess then warn("❌ Lỗi khi nhấn nút Sao chép:", bError) end
     end)
 
+    -- [3] BỌC PCALL ĐÃ ĐƯỢC FIX LỖI CÚ PHÁP
     task.spawn(function()
         local s, e = pcall(function()
-            local money="0", level="0"
+            local money, level = "0", "0" -- ĐÃ FIX: Chuyển dấu phẩy thành dạng gán đa biến chuẩn
             local m = lp:WaitForChild("SavedPlayerStatsModule",3)
             if m then
                 local cr=m:FindFirstChild("Credits"); local lv=m:FindFirstChild("Level")
@@ -1634,6 +1653,8 @@ local success, errorMessage = pcall(function()
             TypeGlitch(Lv, "---- Level: "..level, TEXT_SPEED)
             local tStr = "---- Type: "
             TypeGlitch(Ty, tStr, TEXT_SPEED)
+            
+            local TextService = game:GetService("TextService")
             local w = TextService:GetTextSize(tStr,11,Enum.Font.GothamBold,Vector2.new(999,16)).X
             Pb.Position=UDim2.new(0,105+w+4,0,74); Pb.Visible=true
             TypeGlitch(Ex, "---- Expires: ∞", TEXT_SPEED)
@@ -1660,7 +1681,7 @@ local success, errorMessage = pcall(function()
             TypeGlitch(KB,"+ kilo beo",TEXT_SPEED)
             Wp.Size=UDim2.new(1,0,0,dy+42)
         end)
-        if not s then warn(e) end
+        if not s then warn("❌ Lỗi trong luồng task.spawn (Hiển thị chữ/Glitch):", e) end
     end)
 
     task.spawn(function()
@@ -1670,12 +1691,14 @@ local success, errorMessage = pcall(function()
             if cr then cr.Changed:Connect(function(v) Mn.Text="---- Money: "..v end) end
             if lv then lv.Changed:Connect(function(v) Lv.Text="---- Level: "..v end) end
         end)
-        if not s then warn(e) end
+        if not s then warn("❌ Lỗi trong luồng task.spawn (Cập nhật Stats):", e) end
     end)
+
 end)
 
 if not success then
-    warn(errorMessage)
+    warn("🔴 CRASH LOG - Phát hiện lỗi nghiêm trọng trong script:")
+    print(errorMessage)
 end
 
 addSection(Panes[2], "Main Features", 0)
