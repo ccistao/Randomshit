@@ -1537,12 +1537,6 @@ for i, tab in ipairs(CFG.Tabs) do
     TabBtns[i] = {bg=bg, lbl=lbl, bar=lbar}
 end
 
-addSection(Panes[1], "Info", 0)
-local InfoCard = Instance.new("Frame", Panes[1])
-InfoCard.Size=UDim2.new(1,0,0,60); InfoCard.BackgroundColor3=CFG.Card
-InfoCard.BorderSizePixel=0; InfoCard.ZIndex=15; InfoCard.LayoutOrder=1
-corner(InfoCard,9); stroke(InfoCard,CFG.Border,1,0.91)
-
 local InfoCard = Instance.new("Frame", Panes[1])
 InfoCard.Size = UDim2.new(1, 0, 0, 100)
 InfoCard.BackgroundTransparency = 1
