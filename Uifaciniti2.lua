@@ -1006,15 +1006,18 @@ task.spawn(function()
         end
     end
 end)
-
 local autoBeastFullEnabled = false
 
 task.spawn(function()
-    local re = Replicated:WaitForChild("RemoteEvent", 10)
+    local Players = game:GetService("Players")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local lp = Players.LocalPlayer
+
+    local re = ReplicatedStorage:WaitForChild("RemoteEvent", 10)
     if not re then return end
 
     local function isGameActive()
-        local gs = game.ReplicatedStorage:FindFirstChild("GameStatus")
+        local gs = ReplicatedStorage:FindFirstChild("GameStatus")
         if not gs then return false end
         local txt = tostring(gs.Value):upper()
         if txt:find("GAME OVER") then
@@ -1024,7 +1027,7 @@ task.spawn(function()
     end
 
     local function getEmptyCage()
-        local map = Replicated:FindFirstChild("CurrentMap")
+        local map = ReplicatedStorage:FindFirstChild("CurrentMap")
         if not map or not map.Value then return nil, nil end
         for _, v in ipairs(map.Value:GetChildren()) do
             if v.Name == "FreezePod" then
