@@ -1277,6 +1277,10 @@ local function reloadESP()
             if p ~= lp and p.Character then
                 local char = p.Character
                 local h = char:FindFirstChildOfClass("Highlight")
+                if locker:HasTag("MUST_CRAWL") then
+                    if h then h:Destroy() end
+                    continue
+                end
                 if h and not espToggles.player then h:Destroy()
                 elseif not h and espToggles.player then
                     local a = Instance.new("Highlight", char)
