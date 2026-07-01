@@ -1192,6 +1192,7 @@ local function saveSettings()
             espPods         = espToggles.pods,
             espPc           = espToggles.pc,
             espExits        = espToggles.exits,
+            espLockers      = espToggles.lockers,
             neverfail       = neverfailEnabled,
             autoRope        = ropeEnabled,
             hitAura         = auraEnabled,
@@ -1260,6 +1261,18 @@ local function reloadESP()
                 end
             end
         end
+        
+        for _, locker in ipairs(CollectionService:GetTagged("LOCKER")) do
+            local h = locker:FindFirstChildOfClass("Highlight")
+            if h and not espToggles.lockers then h:Destroy()
+            elseif not h and espToggles.lockers then
+                local a = Instance.new("Highlight", locker)
+                a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                a.FillColor = Color3.fromRGB(200, 50, 255)
+                a.OutlineColor = Color3.fromRGB(255, 100, 255)
+            end
+        end
+
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= lp and p.Character then
                 local char = p.Character
@@ -1296,6 +1309,7 @@ local function loadSettings()
         if data.espPods         ~= nil then espToggles.pods        = data.espPods         end
         if data.espPc           ~= nil then espToggles.pc          = data.espPc           end
         if data.espExits        ~= nil then espToggles.exits       = data.espExits        end
+        if data.espLockers      ~= nil then espToggles.lockers     = data.espLockers      end
         if data.neverfail       ~= nil then neverfailEnabled       = data.neverfail       end
         if data.autoRope        ~= nil then ropeEnabled            = data.autoRope        end
         if data.hitAura         ~= nil then auraEnabled            = data.hitAura         end
@@ -1320,6 +1334,7 @@ local function loadSettings()
             if syncFns.espPods         then syncFns.espPods(espToggles.pods)               end
             if syncFns.espPc           then syncFns.espPc(espToggles.pc)                   end
             if syncFns.espExits        then syncFns.espExits(espToggles.exits)             end
+            if syncFns.espLockers      then syncFns.espLockers(espToggles.lockers)         end
             if syncFns.autoRope        then syncFns.autoRope(ropeEnabled)                  end
             if syncFns.hitAura         then syncFns.hitAura(auraEnabled)                   end
             if syncFns.pcProgress      then syncFns.pcProgress(pcProgressRunning)          end
@@ -2044,7 +2059,11 @@ end
 addToggle(Panes[4], "∞", "PC Progress", "shows hacking progress bars above PCs", false, 6, function(s)
     if s then startPCProgress() else stopPCProgress() end; saveSettings()
 end, "pcProgress")
-
+addToggle(Panes[4], "◨", "Locker ESP", "highlights hiding lockers in purple", false, 7, function(s)
+    espToggles.lockers = s
+    reloadESP()
+    saveSettings()
+end, "espLockers")
 addSection(Panes[5], "Misc Features", 0)
 addToggle(Panes[5], "▣", "No Texture",  "Replaces world assets with solid plastic layers",  false, 1, function(s)
     isPlasticOn = s; if isPlasticOn then scanMap() else restoreMap() end; saveSettings()
