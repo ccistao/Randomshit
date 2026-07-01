@@ -835,7 +835,7 @@ local function startPCProgress()
     end))
 end
 
-local espToggles = {player=false, pods=false, pc=false, exits=false}
+local espToggles = {player=false, pods=false, pc=false, exits=false, lockers=false}
 
 local neverfailEnabled = false
 task.spawn(function()
