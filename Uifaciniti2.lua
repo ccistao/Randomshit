@@ -1261,7 +1261,7 @@ local function reloadESP()
                 end
             end
         end
-        
+        local CollectionService = game:GetService("CollectionService")
         for _, locker in ipairs(CollectionService:GetTagged("LOCKER")) do
             local h = locker:FindFirstChildOfClass("Highlight")
             if h and not espToggles.lockers then h:Destroy()
