@@ -1261,9 +1261,17 @@ local function reloadESP()
                 end
             end
         end
+
         local CollectionService = game:GetService("CollectionService")
         for _, locker in ipairs(CollectionService:GetTagged("LOCKER")) do
+            if not locker then continue end
             local h = locker:FindFirstChildOfClass("Highlight")
+            
+            if CollectionService:HasTag(locker, "MUST_CRAWL") then
+                if h then h:Destroy() end
+                continue
+            end
+            
             if h and not espToggles.lockers then h:Destroy()
             elseif not h and espToggles.lockers then
                 local a = Instance.new("Highlight", locker)
@@ -1277,10 +1285,6 @@ local function reloadESP()
             if p ~= lp and p.Character then
                 local char = p.Character
                 local h = char:FindFirstChildOfClass("Highlight")
-                if locker:HasTag("MUST_CRAWL") then
-                    if h then h:Destroy() end
-                    continue
-                end
                 if h and not espToggles.player then h:Destroy()
                 elseif not h and espToggles.player then
                     local a = Instance.new("Highlight", char)
