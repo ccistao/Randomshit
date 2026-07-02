@@ -1067,10 +1067,19 @@ task.spawn(function()
 
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= lp and p.Character then
+                local tStats = p:FindFirstChild("TempPlayerStatsModule")
+                if not tStats then continue end
+                
+                local tIsBeast = tStats:FindFirstChild("IsBeast")
+                local tHealth = tStats:FindFirstChild("Health")
+                
+                if tIsBeast and tIsBeast.Value == true then continue end
+                if not tHealth or tHealth.Value <= 0 then continue end
+
                 local hum = p.Character:FindFirstChild("Humanoid")
                 local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
                 
-                if hum and torso and hum.Health > 0 and not capturedTorsos[torso] then
+                if hum and torso and not capturedTorsos[torso] then
                     if hum.PlatformStand then
                         table.insert(ragdolled, torso)
                     else
