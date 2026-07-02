@@ -1904,7 +1904,7 @@ end, "hitAura")
 addToggle(Panes[3], "⛑", "Auto Save", "For Survivor: Auto save survivors without getting close", false, 3, function(s)
     autoSaveEnabled = s; saveSettings()
 end, "autoSave")
-addToggle(Panes[3], "◈", "Auto Cafaured All", "For Beast: Auto win if u are beast", false, 4, function(s)
+addToggle(Panes[3], "◈", "Auto Captured All", "For Beast: Auto win if u are beast", false, 4, function(s)
     autoBeastFullEnabled = s; saveSettings()
 end, "autoBeastFull")
 
