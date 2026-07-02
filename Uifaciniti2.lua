@@ -1026,60 +1026,9 @@ task.spawn(function()
         return true
     end
 
-    local function getEmptyCage()
-        local map = ReplicatedStorage:FindFirstChild("CurrentMap")
-        if not map or not map.Value then return nil, nil end
-        for _, v in ipairs(map.Value:GetChildren()) do
-            if v.Name == "FreezePod" then
-                local ct = v:FindFirstChild("CapturedTorso", true)
-                if ct and ct.Value == nil then
-                    local trig = v:FindFirstChild("PodTrigger", true)
-                    if trig then return v, trig end
-                end
-            end
-        end
-        return nil, nil
-    end
-
-    local function getBeastNearestSurvivor()
-        local root = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
-        if not root then return nil end
-        local nearest, nearestDist = nil, math.huge
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= lp and p.Character then
-                local hum = p.Character:FindFirstChild("Humanoid")
-                local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
-                if hum and torso and hum.Health > 0 then
-                    local captured = false
-                    local map = ReplicatedStorage:FindFirstChild("CurrentMap")
-                    if map and map.Value then
-                        for _, v in ipairs(map.Value:GetChildren()) do
-                            if v.Name == "FreezePod" then
-                                local ct = v:FindFirstChild("CapturedTorso", true)
-                                if ct and ct.Value == torso then
-                                    captured = true
-                                    break
-                                end
-                            end
-                        end
-                    end
-                    if not captured then
-                        local dist = (root.Position - torso.Position).Magnitude
-                        if dist < nearestDist then
-                            nearest = p
-                            nearestDist = dist
-                        end
-                    end
-                end
-            end
-        end
-        return nearest
-    end
-
     while true do
-        task.wait(0.05)
+        task.wait()
         if not autoBeastFullEnabled then continue end
-
         if not isGameActive() then continue end
 
         local stats = lp:FindFirstChild("TempPlayerStatsModule")
@@ -1093,52 +1042,68 @@ task.spawn(function()
         local he = hammer and hammer:FindFirstChild("HammerEvent")
         if not root or not he then continue end
 
-        if char:FindFirstChild("RopeConstraint", true) then
-            local cage, trigger = getEmptyCage()
-            if cage and trigger then
-                local t = 0
-                while t < 2 do
-                    pcall(function() firetouchinterest(root, trigger, 0) end)
-                    pcall(function() firetouchinterest(root, trigger, 1) end)
-                    pcall(function() re:FireServer("Input", "Action", true) end)
-                    if trigger:FindFirstChild("Event") then
-                        pcall(function() re:FireServer("Input", "Trigger", true, trigger.Event) end)
+        local capturedTorsos = {}
+        local emptyCages = {}
+        local map = ReplicatedStorage:FindFirstChild("CurrentMap")
+        
+        if map and map.Value then
+            for _, v in ipairs(map.Value:GetChildren()) do
+                if v.Name == "FreezePod" then
+                    local ct = v:FindFirstChild("CapturedTorso", true)
+                    if ct then
+                        if ct.Value ~= nil then
+                            capturedTorsos[ct.Value] = true
+                        else
+                            local trig = v:FindFirstChild("PodTrigger", true)
+                            if trig then table.insert(emptyCages, trig) end
+                        end
                     end
-
-                    local ct = cage:FindFirstChild("CapturedTorso", true)
-                    if ct and ct.Value ~= nil then break end
-                    
-                    task.wait(0.1)
-                    t = t + 0.1
                 end
             end
-            continue
         end
 
-        local target = getBeastNearestSurvivor()
-        if target and target.Character then
-            local tTorso = target.Character:FindFirstChild("UpperTorso") or target.Character:FindFirstChild("Torso")
-            local tHum = target.Character:FindFirstChild("Humanoid")
-            if tTorso and tHum then
-                local dir = (root.Position - tTorso.Position)
-                dir = dir.Magnitude > 0 and dir.Unit or Vector3.new(0,0,1)
-                root.CFrame = CFrame.new(tTorso.Position + dir * 1.5)
-                root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        local standing = {}
+        local ragdolled = {}
 
-                if not tHum.PlatformStand then
-                    pcall(function()
-                        he:FireServer("HammerClick", true)
-                        he:FireServer("HammerHit", tTorso)
-                    end)
-                    task.wait(0.05)
-                else
-                    pcall(function()
-                        he:FireServer("HammerTieUp", tTorso, tTorso.Position)
-                    end)
-                    task.wait(0.2) 
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= lp and p.Character then
+                local hum = p.Character:FindFirstChild("Humanoid")
+                local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
+                
+                if hum and torso and hum.Health > 0 and not capturedTorsos[torso] then
+                    if hum.PlatformStand then
+                        table.insert(ragdolled, torso)
+                    else
+                        table.insert(standing, torso)
+                    end
                 end
             end
+        end
+
+        if char:FindFirstChild("RopeConstraint", true) then
+            if #emptyCages > 0 then
+                local trigger = emptyCages[1]
+                pcall(function() firetouchinterest(root, trigger, 0) end)
+                pcall(function() firetouchinterest(root, trigger, 1) end)
+                pcall(function() re:FireServer("Input", "Action", true) end)
+                if trigger:FindFirstChild("Event") then
+                    pcall(function() re:FireServer("Input", "Trigger", true, trigger.Event) end)
+                end
+            end
+        elseif #standing > 0 then
+            local target = standing[1]
+            root.CFrame = CFrame.new(target.Position + Vector3.new(0, 0, 1.5))
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+            pcall(function()
+                he:FireServer("HammerClick", true)
+                he:FireServer("HammerHit", target)
+            end)
+        elseif #ragdolled > 0 then
+            local target = ragdolled[1]
+            pcall(function()
+                he:FireServer("HammerTieUp", target, target.Position)
+            end)
         end
     end
 end)
