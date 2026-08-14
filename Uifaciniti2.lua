@@ -11,6 +11,229 @@ local lp = Players.LocalPlayer
 repeat task.wait() until lp and lp:FindFirstChild("PlayerGui")
 local pgui = lp:FindFirstChildOfClass("PlayerGui")
 
+local getGuiParent = function()
+    local success, parent = pcall(function() return game:GetService("CoreGui") end)
+    if not success or not parent then parent = pgui end
+    return parent
+end
+local guiParent = getGuiParent()
+if guiParent:FindFirstChild("DakLoadingUI") then
+    guiParent.DakLoadingUI:Destroy()
+end
+local SG = Instance.new("ScreenGui")
+SG.Name = "DakLoadingUI"
+SG.ResetOnSpawn = false
+SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+pcall(function() syn.protect_gui(SG) end)
+SG.Parent = guiParent
+local NotifyContainer = Instance.new("Frame")
+NotifyContainer.Size = UDim2.new(0, 250, 1, -20)
+NotifyContainer.Position = UDim2.new(1, -20, 0, 0)
+NotifyContainer.AnchorPoint = Vector2.new(1, 0)
+NotifyContainer.BackgroundTransparency = 1
+NotifyContainer.Parent = SG
+local NotifyLayout = Instance.new("UIListLayout")
+NotifyLayout.SortOrder = Enum.SortOrder.LayoutOrder
+NotifyLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+NotifyLayout.Padding = UDim.new(0, 10)
+NotifyLayout.Parent = NotifyContainer
+local function CreateNotification(title, desc)
+    local notif = Instance.new("Frame")
+    notif.Size = UDim2.new(1, 0, 0, 60)
+    notif.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+    notif.Position = UDim2.new(1, 50, 0, 0)
+    Instance.new("UICorner", notif).CornerRadius = UDim.new(0, 8)
+    local stroke = Instance.new("UIStroke", notif)
+    stroke.Color = Color3.fromRGB(220, 60, 60)
+    stroke.Thickness = 1
+    local titleLbl = Instance.new("TextLabel", notif)
+    titleLbl.Size = UDim2.new(1, -10, 0, 20)
+    titleLbl.Position = UDim2.new(0, 10, 0, 5)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Text = title
+    titleLbl.TextColor3 = Color3.fromRGB(255, 80, 80)
+    titleLbl.Font = Enum.Font.GothamBold
+    titleLbl.TextSize = 12
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    local descLbl = Instance.new("TextLabel", notif)
+    descLbl.Size = UDim2.new(1, -10, 0, 30)
+    descLbl.Position = UDim2.new(0, 10, 0, 25)
+    descLbl.BackgroundTransparency = 1
+    descLbl.Text = desc
+    descLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+    descLbl.Font = Enum.Font.Gotham
+    descLbl.TextSize = 10
+    descLbl.TextWrapped = true
+    descLbl.TextXAlignment = Enum.TextXAlignment.Left
+    notif.Parent = NotifyContainer
+    TweenService:Create(notif, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, 0)}):Play()
+    task.delay(4, function()
+        local hide = TweenService:Create(notif, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Position = UDim2.new(1, 50, 0, 0)})
+        hide:Play()
+        hide.Completed:Connect(function() notif:Destroy() end)
+    end)
+end
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 270, 0, 120)
+MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+MainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+MainFrame.ClipsDescendants = true
+MainFrame.Parent = SG
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
+local MainStroke = Instance.new("UIStroke", MainFrame)
+MainStroke.Color = Color3.fromRGB(50, 50, 50)
+MainStroke.Thickness = 1
+local Title = Instance.new("TextLabel", MainFrame)
+Title.Size = UDim2.new(1, 0, 0, 35)
+Title.BackgroundTransparency = 1
+Title.Text = "LOADING"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 13
+local Divider = Instance.new("Frame", MainFrame)
+Divider.Size = UDim2.new(1, -20, 0, 1)
+Divider.Position = UDim2.new(0, 10, 0, 35)
+Divider.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+Divider.BorderSizePixel = 0
+local CheckRow = Instance.new("Frame", MainFrame)
+CheckRow.Size = UDim2.new(1, -20, 0, 16)
+CheckRow.Position = UDim2.new(0, 10, 0, 48)
+CheckRow.BackgroundTransparency = 1
+local iconContainer = Instance.new("Frame", CheckRow)
+iconContainer.Size = UDim2.new(0, 14, 0, 14)
+iconContainer.Position = UDim2.new(0, 15, 0.5, -7)
+iconContainer.BackgroundTransparency = 1
+local spinner = Instance.new("ImageLabel", iconContainer)
+spinner.Size = UDim2.new(1, 0, 1, 0)
+spinner.BackgroundTransparency = 1
+spinner.Image = "rbxassetid://3587367081"
+local grad = Instance.new("UIGradient", spinner)
+grad.Transparency = NumberSequence.new({
+    NumberSequenceKeypoint.new(0, 0),
+    NumberSequenceKeypoint.new(1, 1)
+})
+local spinTween = TweenService:Create(spinner, TweenInfo.new(1, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1), {Rotation = 360})
+spinTween:Play()
+local resultIcon = Instance.new("TextLabel", iconContainer)
+resultIcon.Size = UDim2.new(1, 0, 1, 0)
+resultIcon.BackgroundTransparency = 1
+resultIcon.Font = Enum.Font.GothamBold
+resultIcon.TextSize = 13
+resultIcon.Visible = false
+local nameLbl = Instance.new("TextLabel", CheckRow)
+nameLbl.Size = UDim2.new(1, -35, 1, 0)
+nameLbl.Position = UDim2.new(0, 35, 0, 0)
+nameLbl.BackgroundTransparency = 1
+nameLbl.Text = "Starting..."
+nameLbl.TextColor3 = Color3.fromRGB(160, 160, 160)
+nameLbl.Font = Enum.Font.GothamBold
+nameLbl.TextSize = 11
+nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+local ProgressBg = Instance.new("Frame", MainFrame)
+ProgressBg.Size = UDim2.new(1, -30, 0, 6)
+ProgressBg.Position = UDim2.new(0, 15, 1, -22)
+ProgressBg.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Instance.new("UICorner", ProgressBg).CornerRadius = UDim.new(1, 0)
+local pbStroke = Instance.new("UIStroke", ProgressBg)
+pbStroke.Color = Color3.fromRGB(60, 60, 60)
+local ProgressFill = Instance.new("Frame", ProgressBg)
+ProgressFill.Size = UDim2.new(0, 0, 1, 0)
+ProgressFill.BackgroundColor3 = Color3.fromRGB(185, 45, 45)
+Instance.new("UICorner", ProgressFill).CornerRadius = UDim.new(1, 0)
+local ProgressText = Instance.new("TextLabel", MainFrame)
+ProgressText.Size = UDim2.new(1, 0, 0, 15)
+ProgressText.Position = UDim2.new(0, 0, 1, -42)
+ProgressText.BackgroundTransparency = 1
+ProgressText.Text = "Loading modules... 0%"
+ProgressText.TextColor3 = Color3.fromRGB(150, 150, 150)
+ProgressText.Font = Enum.Font.Gotham
+ProgressText.TextSize = 11
+local checks = {
+    {
+        name = "CoreGui Permissions",
+        check = function() return pcall(function() return game:GetService("CoreGui").Name end) and "OK" or "WARN" end,
+        errorDesc = ""
+    },
+    {
+        name = "HttpService & JSON",
+        check = function() return game:GetService("HttpService") and "OK" or "FAIL" end,
+        errorDesc = "Cannot save settings due to missing HttpService."
+    },
+    {
+        name = "File System (I/O)",
+        check = function() return (writefile and readfile) and "OK" or "FAIL" end,
+        errorDesc = "File I/O not supported. Configurations will not be saved!"
+    },
+    {
+        name = "Clipboard System",
+        check = function() return (setclipboard or writeclipboard or toclipboard) and "OK" or "WARN" end,
+        errorDesc = ""
+    },
+    {
+        name = "firetouchinterest",
+        check = function() return firetouchinterest and "OK" or "FAIL" end,
+        errorDesc = "Auto Captured & Auto Save features are disabled."
+    },
+    {
+        name = "fireproximityprompt",
+        check = function() return fireproximityprompt and "OK" or "WARN" end,
+        errorDesc = ""
+    },
+    {
+        name = "firesignal",
+        check = function() return firesignal and "OK" or "FAIL" end,
+        errorDesc = "Auto Join Server Pro cannot automatically click buttons."
+    },
+    {
+        name = "OverlapParams API",
+        check = function() return OverlapParams and "OK" or "FAIL" end,
+        errorDesc = "Engine is outdated. Wallhop view will not function!"
+    }
+}
+local loadingFinished = false
+task.spawn(function()
+    local totalChecks = #checks
+    local currentCheck = 0
+    task.wait(0.5)
+    for _, data in ipairs(checks) do
+        resultIcon.Visible = false
+        spinner.Visible = true
+        nameLbl.Text = data.name
+        nameLbl.TextColor3 = Color3.fromRGB(160, 160, 160)
+        task.wait(math.random(3, 5) / 10) 
+        local status = data.check()
+        spinner.Visible = false
+        resultIcon.Visible = true
+        if status == "OK" then
+            resultIcon.Text = "✓"
+            resultIcon.TextColor3 = Color3.fromRGB(70, 230, 90)
+            nameLbl.TextColor3 = Color3.fromRGB(70, 230, 90)
+        elseif status == "WARN" then
+            resultIcon.Text = "!"
+            resultIcon.TextColor3 = Color3.fromRGB(240, 200, 50)
+            nameLbl.TextColor3 = Color3.fromRGB(240, 200, 50)
+        else
+            resultIcon.Text = "✕"
+            resultIcon.TextColor3 = Color3.fromRGB(240, 70, 70)
+            nameLbl.TextColor3 = Color3.fromRGB(240, 70, 70)
+            CreateNotification("Function Error!", data.errorDesc)
+        end
+        currentCheck = currentCheck + 1
+        local percent = math.floor((currentCheck / totalChecks) * 100)
+        TweenService:Create(ProgressFill, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(percent/100, 0, 1, 0)}):Play()
+        ProgressText.Text = string.format("Loading modules... %d%%", percent)
+        task.wait(0.4)
+    end
+    task.wait(0.5)
+    local fadeOut = TweenService:Create(MainFrame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Size = UDim2.new(0, 0, 0, 0)})
+    fadeOut:Play()
+    fadeOut.Completed:Connect(function()
+        SG:Destroy()
+        loadingFinished = true
+    end)
+end)
+repeat task.wait() until loadingFinished
 local DISCORD_LINK = "https://discord.gg/Ep8rjFC7DM"
 
 local function CopyText(text)
