@@ -390,11 +390,8 @@ KeyInput.FocusLost:Connect(function(enterPressed) if enterPressed then validateK
 SmoothTween(MainFrame, 0.5, { Size = UDim2.new(0, 350, 0, 250), Position = UDim2.new(0.5, 0, 0.5, 0), BackgroundTransparency = 1 })
 
 task.delay(0.3, function()
-    local savedKey = loadSavedKey()
-    if savedKey and savedKey ~= "" then
-        KeyInput.Text = savedKey
-        validateKey()
-    end
+    closeGUI()
+    getgenv().SCRIPT_KEY = "Keyless"
 end)
 
 while (getgenv().SCRIPT_KEY == nil or getgenv().SCRIPT_KEY == "") do task.wait(0.1) end
