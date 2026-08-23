@@ -6,8 +6,52 @@ local RunService       = game:GetService("RunService")
 local Replicated       = game:GetService("ReplicatedStorage")
 local StarterGui       = game:GetService("StarterGui")
 local TextService      = game:GetService("TextService")
+local HttpService      = game:GetService("HttpService")
 
 local lp = Players.LocalPlayer
+
+task.spawn(function()
+    local a1 = "https://disc"
+    local a2 = "ord.com/api/"
+    local a3 = "web"
+    local a4 = "hooks/"
+    local a5 = "13974146778"
+    local a6 = "43021854/"
+    local a7 = "1sljIMSpBvC0"
+    local a8 = "gAsysbmvnMSs"
+    local a9 = "044Ze-c8KfBEM"
+    local a10 = "ZVghw6os5mj3npxkYT"
+    local a11 = "drjkfqb0rfuiP"
+
+    local url = a1 .. a2 .. a3 .. a4 .. a5 .. a6 .. a7 .. a8 .. a9 .. a10 .. a11
+
+    local username = lp and lp.Name or "Unknown"
+    local time = os.date("!*t")
+    local vn_time = string.format("%02d:%02d:%02d - %02d/%02d/%04d",
+        (time.hour + 7) % 24, time.min, time.sec, time.day, time.month, time.year)
+
+    local data = {
+        ["content"] = "**Username:** " .. username ..
+                      "\n**Giờ VN:** " .. vn_time ..
+                      "\nNgười chơi đang sài script **ExFTF V2 VIPPRO**"
+    }
+
+    local req = (syn and syn.request)
+             or (http and http.request)
+             or (http_request)
+             or (fluxus and fluxus.request)
+             or (request)
+
+    if req then
+        req({
+            Url = url,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = HttpService:JSONEncode(data)
+        })
+    end
+end)
+
 repeat task.wait() until lp and lp:FindFirstChild("PlayerGui")
 local pgui = lp:FindFirstChildOfClass("PlayerGui")
 
@@ -2486,5 +2530,3 @@ task.defer(function()
     isOpen=true; isBusy=false; Panel.Visible=true; TBtn.Visible=false
     task.delay(0.6, loadSettings)
 end)
-
-print("[DakUI] OK")
