@@ -1,7 +1,7 @@
 local Config = {
     service = "ExFTF v2",
     provider = "v2",
-    identifier = "100255",
+    identifier = "1000255",
 }
 local JunkieKeySystem = loadstring(game:HttpGet("https://jnkie.com/sdk/library.lua"))()
 JunkieKeySystem.service = Config.service
