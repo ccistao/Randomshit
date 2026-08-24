@@ -10,41 +10,34 @@ local HttpService      = game:GetService("HttpService")
 
 local lp = Players.LocalPlayer
 
-task.spawn(function()
-    local HttpService = game:GetService("HttpService")
-    local lp = game:GetService("Players").LocalPlayer
-    local url = "\104\116\116\112\115\58\47\47\100\105\115\99\111\114\100\46\99\111\109\47\97\112\105\47\119\101\98\104\111\111\107\115\47\49\52\56\51\55\49\50\52\49\55\51\50\53\51\56\55\56\54\53\47\97\104\56\113\68\110\52\106\115\121\49\55\54\111\74\45\95\81\71\56\105\115\75\80\121\73\101\104\82\119\103\50\68\82\84\70\104\79\50\79\89\107\65\102\85\82\116\78\78\86\83\113\117\75\102\111\122\100\73\103\67\97\120\53\104\69\75\88"
-
-    local username = lp and lp.Name or "Unknown"
-    local time = os.date("!*t")
-    local vn_time = string.format("%02d:%02d:%02d - %02d/%02d/%04d",
-        (time.hour + 7) % 24, time.min, time.sec, time.day, time.month, time.year)
-
-    local data = {
-        ["content"] = "**Username:** " .. username ..
-                      "\n**Giờ VN:** " .. vn_time ..
-                      "\nNgười chơi đang sài script **ExFTF V2 VIPPRO**"
-    }
-
-    local req = (syn and syn.request)
-             or (http and http.request)
-             or (http_request)
-             or (fluxus and fluxus.request)
-             or (request)
-
-    if req then
-        local res = req({
-            Url = url,
-            Method = "POST",
-            Headers = { ["Content-Type"] = "application/json" },
-            Body = HttpService:JSONEncode(data)
-        })
-        
-        if res then
-            print("[Webhook Status]:", res.StatusCode)
-        end
-    end
-end)
+-- =========================================================
+-- MYHUB: siêu bảng duy nhất chứa toàn bộ state của script.
+-- Mọi biến toggle/trạng thái nằm trong MyHub.Config,
+-- mọi hàm xử lý logic nằm trong MyHub.Core,
+-- tránh đụng trần 200 biến local ở top-level scope.
+-- =========================================================
+local MyHub = {
+    Config = {
+        ESP = { player=false, pods=false, pc=false, exits=false, lockers=false, vents=false },
+        NeverFail       = false,
+        AutoRope        = false,
+        HitAura         = false,
+        AutoSave        = false,
+        AutoBeastFull   = false,
+        PCProgress      = false,
+        DoorProgress    = false,
+        BeastTracker    = false,
+        SurvivorTracker = false,
+        Wallhop         = false,
+        NoTexture       = false,
+        Flashlight      = false,
+        SelfMuting      = false,
+        Keybind         = Enum.KeyCode.Tab,
+    },
+    Core = {},
+    UI = {},
+    Connections = {},
+}
 
 repeat task.wait() until lp and lp:FindFirstChild("PlayerGui")
 local pgui = lp:FindFirstChildOfClass("PlayerGui")
@@ -527,7 +520,6 @@ function SelfMuting.stop()
     unmuteAll()
 end
 
-local beastTrackerRunning = false
 local beastConnections = {}
 local SKILL_TIMES = {
     runner  = {use=3.5,  cooldown=22},
@@ -675,7 +667,7 @@ local function setupSeerDetection()
     local we = Replicated:FindFirstChild("WarningEvent")
     if we and we:IsA("RemoteEvent") then
         seerEventConnection = we.OnClientEvent:Connect(function()
-            if beastTrackerRunning and foundBeast and skill=="seer" and isGameActive() then triggerSkillUsed() end
+            if MyHub.Config.BeastTracker and foundBeast and skill=="seer" and isGameActive() then triggerSkillUsed() end
         end)
         table.insert(beastConnections, seerEventConnection)
     end
@@ -690,8 +682,8 @@ local function getBeast()
 end
 
 local function startBeastTracker()
-    if beastTrackerRunning then return end
-    beastTrackerRunning = true
+    if MyHub.Config.BeastTracker then return end
+    MyHub.Config.BeastTracker = true
     _beastCheckAccum = 0
     labelCooldown = pgui:FindFirstChild("BeastCooldownUI") and pgui.BeastCooldownUI:FindFirstChild("CooldownLabel") or ensureCooldownUI()
     setBeastTrackerVisible(true)
@@ -702,7 +694,7 @@ local function startBeastTracker()
 
     task.spawn(function()
         local dots = 0
-        while beastTrackerRunning do
+        while MyHub.Config.BeastTracker do
             if not foundBeast then
                 if labelCooldown and labelCooldown.Parent then
                     dots = (dots%3)+1
@@ -714,7 +706,7 @@ local function startBeastTracker()
     end)
 
     task.spawn(function()
-        while beastTrackerRunning do
+        while MyHub.Config.BeastTracker do
             task.wait(0.2)
             if foundBeast then
                 if not beast or not Players:FindFirstChild(beast.Name)
@@ -731,7 +723,7 @@ local function startBeastTracker()
                         task.spawn(function()
                             local ga = Replicated:WaitForChild("IsGameActive", 10)
                             if not ga then return end
-                            repeat task.wait(0.5) until ga.Value==true or not beastTrackerRunning
+                            repeat task.wait(0.5) until ga.Value==true or not MyHub.Config.BeastTracker
                             local power = Replicated:FindFirstChild("CurrentPower")
                             if power and foundBeast then
                                 skill = tostring(power.Value):lower()
@@ -802,7 +794,7 @@ local function startBeastTracker()
 end
 
 local function stopBeastTracker()
-    beastTrackerRunning = false
+    MyHub.Config.BeastTracker = false
     setBeastTrackerVisible(false)
     disconnectBeastTracker()
     isUsingSkill=false; isCooldown=false
@@ -903,7 +895,6 @@ function SurvivorTracker.stop()
     for player in pairs(SurvivorTracker.activeTimers) do hideTimerUI(player) end
 end
 
-local pcProgressRunning = false
 local pcConnections = {}
 
 local function disconnectPCProgress()
@@ -914,7 +905,7 @@ local function disconnectPCProgress()
 end
 
 local function stopPCProgress()
-    pcProgressRunning = false
+    MyHub.Config.PCProgress = false
     disconnectPCProgress()
     for _, v in pairs(workspace:GetDescendants()) do
         if v:IsA("BillboardGui") and v.Name=="PCProgressBB" then v.Enabled = false end
@@ -922,8 +913,8 @@ local function stopPCProgress()
 end
 
 local function startPCProgress()
-    if pcProgressRunning then return end
-    pcProgressRunning = true
+    if MyHub.Config.PCProgress then return end
+    MyHub.Config.PCProgress = true
     for _, v in pairs(workspace:GetDescendants()) do
         if v:IsA("BillboardGui") and v.Name=="PCProgressBB" then v.Enabled = true end
     end
@@ -980,7 +971,7 @@ local function startPCProgress()
     end
 
     table.insert(pcConnections, task.spawn(function()
-        while pcProgressRunning do
+        while MyHub.Config.PCProgress do
             for pc, percent in pairs(pendingUpdate) do
                 if pc and pc.Parent then
                     local pack = pcLabels[pc] or createBillboard(pc)
@@ -1059,7 +1050,7 @@ local function startPCProgress()
     end
 
     table.insert(pcConnections, task.spawn(function()
-        while pcProgressRunning do
+        while MyHub.Config.PCProgress do
             local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
             if map and map.Parent then
                 for _, d in ipairs(map:GetDescendants()) do
@@ -1096,7 +1087,10 @@ local function startPCProgress()
     end))
 end
 
-local doorProgressRunning = false
+-- =========================================================
+-- DOOR PROGRESS ESP
+-- =========================================================
+
 local doorConnections = {}
 local activeDoors = {}
 
@@ -1135,7 +1129,7 @@ local function disconnectDoorProgress()
 end
 
 local function stopDoorProgress()
-    doorProgressRunning = false
+    MyHub.Config.DoorProgress = false
     disconnectDoorProgress()
     for trigger, esp in pairs(activeDoors) do
         if esp.bb then esp.bb:Destroy() end
@@ -1144,8 +1138,8 @@ local function stopDoorProgress()
 end
 
 local function startDoorProgress()
-    if doorProgressRunning then return end
-    doorProgressRunning = true
+    if MyHub.Config.DoorProgress then return end
+    MyHub.Config.DoorProgress = true
 
     local OVERLAP_CHECK_INTERVAL = 0.1
     local lastOverlapCheck = 0
@@ -1284,20 +1278,17 @@ local function startDoorProgress()
     end))
 end
 
-local espToggles = {player=false, pods=false, pc=false, exits=false, lockers=false, vents=false}
 
-local neverfailEnabled = false
 task.spawn(function()
     local re = Replicated:WaitForChild("RemoteEvent", 10)
     if not re then return end
     while true do
         task.wait(0.5)
-        if not neverfailEnabled then continue end
+        if not MyHub.Config.NeverFail then continue end
         pcall(function() re:FireServer("SetPlayerMinigameResult", true) end)
     end
 end)
 
-local ropeEnabled = false
 
 local function isSelfBeast()
     local stats = lp:FindFirstChild("TempPlayerStatsModule")
@@ -1334,7 +1325,7 @@ end
 task.spawn(function()
     while true do
         task.wait(0.1)
-        if not ropeEnabled or not isSelfBeast() then continue end
+        if not MyHub.Config.AutoRope or not isSelfBeast() then continue end
         local remote = getHammerEvent()
         if not remote then continue end
         local char = lp.Character
@@ -1353,7 +1344,6 @@ task.spawn(function()
     end
 end)
 
-local auraEnabled = false
 local hitRadius = 10
 
 local function getValidTargetPart()
@@ -1385,7 +1375,7 @@ end
 task.spawn(function()
     while true do
         task.wait(0.1)
-        if not auraEnabled or not isSelfBeast() then continue end
+        if not MyHub.Config.HitAura or not isSelfBeast() then continue end
         
         local remote = getHammerEvent()
         if not remote then continue end
@@ -1400,13 +1390,12 @@ task.spawn(function()
     end
 end)
 
-local autoSaveEnabled = false
 task.spawn(function()
     local re = Replicated:WaitForChild("RemoteEvent", 10)
     if not re then return end
     while true do
         task.wait(0.05)
-        if not autoSaveEnabled then continue end
+        if not MyHub.Config.AutoSave then continue end
 
         local stats = lp:FindFirstChild("TempPlayerStatsModule")
         if not stats then continue end
@@ -1455,7 +1444,6 @@ task.spawn(function()
         end
     end
 end)
-local autoBeastFullEnabled = false
 
 task.spawn(function()
     local Players = game:GetService("Players")
@@ -1477,7 +1465,7 @@ task.spawn(function()
 
     while true do
         task.wait()
-        if not autoBeastFullEnabled then continue end
+        if not MyHub.Config.AutoBeastFull then continue end
         if not isGameActive() then continue end
 
         local stats = lp:FindFirstChild("TempPlayerStatsModule")
@@ -1566,7 +1554,6 @@ task.spawn(function()
     end
 end)
 
-local isPlasticOn = false
 local cacheMaterials, cacheTextures = {}, {}
 
 local function isProtectedMaterial(mat)
@@ -1601,44 +1588,47 @@ end
 
 if Replicated:FindFirstChild("CurrentMap") then
     Replicated.CurrentMap.Changed:Connect(function()
-        if isPlasticOn then task.spawn(function() task.wait(2); scanMap() end) end
+        if MyHub.Config.NoTexture then task.spawn(function() task.wait(2); scanMap() end) end
     end)
 end
 
 local SAVE_FILE = "dakui_settings.json"
-local currentKeybind = Enum.KeyCode.Tab
 
 local function saveSettings()
     pcall(function()
         local data = {
-            espPlayer       = espToggles.player,
-            espPods         = espToggles.pods,
-            espPc           = espToggles.pc,
-            espExits        = espToggles.exits,
-            espLockers      = espToggles.lockers,
-            neverfail       = neverfailEnabled,
-            autoRope        = ropeEnabled,
-            hitAura         = auraEnabled,
-            pcProgress      = pcProgressRunning,
-            doorProgress    = doorProgressRunning,
-            beastTracker    = beastTrackerRunning,
+            espPlayer       = MyHub.Config.ESP.player,
+            espPods         = MyHub.Config.ESP.pods,
+            espPc           = MyHub.Config.ESP.pc,
+            espExits        = MyHub.Config.ESP.exits,
+            espLockers      = MyHub.Config.ESP.lockers,
+            espVents        = MyHub.Config.ESP.vents,
+            neverfail       = MyHub.Config.NeverFail,
+            autoRope        = MyHub.Config.AutoRope,
+            hitAura         = MyHub.Config.HitAura,
+            pcProgress      = MyHub.Config.PCProgress,
+            doorProgress    = MyHub.Config.DoorProgress,
+            beastTracker    = MyHub.Config.BeastTracker,
             survivorTracker = SurvivorTracker.enabled,
             wallhop         = WallhopView.enabled,
-            noTexture       = isPlasticOn,
+            noTexture       = MyHub.Config.NoTexture,
             flashlight      = Flashlight.enabled,
             selfMuting      = SelfMuting.enabled,
-            keybind         = tostring(currentKeybind):gsub("Enum%.KeyCode%.", ""),
+            keybind         = tostring(MyHub.Config.Keybind):gsub("Enum%.KeyCode%.", ""),
         }
         writefile(SAVE_FILE, game:GetService("HttpService"):JSONEncode(data))
     end)
 end
+
+local _loadSettingsRef = {}
 
 local ventParts = {}
 
 local function updateVentESP()
     local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
 
-    if not espToggles.vents then
+    -- Tắt: dọn hết SurfaceGui đã tạo trước đó
+    if not MyHub.Config.ESP.vents then
         for i = #ventParts, 1, -1 do
             local part = ventParts[i]
             if part then
@@ -1694,18 +1684,17 @@ local function updateVentESP()
     end
 end
 
-local _loadSettingsRef = {}
-
 local function reloadESP()
     task.spawn(function()
         updateVentESP()
+
         local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
         if map then
             for _, obj in ipairs(map:GetChildren()) do
                 if obj.Name == "ComputerTable" then
                     local h = obj:FindFirstChildOfClass("Highlight")
-                    if h and not espToggles.pc then h:Destroy()
-                    elseif not h and espToggles.pc then
+                    if h and not MyHub.Config.ESP.pc then h:Destroy()
+                    elseif not h and MyHub.Config.ESP.pc then
                         local a = Instance.new("Highlight", obj)
                         a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                         a.FillColor = Color3.fromRGB(13,105,172)
@@ -1727,8 +1716,8 @@ local function reloadESP()
                 end
                 if obj.Name == "FreezePod" then
                     local h = obj:FindFirstChildOfClass("Highlight")
-                    if h and not espToggles.pods then h:Destroy()
-                    elseif not h and espToggles.pods then
+                    if h and not MyHub.Config.ESP.pods then h:Destroy()
+                    elseif not h and MyHub.Config.ESP.pods then
                         local a = Instance.new("Highlight", obj)
                         a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                         a.FillColor = Color3.fromRGB(120,200,255)
@@ -1737,8 +1726,8 @@ local function reloadESP()
                 end
                 if obj.Name == "ExitDoor" then
                     local h = obj:FindFirstChildOfClass("Highlight")
-                    if h and not espToggles.exits then h:Destroy()
-                    elseif not h and espToggles.exits then
+                    if h and not MyHub.Config.ESP.exits then h:Destroy()
+                    elseif not h and MyHub.Config.ESP.exits then
                         local a = Instance.new("Highlight", obj)
                         a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                         a.FillColor = Color3.fromRGB(252,255,100)
@@ -1758,8 +1747,8 @@ local function reloadESP()
                 continue
             end
             
-            if h and not espToggles.lockers then h:Destroy()
-            elseif not h and espToggles.lockers then
+            if h and not MyHub.Config.ESP.lockers then h:Destroy()
+            elseif not h and MyHub.Config.ESP.lockers then
                 local a = Instance.new("Highlight", locker)
                 a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                 a.FillColor = Color3.fromRGB(200, 50, 255)
@@ -1771,8 +1760,8 @@ local function reloadESP()
             if p ~= lp and p.Character then
                 local char = p.Character
                 local h = char:FindFirstChildOfClass("Highlight")
-                if h and not espToggles.player then h:Destroy()
-                elseif not h and espToggles.player then
+                if h and not MyHub.Config.ESP.player then h:Destroy()
+                elseif not h and MyHub.Config.ESP.player then
                     local a = Instance.new("Highlight", char)
                     a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                     a.FillColor = Color3.fromRGB(0,255,0)
@@ -1799,55 +1788,55 @@ local function loadSettings()
     pcall(function()
         if not isfile(SAVE_FILE) then return end
         local data = game:GetService("HttpService"):JSONDecode(readfile(SAVE_FILE))
-        if data.espPlayer       ~= nil then espToggles.player      = data.espPlayer       end
-        if data.espPods         ~= nil then espToggles.pods        = data.espPods         end
-        if data.espPc           ~= nil then espToggles.pc          = data.espPc           end
-        if data.espExits        ~= nil then espToggles.exits       = data.espExits        end
-        if data.espLockers      ~= nil then espToggles.lockers     = data.espLockers      end
-        if data.espVents        ~= nil then espToggles.vents       = data.espVents        end
-        if data.neverfail       ~= nil then neverfailEnabled       = data.neverfail       end
-        if data.autoRope        ~= nil then ropeEnabled            = data.autoRope        end
-        if data.hitAura         ~= nil then auraEnabled            = data.hitAura         end
-        if data.pcProgress      ~= nil then pcProgressRunning      = data.pcProgress      end
-        if data.doorProgress    ~= nil then doorProgressRunning    = data.doorProgress    end
-        if data.beastTracker    ~= nil then beastTrackerRunning    = data.beastTracker    end
+        if data.espPlayer       ~= nil then MyHub.Config.ESP.player      = data.espPlayer       end
+        if data.espPods         ~= nil then MyHub.Config.ESP.pods        = data.espPods         end
+        if data.espPc           ~= nil then MyHub.Config.ESP.pc          = data.espPc           end
+        if data.espExits        ~= nil then MyHub.Config.ESP.exits       = data.espExits        end
+        if data.espLockers      ~= nil then MyHub.Config.ESP.lockers     = data.espLockers      end
+        if data.espVents        ~= nil then MyHub.Config.ESP.vents       = data.espVents        end
+        if data.neverfail       ~= nil then MyHub.Config.NeverFail       = data.neverfail       end
+        if data.autoRope        ~= nil then MyHub.Config.AutoRope            = data.autoRope        end
+        if data.hitAura         ~= nil then MyHub.Config.HitAura            = data.hitAura         end
+        if data.pcProgress      ~= nil then MyHub.Config.PCProgress      = data.pcProgress      end
+        if data.doorProgress    ~= nil then MyHub.Config.DoorProgress    = data.doorProgress    end
+        if data.beastTracker    ~= nil then MyHub.Config.BeastTracker    = data.beastTracker    end
         if data.survivorTracker ~= nil then SurvivorTracker.enabled= data.survivorTracker end
         if data.wallhop         ~= nil then WallhopView.enabled    = data.wallhop         end
-        if data.noTexture       ~= nil then isPlasticOn            = data.noTexture       end
+        if data.noTexture       ~= nil then MyHub.Config.NoTexture            = data.noTexture       end
         if data.flashlight      ~= nil then Flashlight.enabled     = data.flashlight      end
         if data.selfMuting      ~= nil then SelfMuting.enabled     = data.selfMuting      end
         if data.keybind ~= nil then
             local ok, kc = pcall(function() return Enum.KeyCode[data.keybind] end)
             if ok and kc then
-                currentKeybind = kc
+                MyHub.Config.Keybind = kc
                 if _loadSettingsRef.keyBox then _loadSettingsRef.keyBox.Text = data.keybind end
             end
         end
         reloadESP()
         task.defer(function()
-            if syncFns.neverfail       then syncFns.neverfail(neverfailEnabled)            end
-            if syncFns.espPlayer       then syncFns.espPlayer(espToggles.player)           end
-            if syncFns.espPods         then syncFns.espPods(espToggles.pods)               end
-            if syncFns.espPc           then syncFns.espPc(espToggles.pc)                   end
-            if syncFns.espExits        then syncFns.espExits(espToggles.exits)             end
-            if syncFns.espLockers      then syncFns.espLockers(espToggles.lockers)         end
-            if syncFns.espVents        then syncFns.espVents(espToggles.vents)             end
-            if syncFns.autoRope        then syncFns.autoRope(ropeEnabled)                  end
-            if syncFns.hitAura         then syncFns.hitAura(auraEnabled)                   end
-            if syncFns.pcProgress      then syncFns.pcProgress(pcProgressRunning)          end
-            if syncFns.doorProgress    then syncFns.doorProgress(doorProgressRunning)      end
-            if syncFns.beastTracker    then syncFns.beastTracker(beastTrackerRunning)      end
+            if syncFns.neverfail       then syncFns.neverfail(MyHub.Config.NeverFail)            end
+            if syncFns.espPlayer       then syncFns.espPlayer(MyHub.Config.ESP.player)           end
+            if syncFns.espPods         then syncFns.espPods(MyHub.Config.ESP.pods)               end
+            if syncFns.espPc           then syncFns.espPc(MyHub.Config.ESP.pc)                   end
+            if syncFns.espExits        then syncFns.espExits(MyHub.Config.ESP.exits)             end
+            if syncFns.espLockers      then syncFns.espLockers(MyHub.Config.ESP.lockers)         end
+            if syncFns.espVents        then syncFns.espVents(MyHub.Config.ESP.vents)             end
+            if syncFns.autoRope        then syncFns.autoRope(MyHub.Config.AutoRope)                  end
+            if syncFns.hitAura         then syncFns.hitAura(MyHub.Config.HitAura)                   end
+            if syncFns.pcProgress      then syncFns.pcProgress(MyHub.Config.PCProgress)          end
+            if syncFns.doorProgress    then syncFns.doorProgress(MyHub.Config.DoorProgress)      end
+            if syncFns.beastTracker    then syncFns.beastTracker(MyHub.Config.BeastTracker)      end
             if syncFns.survivorTracker then syncFns.survivorTracker(SurvivorTracker.enabled) end
             if syncFns.wallhop         then syncFns.wallhop(WallhopView.enabled)           end
-            if syncFns.noTexture       then syncFns.noTexture(isPlasticOn)                 end
+            if syncFns.noTexture       then syncFns.noTexture(MyHub.Config.NoTexture)                 end
             if syncFns.flashlight      then syncFns.flashlight(Flashlight.enabled)         end
             if syncFns.selfMuting      then syncFns.selfMuting(SelfMuting.enabled)         end
-            if pcProgressRunning       then stopPCProgress(); startPCProgress()     end
-            if doorProgressRunning     then stopDoorProgress(); startDoorProgress() end
-            if beastTrackerRunning     then stopBeastTracker(); startBeastTracker()   end
+            if MyHub.Config.PCProgress       then stopPCProgress(); startPCProgress()     end
+            if MyHub.Config.DoorProgress     then stopDoorProgress(); startDoorProgress() end
+            if MyHub.Config.BeastTracker     then stopBeastTracker(); startBeastTracker()   end
             if SurvivorTracker.enabled then SurvivorTracker.stop(); SurvivorTracker.start() end
             if WallhopView.enabled     then WallhopView.stop(); WallhopView.start()   end
-            if isPlasticOn             then restoreMap(); scanMap()              end
+            if MyHub.Config.NoTexture             then restoreMap(); scanMap()              end
             if Flashlight.enabled      then Flashlight.stop(); Flashlight.start()    end
             if SelfMuting.enabled      then SelfMuting.stop(); SelfMuting.start()    end
         end)
@@ -1866,6 +1855,14 @@ task.spawn(function()
         p.CharacterRemoving:Connect(function() reloadESP() end)
     end)
 end)
+
+-- =========================================================
+-- UI CONSTRUCTION
+-- Toàn bộ khối này được bọc trong do...end để giới hạn
+-- phạm vi ~60 biến local (Panel, Header, TitleL, v.v.)
+-- không cộng dồn vào register limit 200 của main chunk.
+-- =========================================================
+do
 
 local CFG = {
     Title    = "PANEL",
@@ -2417,21 +2414,21 @@ addToggle(Panes[2], "∞", "Survivor tracker", "Renders overhead timer templates
     if s then SurvivorTracker.start() else SurvivorTracker.stop() end; saveSettings()
 end, "survivorTracker")
 addToggle(Panes[2], "⊘", "Never Fail",       "Auto pass minigame result to server",        false, 5, function(s)
-    neverfailEnabled = s; saveSettings()
+    MyHub.Config.NeverFail = s; saveSettings()
 end, "neverfail")
 
 addSection(Panes[3], "Auto", 0)
 addToggle(Panes[3], "⊕", "Auto Rope", "For Beast: auto rope ragdoll survivors", false, 1, function(s)
-    ropeEnabled = s; saveSettings()
+    MyHub.Config.AutoRope = s; saveSettings()
 end, "autoRope")
 addToggle(Panes[3], "⊙", "Hit Aura", "For Beast: Auto hit nearby survivors", false, 2, function(s)
-    auraEnabled = s; saveSettings()
+    MyHub.Config.HitAura = s; saveSettings()
 end, "hitAura")
 addToggle(Panes[3], "⛑", "Auto Save", "For Survivor: Auto save survivors without getting close", false, 3, function(s)
-    autoSaveEnabled = s; saveSettings()
+    MyHub.Config.AutoSave = s; saveSettings()
 end, "autoSave")
 addToggle(Panes[3], "◈", "Auto Captured All", "For Beast: Auto win if u are beast", false, 4, function(s)
-    autoBeastFullEnabled = s; saveSettings()
+    MyHub.Config.AutoBeastFull = s; saveSettings()
 end, "autoBeastFull")
 
 addSection(Panes[4], "Visuals", 0)
@@ -2528,7 +2525,7 @@ do
             tw(pill,fast,{BackgroundColor3=on and CFG.Accent or Color3.fromRGB(42,36,36)})
             tw(knob,fast,{Position=on and UDim2.new(1,-15,0.5,-6) or UDim2.new(0,3,0.5,-6)})
             tw(row, fast,{BackgroundColor3=on and Color3.fromRGB(28,20,20) or CFG.Card})
-            espToggles[optKey] = on; reloadESP(); saveSettings()
+            MyHub.Config.ESP[optKey] = on; reloadESP(); saveSettings()
         end)
         btn.MouseEnter:Connect(function() tw(row,fast,{BackgroundColor3=CFG.CardHov}) end)
         btn.MouseLeave:Connect(function()
@@ -2563,13 +2560,13 @@ addToggle(Panes[4], "▤", "Door Progress", "shows opening progress bars above d
     if s then startDoorProgress() else stopDoorProgress() end; saveSettings()
 end, "doorProgress")
 addToggle(Panes[4], "◨", "Locker ESP", "highlights hiding lockers in purple", false, 8, function(s)
-    espToggles.lockers = s
+    MyHub.Config.ESP.lockers = s
     reloadESP()
     saveSettings()
 end, "espLockers")
 addSection(Panes[5], "Misc Features", 0)
 addToggle(Panes[5], "▣", "No Texture",  "Replaces world assets with solid plastic layers",  false, 1, function(s)
-    isPlasticOn = s; if isPlasticOn then scanMap() else restoreMap() end; saveSettings()
+    MyHub.Config.NoTexture = s; if MyHub.Config.NoTexture then scanMap() else restoreMap() end; saveSettings()
 end, "noTexture")
 addToggle(Panes[5], "☼", "Flashlight",  "Forces light shifts into bright ambient modes",     false, 2, function(s)
     if s then Flashlight.start() else Flashlight.stop() end; saveSettings()
@@ -2653,15 +2650,15 @@ corner(keyBox,6); stroke(keyBox,CFG.Accent,1,0.6)
 
 keyBox.FocusLost:Connect(function(enterPressed)
     if not enterPressed then
-        keyBox.Text = tostring(currentKeybind):gsub("Enum.KeyCode.", ""); return
+        keyBox.Text = tostring(MyHub.Config.Keybind):gsub("Enum.KeyCode.", ""); return
     end
     local raw = keyBox.Text:gsub("%s+","")
-    if #raw == 0 then keyBox.Text = tostring(currentKeybind):gsub("Enum.KeyCode.",""); return end
+    if #raw == 0 then keyBox.Text = tostring(MyHub.Config.Keybind):gsub("Enum.KeyCode.",""); return end
     local ok, kc = pcall(function()
         return Enum.KeyCode[raw] or Enum.KeyCode[raw:sub(1,1):upper()..raw:sub(2):lower()]
     end)
     if ok and kc then
-        currentKeybind = kc
+        MyHub.Config.Keybind = kc
         keyBox.Text = raw:sub(1,1):upper()..raw:sub(2):lower()
         saveSettings()
         tw(keyBox,fast,{BackgroundColor3=Color3.fromRGB(20,50,20)})
@@ -2669,7 +2666,7 @@ keyBox.FocusLost:Connect(function(enterPressed)
     else
         tw(keyBox,fast,{BackgroundColor3=Color3.fromRGB(60,20,20)})
         task.delay(0.4, function() tw(keyBox,fast,{BackgroundColor3=Color3.fromRGB(30,18,18)}) end)
-        keyBox.Text = tostring(currentKeybind):gsub("Enum.KeyCode.","")
+        keyBox.Text = tostring(MyHub.Config.Keybind):gsub("Enum.KeyCode.","")
     end
 end)
 
@@ -2761,7 +2758,7 @@ end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
-    if input.KeyCode == currentKeybind then
+    if input.KeyCode == MyHub.Config.Keybind then
         if isBusy then return end; isBusy = true
         if isOpen then
             savedPX=Panel.Position.X.Offset; savedPY=Panel.Position.Y.Offset
@@ -2784,3 +2781,5 @@ task.defer(function()
     isOpen=true; isBusy=false; Panel.Visible=true; TBtn.Visible=false
     task.delay(0.6, loadSettings)
 end)
+
+end -- đóng do...end của khối UI CONSTRUCTION
