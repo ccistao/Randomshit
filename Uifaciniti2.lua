@@ -1096,6 +1096,194 @@ local function startPCProgress()
     end))
 end
 
+local doorProgressRunning = false
+local doorConnections = {}
+local activeDoors = {}
+
+local function getTriggerPart(trigger)
+    if not trigger then return nil end
+    if trigger:IsA("BasePart") then return trigger end
+    return trigger:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function isCharacterInsideTrigger(character, triggerPart)
+    if not character or not triggerPart then return false end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+
+    -- lọc sơ bộ bằng khoảng cách rẻ trước khi query vật lý nặng
+    local roughDist = (hrp.Position - triggerPart.Position).Magnitude
+    if roughDist > 15 then return false end
+
+    local params = OverlapParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {}
+    params.RespectCanCollide = false
+
+    local parts = workspace:GetPartsInPart(triggerPart, params)
+    for _, part in ipairs(parts) do
+        if part:IsDescendantOf(character) then return true end
+    end
+    return false
+end
+
+local function disconnectDoorProgress()
+    for _, c in ipairs(doorConnections) do
+        if typeof(c)=="RBXScriptConnection" then c:Disconnect() end
+    end
+    doorConnections = {}
+end
+
+local function stopDoorProgress()
+    doorProgressRunning = false
+    disconnectDoorProgress()
+    for trigger, esp in pairs(activeDoors) do
+        if esp.bb then esp.bb:Destroy() end
+    end
+    activeDoors = {}
+end
+
+local function startDoorProgress()
+    if doorProgressRunning then return end
+    doorProgressRunning = true
+
+    local OVERLAP_CHECK_INTERVAL = 0.1
+    local lastOverlapCheck = 0
+    local progressCache = {}
+
+    local function createBillboard(triggerPart)
+        local bb = Instance.new("BillboardGui")
+        bb.Name = "DoorProgressBB"
+        bb.Size = UDim2.new(4, 0, 0, 22)
+        bb.StudsOffset = Vector3.new(0, 3, 0)
+        bb.AlwaysOnTop = true
+        bb.LightInfluence = 0
+        bb.MaxDistance = math.huge
+        bb.DistanceLowerLimit = 15
+        bb.Adornee = triggerPart
+        bb.Parent = triggerPart
+
+        local barBg = Instance.new("Frame")
+        barBg.Size = UDim2.new(1, -6, 0, 12)
+        barBg.Position = UDim2.new(0, 3, 0, 5)
+        barBg.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        barBg.BackgroundTransparency = 0.75
+        barBg.BorderSizePixel = 0
+        barBg.ZIndex = 1
+        barBg.Parent = bb
+
+        local bgc = Instance.new("UICorner"); bgc.CornerRadius = UDim.new(0, 6); bgc.Parent = barBg
+        local bgs = Instance.new("UIStroke")
+        bgs.Color = Color3.fromRGB(255, 255, 255); bgs.Thickness = 1; bgs.Transparency = 0.6; bgs.Parent = barBg
+
+        local barFill = Instance.new("Frame")
+        barFill.Size = UDim2.new(0, 0, 1, 0)
+        barFill.BackgroundColor3 = Color3.fromRGB(255, 140, 60)
+        barFill.BorderSizePixel = 0
+        barFill.ZIndex = 2
+        barFill.Parent = barBg
+        local fc = Instance.new("UICorner"); fc.CornerRadius = UDim.new(0, 6); fc.Parent = barFill
+
+        local tl = Instance.new("TextLabel")
+        tl.Size = UDim2.new(1, 0, 1, 0)
+        tl.BackgroundTransparency = 1
+        tl.Text = "0%"
+        tl.TextColor3 = Color3.new(1, 1, 1)
+        tl.Font = Enum.Font.GothamMedium
+        tl.TextSize = 10
+        tl.TextStrokeTransparency = 0.3
+        tl.TextStrokeColor3 = Color3.new(0, 0, 0)
+        tl.ZIndex = 5
+        tl.Parent = barBg
+
+        return bb, barFill, tl
+    end
+
+    local function refreshOverlapChecks()
+        local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
+        if not map or not map.Parent then return end
+
+        for _, obj in ipairs(map:GetDescendants()) do
+            if obj.Name == "DoorTrigger" and obj:FindFirstChild("ActionSign") then
+                local triggerPart = getTriggerPart(obj)
+                if triggerPart and not activeDoors[obj] then
+                    local bb, barFill, tl = createBillboard(triggerPart)
+                    activeDoors[obj] = {
+                        bb = bb, barFill = barFill, textLabel = tl,
+                        sign = obj.ActionSign, triggerPart = triggerPart
+                    }
+                end
+            end
+        end
+
+        for trigger, esp in pairs(activeDoors) do
+            if not trigger.Parent or not esp.triggerPart or not esp.triggerPart.Parent then
+                if esp.bb then esp.bb:Destroy() end
+                activeDoors[trigger] = nil
+                progressCache[trigger] = nil
+                continue
+            end
+
+            if esp.sign and esp.sign.Parent and esp.sign.Value == 11 then
+                progressCache[trigger] = -1
+                continue
+            end
+
+            local highestProg = 0
+            for _, plr in ipairs(Players:GetPlayers()) do
+                local plrChar = plr.Character
+                if plrChar and isCharacterInsideTrigger(plrChar, esp.triggerPart) then
+                    local stats = plr:FindFirstChild("TempPlayerStatsModule")
+                    if stats then
+                        local progress = stats:FindFirstChild("ActionProgress")
+                        local animation = stats:FindFirstChild("CurrentAnimation")
+                        if progress and progress.Value > 0 then
+                            local animationValue = animation and tostring(animation.Value) or ""
+                            if animationValue ~= "Typing" and animationValue ~= "Ragdoll" then
+                                if progress.Value > highestProg then highestProg = progress.Value end
+                            end
+                        end
+                    end
+                end
+            end
+
+            progressCache[trigger] = math.floor(highestProg * 100)
+        end
+    end
+
+    table.insert(doorConnections, RunService.RenderStepped:Connect(function()
+        local now = os.clock()
+        if now - lastOverlapCheck >= OVERLAP_CHECK_INTERVAL then
+            lastOverlapCheck = now
+            refreshOverlapChecks()
+        end
+
+        for trigger, esp in pairs(activeDoors) do
+            if not trigger.Parent or not esp.bb or not esp.bb.Parent then continue end
+
+            local percent = progressCache[trigger] or 0
+
+            if percent == -1 then
+                esp.bb.Enabled = false
+            elseif percent > 0 and percent < 100 then
+                esp.bb.Enabled = true
+                esp.barFill.Size = UDim2.new(percent/100, 0, 1, 0)
+
+                local r, g, b
+                if percent < 50 then r=255; g=math.floor(140+percent*1.4); b=60
+                else r=math.floor(255-(percent-50)*3.9); g=255; b=60 end
+                local color = Color3.fromRGB(math.clamp(r,60,255), g, b)
+
+                esp.barFill.BackgroundColor3 = color
+                esp.textLabel.Text = percent .. "%"
+                esp.textLabel.TextColor3 = Color3.new(1, 1, 1)
+            else
+                esp.bb.Enabled = false
+            end
+        end
+    end))
+end
+
 local espToggles = {player=false, pods=false, pc=false, exits=false, lockers=false, vents=false}
 
 local neverfailEnabled = false
@@ -1432,6 +1620,7 @@ local function saveSettings()
             autoRope        = ropeEnabled,
             hitAura         = auraEnabled,
             pcProgress      = pcProgressRunning,
+            doorProgress    = doorProgressRunning,
             beastTracker    = beastTrackerRunning,
             survivorTracker = SurvivorTracker.enabled,
             wallhop         = WallhopView.enabled,
@@ -1620,6 +1809,7 @@ local function loadSettings()
         if data.autoRope        ~= nil then ropeEnabled            = data.autoRope        end
         if data.hitAura         ~= nil then auraEnabled            = data.hitAura         end
         if data.pcProgress      ~= nil then pcProgressRunning      = data.pcProgress      end
+        if data.doorProgress    ~= nil then doorProgressRunning    = data.doorProgress    end
         if data.beastTracker    ~= nil then beastTrackerRunning    = data.beastTracker    end
         if data.survivorTracker ~= nil then SurvivorTracker.enabled= data.survivorTracker end
         if data.wallhop         ~= nil then WallhopView.enabled    = data.wallhop         end
@@ -1645,6 +1835,7 @@ local function loadSettings()
             if syncFns.autoRope        then syncFns.autoRope(ropeEnabled)                  end
             if syncFns.hitAura         then syncFns.hitAura(auraEnabled)                   end
             if syncFns.pcProgress      then syncFns.pcProgress(pcProgressRunning)          end
+            if syncFns.doorProgress    then syncFns.doorProgress(doorProgressRunning)      end
             if syncFns.beastTracker    then syncFns.beastTracker(beastTrackerRunning)      end
             if syncFns.survivorTracker then syncFns.survivorTracker(SurvivorTracker.enabled) end
             if syncFns.wallhop         then syncFns.wallhop(WallhopView.enabled)           end
@@ -2367,7 +2558,10 @@ end
 addToggle(Panes[4], "∞", "PC Progress", "shows hacking progress bars above PCs", false, 6, function(s)
     if s then startPCProgress() else stopPCProgress() end; saveSettings()
 end, "pcProgress")
-addToggle(Panes[4], "◨", "Locker ESP", "highlights hiding lockers in purple", false, 7, function(s)
+addToggle(Panes[4], "▤", "Door Progress", "shows opening progress bars above doors", false, 7, function(s)
+    if s then startDoorProgress() else stopDoorProgress() end; saveSettings()
+end, "doorProgress")
+addToggle(Panes[4], "◨", "Locker ESP", "highlights hiding lockers in purple", false, 8, function(s)
     espToggles.lockers = s
     reloadESP()
     saveSettings()
