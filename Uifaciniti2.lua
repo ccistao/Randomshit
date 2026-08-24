@@ -1615,6 +1615,7 @@ local function loadSettings()
         if data.espPc           ~= nil then espToggles.pc          = data.espPc           end
         if data.espExits        ~= nil then espToggles.exits       = data.espExits        end
         if data.espLockers      ~= nil then espToggles.lockers     = data.espLockers      end
+        if data.espVents        ~= nil then espToggles.vents       = data.espVents        end
         if data.neverfail       ~= nil then neverfailEnabled       = data.neverfail       end
         if data.autoRope        ~= nil then ropeEnabled            = data.autoRope        end
         if data.hitAura         ~= nil then auraEnabled            = data.hitAura         end
@@ -1640,6 +1641,7 @@ local function loadSettings()
             if syncFns.espPc           then syncFns.espPc(espToggles.pc)                   end
             if syncFns.espExits        then syncFns.espExits(espToggles.exits)             end
             if syncFns.espLockers      then syncFns.espLockers(espToggles.lockers)         end
+            if syncFns.espVents        then syncFns.espVents(espToggles.vents)             end
             if syncFns.autoRope        then syncFns.autoRope(ropeEnabled)                  end
             if syncFns.hitAura         then syncFns.hitAura(auraEnabled)                   end
             if syncFns.pcProgress      then syncFns.pcProgress(pcProgressRunning)          end
@@ -2270,7 +2272,7 @@ do
 
     local hdl = Instance.new("TextLabel", headerRow)
     hdl.Size=UDim2.new(0,130,0,12); hdl.Position=UDim2.new(0,42,0,22)
-    hdl.BackgroundTransparency=1; hdl.Text="4 esp options"; hdl.TextColor3=CFG.TextMute
+    hdl.BackgroundTransparency=1; hdl.Text="5 esp options"; hdl.TextColor3=CFG.TextMute
     hdl.TextSize=9; hdl.Font=Enum.Font.Code
     hdl.TextXAlignment=Enum.TextXAlignment.Left; hdl.ZIndex=16
 
