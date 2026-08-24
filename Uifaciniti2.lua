@@ -1843,6 +1843,7 @@ local function loadSettings()
             if syncFns.flashlight      then syncFns.flashlight(Flashlight.enabled)         end
             if syncFns.selfMuting      then syncFns.selfMuting(SelfMuting.enabled)         end
             if pcProgressRunning       then stopPCProgress(); startPCProgress()     end
+            if doorProgressRunning     then stopDoorProgress(); startDoorProgress() end
             if beastTrackerRunning     then stopBeastTracker(); startBeastTracker()   end
             if SurvivorTracker.enabled then SurvivorTracker.stop(); SurvivorTracker.start() end
             if WallhopView.enabled     then WallhopView.stop(); WallhopView.start()   end
