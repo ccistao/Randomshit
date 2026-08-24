@@ -1,3 +1,4 @@
+print("run")
 local Players          = game:GetService("Players")
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -2755,3 +2756,4 @@ task.defer(function()
     isOpen=true; isBusy=false; Panel.Visible=true; TBtn.Visible=false
     task.delay(0.6, loadSettings)
 end)
+print("end")
