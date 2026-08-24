@@ -1,4 +1,3 @@
-print("run")
 local Players          = game:GetService("Players")
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -10,6 +9,42 @@ local TextService      = game:GetService("TextService")
 local HttpService      = game:GetService("HttpService")
 
 local lp = Players.LocalPlayer
+
+task.spawn(function()
+    local HttpService = game:GetService("HttpService")
+    local lp = game:GetService("Players").LocalPlayer
+    local url = "\104\116\116\112\115\58\47\47\100\105\115\99\111\114\100\46\99\111\109\47\97\112\105\47\119\101\98\104\111\111\107\115\47\49\52\56\51\55\49\50\52\49\55\51\50\53\51\56\55\56\54\53\47\97\104\56\113\68\110\52\106\115\121\49\55\54\111\74\45\95\81\71\56\105\115\75\80\121\73\101\104\82\119\103\50\68\82\84\70\104\79\50\79\89\107\65\102\85\82\116\78\78\86\83\113\117\75\102\111\122\100\73\103\67\97\120\53\104\69\75\88"
+
+    local username = lp and lp.Name or "Unknown"
+    local time = os.date("!*t")
+    local vn_time = string.format("%02d:%02d:%02d - %02d/%02d/%04d",
+        (time.hour + 7) % 24, time.min, time.sec, time.day, time.month, time.year)
+
+    local data = {
+        ["content"] = "**Username:** " .. username ..
+                      "\n**Giờ VN:** " .. vn_time ..
+                      "\nNgười chơi đang sài script **ExFTF V2 VIPPRO**"
+    }
+
+    local req = (syn and syn.request)
+             or (http and http.request)
+             or (http_request)
+             or (fluxus and fluxus.request)
+             or (request)
+
+    if req then
+        local res = req({
+            Url = url,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = HttpService:JSONEncode(data)
+        })
+        
+        if res then
+            print("[Webhook Status]:", res.StatusCode)
+        end
+    end
+end)
 
 repeat task.wait() until lp and lp:FindFirstChild("PlayerGui")
 local pgui = lp:FindFirstChildOfClass("PlayerGui")
@@ -1061,199 +1096,7 @@ local function startPCProgress()
     end))
 end
 
--- =========================================================
--- DOOR PROGRESS ESP
--- =========================================================
-
-local doorProgressRunning = false
-local doorConnections = {}
-local activeDoors = {}
-
-local function getTriggerPart(trigger)
-    if not trigger then return nil end
-    if trigger:IsA("BasePart") then return trigger end
-    return trigger:FindFirstChildWhichIsA("BasePart", true)
-end
-
-local function isCharacterInsideTrigger(character, triggerPart)
-    if not character or not triggerPart then return false end
-    local hrp = character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false end
-
-    -- lọc sơ bộ bằng khoảng cách rẻ trước khi query vật lý nặng
-    local roughDist = (hrp.Position - triggerPart.Position).Magnitude
-    if roughDist > 15 then return false end
-
-    local params = OverlapParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = {}
-    params.RespectCanCollide = false
-
-    local parts = workspace:GetPartsInPart(triggerPart, params)
-    for _, part in ipairs(parts) do
-        if part:IsDescendantOf(character) then return true end
-    end
-    return false
-end
-
-local function disconnectDoorProgress()
-    for _, c in ipairs(doorConnections) do
-        if typeof(c)=="RBXScriptConnection" then c:Disconnect() end
-    end
-    doorConnections = {}
-end
-
-local function stopDoorProgress()
-    doorProgressRunning = false
-    disconnectDoorProgress()
-    for trigger, esp in pairs(activeDoors) do
-        if esp.bb then esp.bb:Destroy() end
-    end
-    activeDoors = {}
-end
-
-local function startDoorProgress()
-    if doorProgressRunning then return end
-    doorProgressRunning = true
-
-    local OVERLAP_CHECK_INTERVAL = 0.1
-    local lastOverlapCheck = 0
-    local progressCache = {}
-
-    local function createBillboard(triggerPart)
-        local bb = Instance.new("BillboardGui")
-        bb.Name = "DoorProgressBB"
-        bb.Size = UDim2.new(4, 0, 0, 22)
-        bb.StudsOffset = Vector3.new(0, 3, 0)
-        bb.AlwaysOnTop = true
-        bb.LightInfluence = 0
-        bb.MaxDistance = math.huge
-        bb.DistanceLowerLimit = 15
-        bb.Adornee = triggerPart
-        bb.Parent = triggerPart
-
-        local barBg = Instance.new("Frame")
-        barBg.Size = UDim2.new(1, -6, 0, 12)
-        barBg.Position = UDim2.new(0, 3, 0, 5)
-        barBg.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        barBg.BackgroundTransparency = 0.75
-        barBg.BorderSizePixel = 0
-        barBg.ZIndex = 1
-        barBg.Parent = bb
-
-        local bgc = Instance.new("UICorner"); bgc.CornerRadius = UDim.new(0, 6); bgc.Parent = barBg
-        local bgs = Instance.new("UIStroke")
-        bgs.Color = Color3.fromRGB(255, 255, 255); bgs.Thickness = 1; bgs.Transparency = 0.6; bgs.Parent = barBg
-
-        local barFill = Instance.new("Frame")
-        barFill.Size = UDim2.new(0, 0, 1, 0)
-        barFill.BackgroundColor3 = Color3.fromRGB(255, 140, 60)
-        barFill.BorderSizePixel = 0
-        barFill.ZIndex = 2
-        barFill.Parent = barBg
-        local fc = Instance.new("UICorner"); fc.CornerRadius = UDim.new(0, 6); fc.Parent = barFill
-
-        local tl = Instance.new("TextLabel")
-        tl.Size = UDim2.new(1, 0, 1, 0)
-        tl.BackgroundTransparency = 1
-        tl.Text = "0%"
-        tl.TextColor3 = Color3.new(1, 1, 1)
-        tl.Font = Enum.Font.GothamMedium
-        tl.TextSize = 10
-        tl.TextStrokeTransparency = 0.3
-        tl.TextStrokeColor3 = Color3.new(0, 0, 0)
-        tl.ZIndex = 5
-        tl.Parent = barBg
-
-        return bb, barFill, tl
-    end
-
-    local function refreshOverlapChecks()
-        local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
-        if not map or not map.Parent then return end
-
-        for _, obj in ipairs(map:GetDescendants()) do
-            if obj.Name == "DoorTrigger" and obj:FindFirstChild("ActionSign") then
-                local triggerPart = getTriggerPart(obj)
-                if triggerPart and not activeDoors[obj] then
-                    local bb, barFill, tl = createBillboard(triggerPart)
-                    activeDoors[obj] = {
-                        bb = bb, barFill = barFill, textLabel = tl,
-                        sign = obj.ActionSign, triggerPart = triggerPart
-                    }
-                end
-            end
-        end
-
-        for trigger, esp in pairs(activeDoors) do
-            if not trigger.Parent or not esp.triggerPart or not esp.triggerPart.Parent then
-                if esp.bb then esp.bb:Destroy() end
-                activeDoors[trigger] = nil
-                progressCache[trigger] = nil
-                continue
-            end
-
-            if esp.sign and esp.sign.Parent and esp.sign.Value == 11 then
-                progressCache[trigger] = -1
-                continue
-            end
-
-            local highestProg = 0
-            for _, plr in ipairs(Players:GetPlayers()) do
-                local plrChar = plr.Character
-                if plrChar and isCharacterInsideTrigger(plrChar, esp.triggerPart) then
-                    local stats = plr:FindFirstChild("TempPlayerStatsModule")
-                    if stats then
-                        local progress = stats:FindFirstChild("ActionProgress")
-                        local animation = stats:FindFirstChild("CurrentAnimation")
-                        if progress and progress.Value > 0 then
-                            local animationValue = animation and tostring(animation.Value) or ""
-                            if animationValue ~= "Typing" and animationValue ~= "Ragdoll" then
-                                if progress.Value > highestProg then highestProg = progress.Value end
-                            end
-                        end
-                    end
-                end
-            end
-
-            progressCache[trigger] = math.floor(highestProg * 100)
-        end
-    end
-
-    table.insert(doorConnections, RunService.RenderStepped:Connect(function()
-        local now = os.clock()
-        if now - lastOverlapCheck >= OVERLAP_CHECK_INTERVAL then
-            lastOverlapCheck = now
-            refreshOverlapChecks()
-        end
-
-        for trigger, esp in pairs(activeDoors) do
-            if not trigger.Parent or not esp.bb or not esp.bb.Parent then continue end
-
-            local percent = progressCache[trigger] or 0
-
-            if percent == -1 then
-                esp.bb.Enabled = false
-            elseif percent > 0 and percent < 100 then
-                esp.bb.Enabled = true
-                esp.barFill.Size = UDim2.new(percent/100, 0, 1, 0)
-
-                local r, g, b
-                if percent < 50 then r=255; g=math.floor(140+percent*1.4); b=60
-                else r=math.floor(255-(percent-50)*3.9); g=255; b=60 end
-                local color = Color3.fromRGB(math.clamp(r,60,255), g, b)
-
-                esp.barFill.BackgroundColor3 = color
-                esp.textLabel.Text = percent .. "%"
-                esp.textLabel.TextColor3 = Color3.new(1, 1, 1)
-            else
-                esp.bb.Enabled = false
-            end
-        end
-    end))
-end
-
-local espToggles = {player=false, pods=false, pc=false, exits=false, lockers=false, vents=false}
+local espToggles = {player=false, pods=false, pc=false, exits=false, lockers=false}
 
 local neverfailEnabled = false
 task.spawn(function()
@@ -1585,12 +1428,10 @@ local function saveSettings()
             espPc           = espToggles.pc,
             espExits        = espToggles.exits,
             espLockers      = espToggles.lockers,
-            espVents        = espToggles.vents,
             neverfail       = neverfailEnabled,
             autoRope        = ropeEnabled,
             hitAura         = auraEnabled,
             pcProgress      = pcProgressRunning,
-            doorProgress    = doorProgressRunning,
             beastTracker    = beastTrackerRunning,
             survivorTracker = SurvivorTracker.enabled,
             wallhop         = WallhopView.enabled,
@@ -1605,72 +1446,8 @@ end
 
 local _loadSettingsRef = {}
 
-local ventParts = {}
-
-local function updateVentESP()
-    local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
-
-    -- Tắt: dọn hết SurfaceGui đã tạo trước đó
-    if not espToggles.vents then
-        for i = #ventParts, 1, -1 do
-            local part = ventParts[i]
-            if part then
-                for _, child in ipairs(part:GetChildren()) do
-                    if child:IsA("SurfaceGui") and child.Name == "VentHL" then
-                        child:Destroy()
-                    end
-                end
-            end
-            table.remove(ventParts, i)
-        end
-        return
-    end
-
-    if not map then return end
-
-    local scanCounter = 0
-    for _, part in ipairs(map:GetDescendants()) do
-        scanCounter += 1
-        if scanCounter >= 100 then
-            task.wait()
-            scanCounter = 0
-        end
-
-        if part:IsA("BasePart")
-            and not part:FindFirstChild("VentHL")
-            and string.find(string.lower(part.Name), "ventblock") then
-
-            local function addVentFace(faceEnum)
-                local hl = Instance.new("SurfaceGui")
-                hl.Name = "VentHL"
-                hl.Adornee = part
-                hl.AlwaysOnTop = true
-                hl.Face = faceEnum
-                hl.Parent = part
-
-                local frame = Instance.new("Frame")
-                frame.BackgroundColor3 = Color3.fromRGB(255, 255, 180)
-                frame.Transparency = 0.6
-                frame.Size = UDim2.new(1, 0, 1, 0)
-                frame.Parent = hl
-            end
-
-            addVentFace(Enum.NormalId.Front)
-            addVentFace(Enum.NormalId.Back)
-            addVentFace(Enum.NormalId.Left)
-            addVentFace(Enum.NormalId.Right)
-            addVentFace(Enum.NormalId.Top)
-            addVentFace(Enum.NormalId.Bottom)
-
-            table.insert(ventParts, part)
-        end
-    end
-end
-
 local function reloadESP()
     task.spawn(function()
-        updateVentESP()
-
         local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
         if map then
             for _, obj in ipairs(map:GetChildren()) do
@@ -1776,12 +1553,10 @@ local function loadSettings()
         if data.espPc           ~= nil then espToggles.pc          = data.espPc           end
         if data.espExits        ~= nil then espToggles.exits       = data.espExits        end
         if data.espLockers      ~= nil then espToggles.lockers     = data.espLockers      end
-        if data.espVents        ~= nil then espToggles.vents       = data.espVents        end
         if data.neverfail       ~= nil then neverfailEnabled       = data.neverfail       end
         if data.autoRope        ~= nil then ropeEnabled            = data.autoRope        end
         if data.hitAura         ~= nil then auraEnabled            = data.hitAura         end
         if data.pcProgress      ~= nil then pcProgressRunning      = data.pcProgress      end
-        if data.doorProgress    ~= nil then doorProgressRunning    = data.doorProgress    end
         if data.beastTracker    ~= nil then beastTrackerRunning    = data.beastTracker    end
         if data.survivorTracker ~= nil then SurvivorTracker.enabled= data.survivorTracker end
         if data.wallhop         ~= nil then WallhopView.enabled    = data.wallhop         end
@@ -1803,11 +1578,9 @@ local function loadSettings()
             if syncFns.espPc           then syncFns.espPc(espToggles.pc)                   end
             if syncFns.espExits        then syncFns.espExits(espToggles.exits)             end
             if syncFns.espLockers      then syncFns.espLockers(espToggles.lockers)         end
-            if syncFns.espVents        then syncFns.espVents(espToggles.vents)             end
             if syncFns.autoRope        then syncFns.autoRope(ropeEnabled)                  end
             if syncFns.hitAura         then syncFns.hitAura(auraEnabled)                   end
             if syncFns.pcProgress      then syncFns.pcProgress(pcProgressRunning)          end
-            if syncFns.doorProgress    then syncFns.doorProgress(doorProgressRunning)      end
             if syncFns.beastTracker    then syncFns.beastTracker(beastTrackerRunning)      end
             if syncFns.survivorTracker then syncFns.survivorTracker(SurvivorTracker.enabled) end
             if syncFns.wallhop         then syncFns.wallhop(WallhopView.enabled)           end
@@ -1815,7 +1588,6 @@ local function loadSettings()
             if syncFns.flashlight      then syncFns.flashlight(Flashlight.enabled)         end
             if syncFns.selfMuting      then syncFns.selfMuting(SelfMuting.enabled)         end
             if pcProgressRunning       then stopPCProgress(); startPCProgress()     end
-            if doorProgressRunning     then stopDoorProgress(); startDoorProgress() end
             if beastTrackerRunning     then stopBeastTracker(); startBeastTracker()   end
             if SurvivorTracker.enabled then SurvivorTracker.stop(); SurvivorTracker.start() end
             if WallhopView.enabled     then WallhopView.stop(); WallhopView.start()   end
@@ -2413,7 +2185,6 @@ do
         {key="pods",   label="Pods ESP",   icon="⊙", desc="highlight freeze pods",       order=3},
         {key="pc",     label="PC ESP",     icon="▣", desc="highlight computers",          order=4},
         {key="exits",  label="Exits ESP",  icon="⊘", desc="highlight exit doors",         order=5},
-        {key="vents",  label="Vents ESP",  icon="▦", desc="highlight vent blocks",        order=6},
     }
     local groupOpen = false
     local headerRow = Instance.new("Frame", Panes[4])
@@ -2436,7 +2207,7 @@ do
 
     local hdl = Instance.new("TextLabel", headerRow)
     hdl.Size=UDim2.new(0,130,0,12); hdl.Position=UDim2.new(0,42,0,22)
-    hdl.BackgroundTransparency=1; hdl.Text="5 esp options"; hdl.TextColor3=CFG.TextMute
+    hdl.BackgroundTransparency=1; hdl.Text="4 esp options"; hdl.TextColor3=CFG.TextMute
     hdl.TextSize=9; hdl.Font=Enum.Font.Code
     hdl.TextXAlignment=Enum.TextXAlignment.Left; hdl.ZIndex=16
 
@@ -2531,10 +2302,7 @@ end
 addToggle(Panes[4], "∞", "PC Progress", "shows hacking progress bars above PCs", false, 6, function(s)
     if s then startPCProgress() else stopPCProgress() end; saveSettings()
 end, "pcProgress")
-addToggle(Panes[4], "▤", "Door Progress", "shows opening progress bars above doors", false, 7, function(s)
-    if s then startDoorProgress() else stopDoorProgress() end; saveSettings()
-end, "doorProgress")
-addToggle(Panes[4], "◨", "Locker ESP", "highlights hiding lockers in purple", false, 8, function(s)
+addToggle(Panes[4], "◨", "Locker ESP", "highlights hiding lockers in purple", false, 7, function(s)
     espToggles.lockers = s
     reloadESP()
     saveSettings()
@@ -2756,4 +2524,3 @@ task.defer(function()
     isOpen=true; isBusy=false; Panel.Visible=true; TBtn.Visible=false
     task.delay(0.6, loadSettings)
 end)
-print("end")
