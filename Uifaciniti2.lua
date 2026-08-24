@@ -1444,10 +1444,72 @@ local function saveSettings()
     end)
 end
 
+local ventParts = {}
+
+local function updateVentESP()
+    local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
+
+    if not espToggles.vents then
+        for i = #ventParts, 1, -1 do
+            local part = ventParts[i]
+            if part then
+                for _, child in ipairs(part:GetChildren()) do
+                    if child:IsA("SurfaceGui") and child.Name == "VentHL" then
+                        child:Destroy()
+                    end
+                end
+            end
+            table.remove(ventParts, i)
+        end
+        return
+    end
+
+    if not map then return end
+
+    local scanCounter = 0
+    for _, part in ipairs(map:GetDescendants()) do
+        scanCounter += 1
+        if scanCounter >= 100 then
+            task.wait()
+            scanCounter = 0
+        end
+
+        if part:IsA("BasePart")
+            and not part:FindFirstChild("VentHL")
+            and string.find(string.lower(part.Name), "ventblock") then
+
+            local function addVentFace(faceEnum)
+                local hl = Instance.new("SurfaceGui")
+                hl.Name = "VentHL"
+                hl.Adornee = part
+                hl.AlwaysOnTop = true
+                hl.Face = faceEnum
+                hl.Parent = part
+
+                local frame = Instance.new("Frame")
+                frame.BackgroundColor3 = Color3.fromRGB(255, 255, 180)
+                frame.Transparency = 0.6
+                frame.Size = UDim2.new(1, 0, 1, 0)
+                frame.Parent = hl
+            end
+
+            addVentFace(Enum.NormalId.Front)
+            addVentFace(Enum.NormalId.Back)
+            addVentFace(Enum.NormalId.Left)
+            addVentFace(Enum.NormalId.Right)
+            addVentFace(Enum.NormalId.Top)
+            addVentFace(Enum.NormalId.Bottom)
+
+            table.insert(ventParts, part)
+        end
+    end
+end
+
 local _loadSettingsRef = {}
 
 local function reloadESP()
     task.spawn(function()
+        updateVentESP()
         local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
         if map then
             for _, obj in ipairs(map:GetChildren()) do
@@ -2185,6 +2247,7 @@ do
         {key="pods",   label="Pods ESP",   icon="⊙", desc="highlight freeze pods",       order=3},
         {key="pc",     label="PC ESP",     icon="▣", desc="highlight computers",          order=4},
         {key="exits",  label="Exits ESP",  icon="⊘", desc="highlight exit doors",         order=5},
+        {key="vents",  label="Vents ESP",  icon="▦", desc="highlight vent blocks",        order=6},
     }
     local groupOpen = false
     local headerRow = Instance.new("Frame", Panes[4])
