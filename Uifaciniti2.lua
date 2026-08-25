@@ -417,6 +417,214 @@ function Flashlight.stop()
     end
 end
 
+local NoFog = {enabled=false, connections={}, originalSettings={}}
+
+local function killAtmosphere()
+    local atm = Lighting:FindFirstChildOfClass("Atmosphere")
+    if atm then
+        atm.Density = 0
+        atm.Haze = 0
+        atm.Glare = 0
+    end
+end
+
+function NoFog.start()
+    if NoFog.enabled then return end
+    NoFog.enabled = true
+
+    local atm = Lighting:FindFirstChildOfClass("Atmosphere")
+    NoFog.originalSettings = {
+        GlobalShadows = Lighting.GlobalShadows,
+        AtmDensity = atm and atm.Density or nil,
+        AtmHaze = atm and atm.Haze or nil,
+        AtmGlare = atm and atm.Glare or nil,
+    }
+
+    Lighting.GlobalShadows = false
+    killAtmosphere()
+
+    if atm then
+        table.insert(NoFog.connections, atm:GetPropertyChangedSignal("Density"):Connect(killAtmosphere))
+        table.insert(NoFog.connections, atm:GetPropertyChangedSignal("Haze"):Connect(killAtmosphere))
+    end
+
+    table.insert(NoFog.connections, Lighting:GetPropertyChangedSignal("GlobalShadows"):Connect(function()
+        if NoFog.enabled and Lighting.GlobalShadows then Lighting.GlobalShadows = false end
+    end))
+end
+
+function NoFog.stop()
+    NoFog.enabled = false
+    for _, c in pairs(NoFog.connections) do
+        if typeof(c)=="RBXScriptConnection" then c:Disconnect() end
+    end
+    NoFog.connections = {}
+    if NoFog.originalSettings.GlobalShadows ~= nil then
+        Lighting.GlobalShadows = NoFog.originalSettings.GlobalShadows
+    end
+    local atm = Lighting:FindFirstChildOfClass("Atmosphere")
+    if atm and NoFog.originalSettings.AtmDensity then
+        atm.Density = NoFog.originalSettings.AtmDensity
+        atm.Haze = NoFog.originalSettings.AtmHaze
+        atm.Glare = NoFog.originalSettings.AtmGlare
+    end
+end
+
+local ShiftLockMobile = {enabled=false, connections={}, renderConn=nil, gui=nil, locked=false}
+
+local DRAG_THRESHOLD = 5 -- px: dưới ngưỡng này tính là click, từ ngưỡng trở lên tính là kéo
+
+local function applyShiftLockState(icon)
+    local hum = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+    pcall(function()
+        if ShiftLockMobile.locked then
+            UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+            UserInputService.MouseIconEnabled = false
+            if hum then hum.AutoRotate = false end
+            if icon then icon.ImageColor3 = Color3.fromRGB(255,150,60) end
+
+            -- Xoay nhân vật theo hướng camera mỗi frame, đúng hành vi Shift Lock thật:
+            -- nhân vật quay mặt theo hướng người chơi đang nhìn, không phải hướng di chuyển cuối.
+            if ShiftLockMobile.renderConn then ShiftLockMobile.renderConn:Disconnect() end
+            ShiftLockMobile.renderConn = RunService.RenderStepped:Connect(function()
+                local char = lp.Character
+                local root = char and char:FindFirstChild("HumanoidRootPart")
+                local h = char and char:FindFirstChildOfClass("Humanoid")
+                if not root or not h or h.Health <= 0 then return end
+                if h:GetState() == Enum.HumanoidStateType.Ragdoll then return end
+
+                local cam = workspace.CurrentCamera
+                local look = cam.CFrame.LookVector
+                look = Vector3.new(look.X, 0, look.Z)
+                if look.Magnitude < 0.01 then return end
+                look = look.Unit
+
+                local targetCFrame = CFrame.new(root.Position, root.Position + look)
+                root.CFrame = CFrame.new(root.Position) * (targetCFrame - targetCFrame.Position)
+            end)
+        else
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+            UserInputService.MouseIconEnabled = true
+            if hum then hum.AutoRotate = true end
+            if icon then icon.ImageColor3 = Color3.new(1,1,1) end
+
+            if ShiftLockMobile.renderConn then
+                ShiftLockMobile.renderConn:Disconnect()
+                ShiftLockMobile.renderConn = nil
+            end
+        end
+    end)
+end
+
+local function createShiftLockIcon()
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "ShiftLockMobileUI"; gui.Parent = pgui; gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+
+    local icon = Instance.new("ImageButton")
+    icon.Name = "ShiftLockIcon"
+    icon.Size = UDim2.new(0, 50, 0, 50)
+    icon.Position = UDim2.new(1, -70, 1, -160)
+    icon.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    icon.BackgroundTransparency = 0.25
+    icon.Image = "rbxasset://textures/MouseLockedCursor.png" -- icon shift lock gốc của Roblox
+    icon.ImageColor3 = Color3.new(1,1,1)
+    icon.AutoButtonColor = false
+    icon.Parent = gui
+
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1,0); c.Parent = icon
+    local s = Instance.new("UIStroke"); s.Color = Color3.new(1,1,1); s.Transparency = 0.6; s.Thickness = 1.5; s.Parent = icon
+
+    return gui, icon
+end
+
+function ShiftLockMobile.start()
+    if ShiftLockMobile.enabled then return end
+    ShiftLockMobile.enabled = true
+    ShiftLockMobile.locked = false
+
+    local gui, icon = createShiftLockIcon()
+    ShiftLockMobile.gui = gui
+
+    -- state kéo/click theo đúng 1 ngón tay duy nhất đang giữ icon.
+    -- activeTouchId đảm bảo chỉ input của đúng ngón đang giữ mới được xử lý,
+    -- các ngón khác chạm màn hình cùng lúc bị bỏ qua hoàn toàn để icon không nhảy lung tung.
+    local activeTouchId = nil
+    local startPos = nil
+    local iconStartPos = nil
+    local isDragging = false
+
+    local function onBegan(input)
+        if input.UserInputType ~= Enum.UserInputType.Touch then return end
+        if activeTouchId ~= nil then return end -- đã có ngón khác đang giữ, bỏ qua
+
+        activeTouchId = input
+        startPos = input.Position
+        iconStartPos = icon.Position
+        isDragging = false
+    end
+
+    local function onEnded(input)
+        if input ~= activeTouchId then return end
+        if not isDragging then
+            -- dưới ngưỡng 5px toàn bộ quá trình -> tính là click thật
+            ShiftLockMobile.locked = not ShiftLockMobile.locked
+            applyShiftLockState(icon)
+        end
+        activeTouchId = nil
+        startPos = nil
+        iconStartPos = nil
+        isDragging = false
+    end
+
+    table.insert(ShiftLockMobile.connections, icon.InputBegan:Connect(onBegan))
+
+    -- Dùng UserInputService.InputChanged (toàn cục, fire liên tục kể cả khi
+    -- ngón tay đã rời khỏi phạm vi icon) thay vì icon.InputChanged/TouchMoved
+    -- để việc kéo nhanh không bị đứt đoạn hay bỏ lỡ sự kiện.
+    table.insert(ShiftLockMobile.connections, UserInputService.InputChanged:Connect(function(input)
+        if input ~= activeTouchId then return end
+        if input.UserInputType ~= Enum.UserInputType.Touch then return end
+        local delta = input.Position - startPos
+        if not isDragging and delta.Magnitude >= DRAG_THRESHOLD then
+            isDragging = true
+        end
+        if isDragging then
+            icon.Position = UDim2.new(
+                iconStartPos.X.Scale, iconStartPos.X.Offset + delta.X,
+                iconStartPos.Y.Scale, iconStartPos.Y.Offset + delta.Y
+            )
+        end
+    end))
+
+    -- Bắt InputEnded toàn cục để không phụ thuộc việc ngón tay có đang
+    -- nằm trên icon hay không lúc thả ra (tránh miss sự kiện khi kéo nhanh).
+    table.insert(ShiftLockMobile.connections, UserInputService.InputEnded:Connect(onEnded))
+
+    -- Nếu character respawn trong lúc đang lock, áp lại state cho Humanoid mới
+    table.insert(ShiftLockMobile.connections, lp.CharacterAdded:Connect(function()
+        task.wait(0.2)
+        if ShiftLockMobile.enabled then applyShiftLockState(icon) end
+    end))
+end
+
+function ShiftLockMobile.stop()
+    ShiftLockMobile.enabled = false
+    if ShiftLockMobile.locked then
+        ShiftLockMobile.locked = false
+        applyShiftLockState(nil)
+    end
+    if ShiftLockMobile.renderConn then
+        ShiftLockMobile.renderConn:Disconnect()
+        ShiftLockMobile.renderConn = nil
+    end
+    for _, c in pairs(ShiftLockMobile.connections) do
+        if typeof(c)=="RBXScriptConnection" then c:Disconnect() end
+    end
+    ShiftLockMobile.connections = {}
+    if ShiftLockMobile.gui then ShiftLockMobile.gui:Destroy(); ShiftLockMobile.gui = nil end
+end
+
 local SelfMuting = {enabled=false, connections={}, muted={}, scanInterval=0.25}
 
 local function isLocalCharacterAncestor(inst)
@@ -1160,15 +1368,15 @@ local function startDoorProgress()
         local barBg = Instance.new("Frame")
         barBg.Size = UDim2.new(1, -6, 0, 12)
         barBg.Position = UDim2.new(0, 3, 0, 5)
-        barBg.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        barBg.BackgroundTransparency = 0.75
+        barBg.BackgroundColor3 = Color3.fromRGB(120, 80, 55)
+        barBg.BackgroundTransparency = 0.55
         barBg.BorderSizePixel = 0
         barBg.ZIndex = 1
         barBg.Parent = bb
 
         local bgc = Instance.new("UICorner"); bgc.CornerRadius = UDim.new(0, 6); bgc.Parent = barBg
         local bgs = Instance.new("UIStroke")
-        bgs.Color = Color3.fromRGB(255, 255, 255); bgs.Thickness = 1; bgs.Transparency = 0.6; bgs.Parent = barBg
+        bgs.Color = Color3.fromRGB(160, 110, 75); bgs.Thickness = 1; bgs.Transparency = 0.5; bgs.Parent = barBg
 
         local barFill = Instance.new("Frame")
         barFill.Size = UDim2.new(0, 0, 1, 0)
@@ -1202,9 +1410,12 @@ local function startDoorProgress()
                 local triggerPart = getTriggerPart(obj)
                 if triggerPart and not activeDoors[obj] then
                     local bb, barFill, tl = createBillboard(triggerPart)
+                    local doorModel = obj.Parent
+                    local doorVisual = doorModel and (doorModel:FindFirstChild("Door") or doorModel)
                     activeDoors[obj] = {
                         bb = bb, barFill = barFill, textLabel = tl,
-                        sign = obj.ActionSign, triggerPart = triggerPart
+                        sign = obj.ActionSign, triggerPart = triggerPart,
+                        doorVisual = doorVisual,
                     }
                 end
             end
@@ -1217,6 +1428,9 @@ local function startDoorProgress()
                 progressCache[trigger] = nil
                 continue
             end
+
+            -- lấy highlight hiện tại (được reloadESP tạo/xóa theo toggle Door ESP)
+            esp.highlight = esp.doorVisual and esp.doorVisual:FindFirstChild("DoorESPHL")
 
             if esp.sign and esp.sign.Parent and esp.sign.Value == 11 then
                 progressCache[trigger] = -1
@@ -1256,6 +1470,18 @@ local function startDoorProgress()
             if not trigger.Parent or not esp.bb or not esp.bb.Parent then continue end
 
             local percent = progressCache[trigger] or 0
+
+            -- Đồng bộ màu Highlight (do reloadESP tạo) theo đúng trạng thái cửa,
+            -- không để nó đứng yên màu cam cố định như trước.
+            if esp.highlight and esp.highlight.Parent then
+                if esp.sign and esp.sign.Parent and esp.sign.Value == 11 then
+                    esp.highlight.FillColor = Color3.fromRGB(60,255,90)
+                    esp.highlight.OutlineColor = Color3.fromRGB(120,255,150)
+                else
+                    esp.highlight.FillColor = Color3.fromRGB(255,127,0)
+                    esp.highlight.OutlineColor = Color3.fromRGB(255,170,60)
+                end
+            end
 
             if percent == -1 then
                 esp.bb.Enabled = false
@@ -1613,6 +1839,8 @@ local function saveSettings()
             wallhop         = WallhopView.enabled,
             noTexture       = MyHub.Config.NoTexture,
             flashlight      = Flashlight.enabled,
+            noFog           = NoFog.enabled,
+            shiftLockMobile = ShiftLockMobile.enabled,
             selfMuting      = SelfMuting.enabled,
             keybind         = tostring(MyHub.Config.Keybind):gsub("Enum%.KeyCode%.", ""),
         }
@@ -1735,6 +1963,28 @@ local function reloadESP()
                     end
                 end
             end
+
+            -- Door ESP: gộp chung điều khiển với Door Progress (1 toggle duy nhất).
+            -- DoorTrigger nằm sâu trong descendants (Facility_x.SingleDoor.DoorTrigger),
+            -- highlight bọc vào chính model cửa (parent của DoorTrigger), không phải trigger vô hình.
+            for _, obj in ipairs(map:GetDescendants()) do
+                if obj.Name == "DoorTrigger" and obj:FindFirstChild("ActionSign") then
+                    local doorModel = obj.Parent
+                    if doorModel then
+                        local doorVisual = doorModel:FindFirstChild("Door") or doorModel
+                        local h = doorVisual:FindFirstChildOfClass("Highlight")
+                        if h and not MyHub.Config.DoorProgress then h:Destroy()
+                        elseif not h and MyHub.Config.DoorProgress then
+                            local a = Instance.new("Highlight", doorVisual)
+                            a.Name = "DoorESPHL"
+                            a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                            a.FillTransparency = 0.6
+                            a.FillColor = Color3.fromRGB(255,127,0)
+                            a.OutlineColor = Color3.fromRGB(255,170,60)
+                        end
+                    end
+                end
+            end
         end
 
         local CollectionService = game:GetService("CollectionService")
@@ -1804,6 +2054,8 @@ local function loadSettings()
         if data.wallhop         ~= nil then WallhopView.enabled    = data.wallhop         end
         if data.noTexture       ~= nil then MyHub.Config.NoTexture            = data.noTexture       end
         if data.flashlight      ~= nil then Flashlight.enabled     = data.flashlight      end
+        if data.noFog           ~= nil then NoFog.enabled          = data.noFog           end
+        if data.shiftLockMobile ~= nil then ShiftLockMobile.enabled= data.shiftLockMobile end
         if data.selfMuting      ~= nil then SelfMuting.enabled     = data.selfMuting      end
         if data.keybind ~= nil then
             local ok, kc = pcall(function() return Enum.KeyCode[data.keybind] end)
@@ -1830,6 +2082,8 @@ local function loadSettings()
             if syncFns.wallhop         then syncFns.wallhop(WallhopView.enabled)           end
             if syncFns.noTexture       then syncFns.noTexture(MyHub.Config.NoTexture)                 end
             if syncFns.flashlight      then syncFns.flashlight(Flashlight.enabled)         end
+            if syncFns.noFog           then syncFns.noFog(NoFog.enabled)                   end
+            if syncFns.shiftLockMobile then syncFns.shiftLockMobile(ShiftLockMobile.enabled) end
             if syncFns.selfMuting      then syncFns.selfMuting(SelfMuting.enabled)         end
             if MyHub.Config.PCProgress       then stopPCProgress(); startPCProgress()     end
             if MyHub.Config.DoorProgress     then stopDoorProgress(); startDoorProgress() end
@@ -1838,6 +2092,8 @@ local function loadSettings()
             if WallhopView.enabled     then WallhopView.stop(); WallhopView.start()   end
             if MyHub.Config.NoTexture             then restoreMap(); scanMap()              end
             if Flashlight.enabled      then Flashlight.stop(); Flashlight.start()    end
+            if NoFog.enabled           then NoFog.stop(); NoFog.start()              end
+            if ShiftLockMobile.enabled then ShiftLockMobile.stop(); ShiftLockMobile.start() end
             if SelfMuting.enabled      then SelfMuting.stop(); SelfMuting.start()    end
         end)
     end)
@@ -1865,8 +2121,8 @@ end)
 do
 
 local CFG = {
-    Title    = "PANEL",
-    SubTitle = "v1.0 · ready",
+    Title    = "Extended Flee The Facility",
+    SubTitle = "v1.0.1 · ready",
     W = 480, H = 320, SideW = 110,
     Tabs = {
         {name="Info",   icon="≡"},
@@ -1971,10 +2227,11 @@ LogoLbl.Size=UDim2.new(1,0,1,0); LogoLbl.BackgroundTransparency=1
 LogoLbl.Text="◆"; LogoLbl.TextSize=13; LogoLbl.Font=Enum.Font.GothamBold; LogoLbl.ZIndex=13
 
 local TitleL = Instance.new("TextLabel", Header)
-TitleL.Size=UDim2.new(0,120,0,16); TitleL.Position=UDim2.new(0,48,0.5,-16)
+TitleL.Size=UDim2.new(0,340,0,16); TitleL.Position=UDim2.new(0,48,0.5,-16)
 TitleL.BackgroundTransparency=1; TitleL.Text=CFG.Title; TitleL.TextColor3=CFG.Text
-TitleL.TextSize=13; TitleL.Font=Enum.Font.GothamBold
+TitleL.TextSize=11; TitleL.Font=Enum.Font.GothamBold
 TitleL.TextXAlignment=Enum.TextXAlignment.Left; TitleL.ZIndex=12
+TitleL.TextTruncate=Enum.TextTruncate.AtEnd
 
 local SubL = Instance.new("TextLabel", Header)
 SubL.Size=UDim2.new(0,120,0,12); SubL.Position=UDim2.new(0,48,0.5,2)
@@ -2438,7 +2695,6 @@ do
         {key="pods",   label="Pods ESP",   icon="⊙", desc="highlight freeze pods",       order=3},
         {key="pc",     label="PC ESP",     icon="▣", desc="highlight computers",          order=4},
         {key="exits",  label="Exits ESP",  icon="⊘", desc="highlight exit doors",         order=5},
-        {key="vents",  label="Vents ESP",  icon="▦", desc="highlight vent blocks",        order=6},
     }
     local groupOpen = false
     local headerRow = Instance.new("Frame", Panes[4])
@@ -2461,7 +2717,7 @@ do
 
     local hdl = Instance.new("TextLabel", headerRow)
     hdl.Size=UDim2.new(0,130,0,12); hdl.Position=UDim2.new(0,42,0,22)
-    hdl.BackgroundTransparency=1; hdl.Text="5 esp options"; hdl.TextColor3=CFG.TextMute
+    hdl.BackgroundTransparency=1; hdl.Text="4 esp options"; hdl.TextColor3=CFG.TextMute
     hdl.TextSize=9; hdl.Font=Enum.Font.Code
     hdl.TextXAlignment=Enum.TextXAlignment.Left; hdl.ZIndex=16
 
@@ -2473,6 +2729,7 @@ do
     local groupContent = Instance.new("Frame", Panes[4])
     groupContent.Size=UDim2.new(1,0,0,0); groupContent.BackgroundTransparency=1
     groupContent.BorderSizePixel=0; groupContent.ClipsDescendants=true
+    groupContent.Visible=false
     groupContent.ZIndex=15; groupContent.LayoutOrder=2
     local gcl = Instance.new("UIListLayout", groupContent)
     gcl.SortOrder=Enum.SortOrder.LayoutOrder; gcl.Padding=UDim.new(0,5)
@@ -2546,8 +2803,12 @@ do
         groupOpen = not groupOpen
         tw(arrowLbl,fast,{TextColor3=groupOpen and CFG.Accent or CFG.TextMute})
         arrowLbl.Text = groupOpen and "↑" or "↓"
-        tw(groupContent, TweenInfo.new(0.25,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),
+        if groupOpen then groupContent.Visible = true end
+        local sizeTween = tw(groupContent, TweenInfo.new(0.25,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),
             {Size=UDim2.new(1,0,0,groupOpen and fullH or 0)})
+        if not groupOpen then
+            sizeTween.Completed:Connect(function() groupContent.Visible = false end)
+        end
     end)
     hBtn.MouseEnter:Connect(function() tw(headerRow,fast,{BackgroundColor3=CFG.CardHov}) end)
     hBtn.MouseLeave:Connect(function() tw(headerRow,fast,{BackgroundColor3=CFG.Card}) end)
@@ -2556,14 +2817,21 @@ end
 addToggle(Panes[4], "∞", "PC Progress", "shows hacking progress bars above PCs", false, 6, function(s)
     if s then startPCProgress() else stopPCProgress() end; saveSettings()
 end, "pcProgress")
-addToggle(Panes[4], "▤", "Door Progress", "shows opening progress bars above doors", false, 7, function(s)
-    if s then startDoorProgress() else stopDoorProgress() end; saveSettings()
+addToggle(Panes[4], "▤", "Door ESP", "highlights doors + shows opening progress", false, 7, function(s)
+    if s then startDoorProgress() else stopDoorProgress() end
+    reloadESP()
+    saveSettings()
 end, "doorProgress")
 addToggle(Panes[4], "◨", "Locker ESP", "highlights hiding lockers in purple", false, 8, function(s)
     MyHub.Config.ESP.lockers = s
     reloadESP()
     saveSettings()
 end, "espLockers")
+addToggle(Panes[4], "▦", "Vent ESP", "highlights vent blocks on the map", false, 9, function(s)
+    MyHub.Config.ESP.vents = s
+    reloadESP()
+    saveSettings()
+end, "espVents")
 addSection(Panes[5], "Misc Features", 0)
 addToggle(Panes[5], "▣", "No Texture",  "Replaces world assets with solid plastic layers",  false, 1, function(s)
     MyHub.Config.NoTexture = s; if MyHub.Config.NoTexture then scanMap() else restoreMap() end; saveSettings()
@@ -2571,14 +2839,20 @@ end, "noTexture")
 addToggle(Panes[5], "☼", "Flashlight",  "Forces light shifts into bright ambient modes",     false, 2, function(s)
     if s then Flashlight.start() else Flashlight.stop() end; saveSettings()
 end, "flashlight")
-addToggle(Panes[5], "⊗", "Self muting", "Silences local player character audio triggers",    false, 3, function(s)
+addToggle(Panes[5], "☁", "No Fog",      "Removes map fog for clearer visibility",            false, 3, function(s)
+    if s then NoFog.start() else NoFog.stop() end; saveSettings()
+end, "noFog")
+addToggle(Panes[5], "⊗", "Self muting", "Silences local player character audio triggers",    false, 4, function(s)
     if s then SelfMuting.start() else SelfMuting.stop() end; saveSettings()
 end, "selfMuting")
-addToggle(Panes[5], "◆", "Wallhop view","Highlights walls around player",                    false, 4, function(s)
+addToggle(Panes[5], "◆", "Wallhop view","Highlights walls around player",                    false, 5, function(s)
     if s then WallhopView.start() else WallhopView.stop() end; saveSettings()
 end, "wallhop")
+addToggle(Panes[5], "⇄", "Shift Lock",  "Mobile draggable icon to toggle shift lock camera", false, 6, function(s)
+    if s then ShiftLockMobile.start() else ShiftLockMobile.stop() end; saveSettings()
+end, "shiftLockMobile")
 
-addButton(Panes[5], "⊕", "Join Server Pro", "Auto Join or Leave Pro Server", 5, function()
+addButton(Panes[5], "⊕", "Join Server Pro", "Auto Join or Leave Pro Server", 7, function()
     local a = Players.LocalPlayer
     local b = a.Character or a.CharacterAdded:Wait()
     local c = b:WaitForChild("HumanoidRootPart")
