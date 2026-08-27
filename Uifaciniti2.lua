@@ -1308,6 +1308,109 @@ local function getTriggerPart(trigger)
     return trigger:FindFirstChildWhichIsA("BasePart", true)
 end
 
+-- =========================================================
+-- DOOR TROLL: mở/đóng hết cửa trên map, chỉ tác động cửa nào
+-- cần đổi trạng thái (bỏ qua cửa đã đúng trạng thái mong muốn).
+-- =========================================================
+local DoorTroll = {running = false, isOpenMode = true}
+
+local function doorTroll_collectDoors()
+    local doors = {}
+    local map = Replicated:FindFirstChild("CurrentMap")
+    if not (map and map.Value) then return doors end
+
+    for _, obj in ipairs(map.Value:GetDescendants()) do
+        if obj.Name == "DoorTrigger" and obj:IsA("BasePart") then
+            local evt = obj:FindFirstChild("Event")
+            local sign = obj:FindFirstChild("ActionSign")
+            if evt and sign then
+                table.insert(doors, {trigger = obj, evt = evt, sign = sign})
+            end
+        end
+    end
+    return doors
+end
+
+local function doorTroll_triggerDoor(remote, door)
+    task.wait(math.random(0, 3) / 10) -- jitter nhẹ, tránh spam đồng loạt 1 tick
+    pcall(function()
+        remote:FireServer("Input", "Trigger", true, door.evt)
+        remote:FireServer("Input", "Action", true)
+        remote:FireServer("Input", "Action", false)
+    end)
+end
+
+-- Chờ 1 cửa đạt đúng cột mốc hoàn tất (mở xong = 11, đóng xong = quay lại 0 sau khi qua 10)
+local function doorTroll_waitSettled(door, opening)
+    local waited = 0
+    local sawTen = false
+    while waited < 2 do
+        if opening then
+            if door.sign.Value == 11 then break end
+        else
+            if door.sign.Value == 10 then sawTen = true end
+            if sawTen and door.sign.Value == 0 then break end
+        end
+        task.wait(0.1)
+        waited = waited + 0.1
+    end
+end
+
+-- Mở hết cửa đang đóng, đóng hết cửa đang mở (bỏ qua cửa đã đúng trạng thái)
+function DoorTroll.run(openMode)
+    if DoorTroll.running then return end
+    DoorTroll.running = true
+
+    task.spawn(function()
+        local remote = Replicated:WaitForChild("RemoteEvent", 10)
+        if not remote then DoorTroll.running = false; return end
+
+        local doors = doorTroll_collectDoors()
+        local targetDoors = {}
+
+        for _, door in ipairs(doors) do
+            local isCurrentlyOpen = door.sign.Value == 11
+            -- chỉ tác động cửa cần đổi trạng thái, bỏ qua cửa đã đúng ý
+            if openMode and not isCurrentlyOpen then
+                table.insert(targetDoors, door)
+            elseif not openMode and isCurrentlyOpen then
+                table.insert(targetDoors, door)
+            end
+        end
+
+        -- bấm gần như song song cho các cửa cần đổi
+        for _, door in ipairs(targetDoors) do
+            task.spawn(doorTroll_triggerDoor, remote, door)
+        end
+
+        -- chờ tất cả đạt cột mốc hoàn tất rồi buông tay đồng loạt
+        local waitThreads = {}
+        for _, door in ipairs(targetDoors) do
+            table.insert(waitThreads, task.spawn(function()
+                doorTroll_waitSettled(door, openMode)
+            end))
+        end
+        for _, th in ipairs(waitThreads) do
+            while coroutine.status(th) ~= "dead" do
+                task.wait(0.05)
+            end
+        end
+
+        for _, door in ipairs(targetDoors) do
+            pcall(function() remote:FireServer("Input", "Trigger", false, door.evt) end)
+        end
+
+        DoorTroll.running = false
+        -- tự trả nút toggle về off vì đây là hành động chạy 1 lần, không phải bật/tắt dài hạn
+        if syncFns.doorTrollToggle then syncFns.doorTrollToggle(false) end
+    end)
+end
+
+local _sharedOverlapParams = OverlapParams.new()
+_sharedOverlapParams.FilterType = Enum.RaycastFilterType.Exclude
+_sharedOverlapParams.FilterDescendantsInstances = {}
+_sharedOverlapParams.RespectCanCollide = false
+
 local function isCharacterInsideTrigger(character, triggerPart)
     if not character or not triggerPart then return false end
     local hrp = character:FindFirstChild("HumanoidRootPart")
@@ -1317,12 +1420,7 @@ local function isCharacterInsideTrigger(character, triggerPart)
     local roughDist = (hrp.Position - triggerPart.Position).Magnitude
     if roughDist > 15 then return false end
 
-    local params = OverlapParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = {}
-    params.RespectCanCollide = false
-
-    local parts = workspace:GetPartsInPart(triggerPart, params)
+    local parts = workspace:GetPartsInPart(triggerPart, _sharedOverlapParams)
     for _, part in ipairs(parts) do
         if part:IsDescendantOf(character) then return true end
     end
@@ -1401,7 +1499,7 @@ local function startDoorProgress()
         return bb, barFill, tl
     end
 
-    local function refreshOverlapChecks()
+    local function scanForDoors()
         local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
         if not map or not map.Parent then return end
 
@@ -1420,7 +1518,16 @@ local function startDoorProgress()
                 end
             end
         end
+    end
 
+    -- Quét cửa 1 lần ngay khi bật, và mỗi khi map đổi (không quét lại mỗi 0.1s)
+    scanForDoors()
+    table.insert(doorConnections, Replicated:WaitForChild("CurrentMap").Changed:Connect(function()
+        task.wait(3)
+        if MyHub.Config.DoorProgress then scanForDoors() end
+    end))
+
+    local function refreshOverlapChecks()
         for trigger, esp in pairs(activeDoors) do
             if not trigger.Parent or not esp.triggerPart or not esp.triggerPart.Parent then
                 if esp.bb then esp.bb:Destroy() end
@@ -2129,6 +2236,7 @@ local CFG = {
         {name="Main",   icon="⌂"},
         {name="Auto",   icon="∞"},
         {name="ESP",    icon="◉"},
+        {name="Troll",  icon="👻"},
         {name="Misc",   icon="▣"},
         {name="Config", icon="⊙"},
     },
@@ -2832,27 +2940,33 @@ addToggle(Panes[4], "▦", "Vent ESP", "highlights vent blocks on the map", fals
     reloadESP()
     saveSettings()
 end, "espVents")
-addSection(Panes[5], "Misc Features", 0)
-addToggle(Panes[5], "▣", "No Texture",  "Replaces world assets with solid plastic layers",  false, 1, function(s)
+
+addSection(Panes[5], "Troll", 0)
+addToggle(Panes[5], "🚪", "Open/Close All Doors", "toggle: mo cua dang dong, bam lai de dong cua dang mo", false, 1, function(s)
+    DoorTroll.run(s)
+end, "doorTrollToggle")
+
+addSection(Panes[6], "Misc Features", 0)
+addToggle(Panes[6], "▣", "No Texture",  "Replaces world assets with solid plastic layers",  false, 1, function(s)
     MyHub.Config.NoTexture = s; if MyHub.Config.NoTexture then scanMap() else restoreMap() end; saveSettings()
 end, "noTexture")
-addToggle(Panes[5], "☼", "Flashlight",  "Forces light shifts into bright ambient modes",     false, 2, function(s)
+addToggle(Panes[6], "☼", "Flashlight",  "Forces light shifts into bright ambient modes",     false, 2, function(s)
     if s then Flashlight.start() else Flashlight.stop() end; saveSettings()
 end, "flashlight")
-addToggle(Panes[5], "☁", "No Fog",      "Removes map fog for clearer visibility",            false, 3, function(s)
+addToggle(Panes[6], "☁", "No Fog",      "Removes map fog for clearer visibility",            false, 3, function(s)
     if s then NoFog.start() else NoFog.stop() end; saveSettings()
 end, "noFog")
-addToggle(Panes[5], "⊗", "Self muting", "Silences local player character audio triggers",    false, 4, function(s)
+addToggle(Panes[6], "⊗", "Self muting", "Silences local player character audio triggers",    false, 4, function(s)
     if s then SelfMuting.start() else SelfMuting.stop() end; saveSettings()
 end, "selfMuting")
-addToggle(Panes[5], "◆", "Wallhop view","Highlights walls around player",                    false, 5, function(s)
+addToggle(Panes[6], "◆", "Wallhop view","Highlights walls around player",                    false, 5, function(s)
     if s then WallhopView.start() else WallhopView.stop() end; saveSettings()
 end, "wallhop")
-addToggle(Panes[5], "⇄", "Shift Lock",  "Mobile draggable icon to toggle shift lock camera", false, 6, function(s)
+addToggle(Panes[6], "⇄", "Shift Lock",  "Mobile draggable icon to toggle shift lock camera", false, 6, function(s)
     if s then ShiftLockMobile.start() else ShiftLockMobile.stop() end; saveSettings()
 end, "shiftLockMobile")
 
-addButton(Panes[5], "⊕", "Join Server Pro", "Auto Join or Leave Pro Server", 7, function()
+addButton(Panes[6], "⊕", "Join Server Pro", "Auto Join or Leave Pro Server", 7, function()
     local a = Players.LocalPlayer
     local b = a.Character or a.CharacterAdded:Wait()
     local c = b:WaitForChild("HumanoidRootPart")
@@ -2886,8 +3000,8 @@ addButton(Panes[5], "⊕", "Join Server Pro", "Auto Join or Leave Pro Server", 7
     end
 end)
 
-addSection(Panes[6], "Keybind", 0)
-local keybindRow = Instance.new("Frame", Panes[6])
+addSection(Panes[7], "Keybind", 0)
+local keybindRow = Instance.new("Frame", Panes[7])
 keybindRow.Size=UDim2.new(1,0,0,42); keybindRow.BackgroundColor3=CFG.Card
 keybindRow.BorderSizePixel=0; keybindRow.ZIndex=15; keybindRow.LayoutOrder=1
 corner(keybindRow,9); stroke(keybindRow,CFG.Border,1,0.91)
@@ -2951,7 +3065,7 @@ local isBusy  = false
 
 local ConfirmBg = Instance.new("Frame", SG)
 ConfirmBg.Size=UDim2.new(1,0,1,0); ConfirmBg.BackgroundColor3=Color3.fromRGB(0,0,0)
-ConfirmBg.BackgroundTransparency=0.5; ConfirmBg.ZIndex=200; ConfirmBg.Visible=false
+ConfirmBg.BaCONSTRUCTIONsparency=0.5; ConfirmBg.ZIndex=200; ConfirmBg.Visible=false
 
 local ConfirmBox = Instance.new("Frame", ConfirmBg)
 ConfirmBox.Size=UDim2.new(0,260,0,110); ConfirmBox.Position=UDim2.new(0.5,-130,0.5,-55)
