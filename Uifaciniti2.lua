@@ -11,10 +11,10 @@ local HttpService      = game:GetService("HttpService")
 local lp = Players.LocalPlayer
 
 -- =========================================================
--- MYHUB: siêu bảng duy nhất chứa toàn bộ state của script.
--- Mọi biến toggle/trạng thái nằm trong MyHub.Config,
--- mọi hàm xử lý logic nằm trong MyHub.Core,
--- tránh đụng trần 200 biến local ở top-level scope.
+-- MYHUB: single master table holding all script state.
+-- All toggles/state live in MyHub.Config,
+-- all logic handlers live in MyHub.Core,
+-- avoids hitting the 200 local-variable limit at top-level scope.
 -- =========================================================
 local MyHub = {
     Config = {
@@ -232,7 +232,7 @@ task.spawn(function()
         spinner.Visible = true
         nameLbl.Text = data.name
         nameLbl.TextColor3 = Color3.fromRGB(160, 160, 160)
-        task.wait(math.random(3, 5) / 10) 
+        task.wait(0.15)
         local status = data.check()
         spinner.Visible = false
         resultIcon.Visible = true
@@ -254,9 +254,9 @@ task.spawn(function()
         local percent = math.floor((currentCheck / totalChecks) * 100)
         TweenService:Create(ProgressFill, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(percent/100, 0, 1, 0)}):Play()
         ProgressText.Text = string.format("Loading modules... %d%%", percent)
-        task.wait(0.4)
+        task.wait(0.15)
     end
-    task.wait(0.5)
+    task.wait(0.3)
     local fadeOut = TweenService:Create(MainFrame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Size = UDim2.new(0, 0, 0, 0)})
     fadeOut:Play()
     fadeOut.Completed:Connect(function()
@@ -556,7 +556,7 @@ function ShiftLockMobile.start()
 
     local function onBegan(input)
         if input.UserInputType ~= Enum.UserInputType.Touch then return end
-        if activeTouchId ~= nil then return end -- đã có ngón khác đang giữ, bỏ qua
+        if activeTouchId ~= nil then return end -- another finger is already holding it, ignore
 
         activeTouchId = input
         startPos = input.Position
@@ -581,7 +581,7 @@ function ShiftLockMobile.start()
 
     -- Dùng UserInputService.InputChanged (toàn cục, fire liên tục kể cả khi
     -- ngón tay đã rời khỏi phạm vi icon) thay vì icon.InputChanged/TouchMoved
-    -- để việc kéo nhanh không bị đứt đoạn hay bỏ lỡ sự kiện.
+    -- so fast dragging doesn't get cut off or miss events.
     table.insert(ShiftLockMobile.connections, UserInputService.InputChanged:Connect(function(input)
         if input ~= activeTouchId then return end
         if input.UserInputType ~= Enum.UserInputType.Touch then return end
@@ -1312,7 +1312,163 @@ end
 -- DOOR TROLL: mở/đóng hết cửa trên map, chỉ tác động cửa nào
 -- cần đổi trạng thái (bỏ qua cửa đã đúng trạng thái mong muốn).
 -- =========================================================
+-- =========================================================
+-- REMOTE HACK PC
+-- Lets the player walk away from a computer mid-hack without the
+-- server cancelling the progress: it intercepts the client's own
+-- Trigger=false cancel call and keeps re-sending Trigger=true plus
+-- an auto minigame pass in the background.
+-- Requires Never Fail to be enabled for smooth, uninterrupted operation
+-- (the minigame auto-pass call depends on the same server acceptance
+-- behaviour Never Fail relies on).
+-- =========================================================
+local RemoteHackPC = {enabled = false, stolenEvent = nil, hookInstalled = false}
+
+local function installRemoteHackPCHook()
+    if RemoteHackPC.hookInstalled then return end
+    RemoteHackPC.hookInstalled = true
+
+    local remoteEventRef = Replicated:FindFirstChild("RemoteEvent")
+    local ok, mt = pcall(getrawmetatable, game)
+    if not ok or not mt then RemoteHackPC.hookInstalled = false; return end
+
+    local oldNamecall = mt.__namecall
+    local okSet = pcall(setreadonly, mt, false)
+    if not okSet then RemoteHackPC.hookInstalled = false; return end
+
+    mt.__namecall = newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        local args = {...}
+
+        -- Compare against the actual RemoteEvent instance, not tostring(self),
+        -- to avoid matching unrelated objects and to fail closed if the
+        -- remote reference ever changes.
+        if not checkcaller() and method == "FireServer" and self == remoteEventRef then
+            if args[1] == "Input" and args[2] == "Trigger" then
+                local evt = args[4]
+                -- Only track/intercept events that belong to a ComputerTable's
+                -- own trigger tree, never doors or anything else -- otherwise
+                -- opening/closing a door right after hacking a PC would get
+                -- mistaken for the "stop hacking" signal and get swallowed.
+                local isComputerEvent = evt and evt:FindFirstAncestor("ComputerTable") ~= nil
+
+                if args[3] == true and evt ~= nil then
+                    if isComputerEvent then
+                        RemoteHackPC.stolenEvent = evt
+                    end
+                elseif args[3] == false then
+                    if RemoteHackPC.enabled and RemoteHackPC.stolenEvent == evt then
+                        -- swallow the client's own cancel call while hacking remotely,
+                        -- but only for the exact PC event we're tracking
+                        return
+                    end
+                end
+            end
+        end
+
+        return oldNamecall(self, ...)
+    end)
+    pcall(setreadonly, mt, true)
+end
+
+function RemoteHackPC.start()
+    if RemoteHackPC.enabled then return end
+    installRemoteHackPCHook()
+    RemoteHackPC.enabled = true
+
+    task.spawn(function()
+        local remote = Replicated:WaitForChild("RemoteEvent", 10)
+        if not remote then return end
+        while RemoteHackPC.enabled do
+            task.wait(0.2)
+            if RemoteHackPC.stolenEvent then
+                pcall(function()
+                    remote:FireServer("Input", "Trigger", true, RemoteHackPC.stolenEvent)
+                end)
+            end
+        end
+    end)
+end
+
+function RemoteHackPC.stop()
+    RemoteHackPC.enabled = false
+    RemoteHackPC.stolenEvent = nil
+end
+
+-- =========================================================
+-- BEAST TROLL: three independent toggles that act on every
+-- player currently detected as the Beast.
+-- - Slow Beast: spams the Beast's jump power event so their
+--   movement stutters.
+-- - Auto Untie Me: watches every RopeConstraint on the Beast's
+--   character and, if it's attached to the local player, forces
+--   the Beast to let go (only affects ropes tied to yourself).
+-- - Auto Untie All: forces the Beast to let go of anyone they're
+--   currently holding, regardless of who it is.
+-- =========================================================
+local BeastTroll = {slowBeast = false, untieMe = false, untieAll = false, connection = nil}
+
+local function getAllBeasts()
+    local beasts = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= lp then
+            local stats = p:FindFirstChild("TempPlayerStatsModule")
+            if stats and stats:FindFirstChild("IsBeast") and stats.IsBeast.Value
+                and p.Character and p.Character:FindFirstChild("Hammer")
+                and p.Character.Hammer:FindFirstChild("HammerEvent")
+                and p.Character:FindFirstChild("BeastPowers")
+                and p.Character.BeastPowers:FindFirstChild("PowersEvent")
+            then
+                table.insert(beasts, p)
+            end
+        end
+    end
+    return beasts
+end
+
+local function startBeastTroll()
+    if BeastTroll.connection then return end
+    BeastTroll.connection = RunService.Heartbeat:Connect(function()
+        if not (BeastTroll.slowBeast or BeastTroll.untieMe or BeastTroll.untieAll) then return end
+
+        for _, beast in ipairs(getAllBeasts()) do
+            local hammerEvent = beast.Character.Hammer.HammerEvent
+
+            if BeastTroll.untieAll then
+                pcall(function() hammerEvent:FireServer("HammerClick", true) end)
+            end
+
+            if BeastTroll.untieMe and lp.Character then
+                for _, rope in ipairs(beast.Character:GetDescendants()) do
+                    if rope:IsA("RopeConstraint") then
+                        local a0 = rope.Attachment0
+                        local a1 = rope.Attachment1
+                        if (a0 and a0:IsDescendantOf(lp.Character)) or (a1 and a1:IsDescendantOf(lp.Character)) then
+                            pcall(function() hammerEvent:FireServer("HammerClick", true) end)
+                        end
+                    end
+                end
+            end
+
+            if BeastTroll.slowBeast then
+                pcall(function() beast.Character.BeastPowers.PowersEvent:FireServer("Jumped") end)
+            end
+        end
+    end)
+end
+
+local function stopBeastTrollIfIdle()
+    if not (BeastTroll.slowBeast or BeastTroll.untieMe or BeastTroll.untieAll) and BeastTroll.connection then
+        BeastTroll.connection:Disconnect()
+        BeastTroll.connection = nil
+    end
+end
+
 local DoorTroll = {running = false, isOpenMode = true}
+local DOOR_TROLL_TIMEOUT = 4 -- longer than the single-door 2s timeout because
+                              -- opening/closing every door at once puts more
+                              -- load on the server, so doors can take longer
+                              -- to settle than when triggered one at a time
 
 local function doorTroll_collectDoors()
     local doors = {}
@@ -1341,19 +1497,21 @@ local function doorTroll_triggerDoor(remote, door)
 end
 
 -- Chờ 1 cửa đạt đúng cột mốc hoàn tất (mở xong = 11, đóng xong = quay lại 0 sau khi qua 10)
+-- Trả về true nếu đạt đúng cột mốc, false nếu bị timeout (chưa xong thật sự)
 local function doorTroll_waitSettled(door, opening)
     local waited = 0
     local sawTen = false
-    while waited < 2 do
+    while waited < DOOR_TROLL_TIMEOUT do
         if opening then
-            if door.sign.Value == 11 then break end
+            if door.sign.Value == 11 then return true end
         else
             if door.sign.Value == 10 then sawTen = true end
-            if sawTen and door.sign.Value == 0 then break end
+            if sawTen and door.sign.Value == 0 then return true end
         end
         task.wait(0.1)
         waited = waited + 0.1
     end
+    return false
 end
 
 -- Mở hết cửa đang đóng, đóng hết cửa đang mở (bỏ qua cửa đã đúng trạng thái)
@@ -1383,11 +1541,12 @@ function DoorTroll.run(openMode)
             task.spawn(doorTroll_triggerDoor, remote, door)
         end
 
-        -- chờ tất cả đạt cột mốc hoàn tất rồi buông tay đồng loạt
+        -- chờ tất cả đạt cột mốc hoàn tất, ghi nhớ cửa nào thật sự xong
+        local settledResults = {}
         local waitThreads = {}
         for _, door in ipairs(targetDoors) do
             table.insert(waitThreads, task.spawn(function()
-                doorTroll_waitSettled(door, openMode)
+                settledResults[door] = doorTroll_waitSettled(door, openMode)
             end))
         end
         for _, th in ipairs(waitThreads) do
@@ -1396,13 +1555,17 @@ function DoorTroll.run(openMode)
             end
         end
 
+        -- Chỉ buông tay (Trigger false) cho cửa đã đạt đúng cột mốc.
+        -- Cửa bị timeout giữ nguyên Trigger true -- buông tay giữa chừng
+        -- sẽ làm hỏng ActionSign của server cho cửa đó (kẹt ở giá trị
+        -- trung gian), khiến ESP/progress không còn nhận diện đúng nữa.
         for _, door in ipairs(targetDoors) do
-            pcall(function() remote:FireServer("Input", "Trigger", false, door.evt) end)
+            if settledResults[door] then
+                pcall(function() remote:FireServer("Input", "Trigger", false, door.evt) end)
+            end
         end
 
         DoorTroll.running = false
-        -- tự trả nút toggle về off vì đây là hành động chạy 1 lần, không phải bật/tắt dài hạn
-        if syncFns.doorTrollToggle then syncFns.doorTrollToggle(false) end
     end)
 end
 
@@ -1937,6 +2100,10 @@ local function saveSettings()
             espLockers      = MyHub.Config.ESP.lockers,
             espVents        = MyHub.Config.ESP.vents,
             neverfail       = MyHub.Config.NeverFail,
+            remoteHackPC    = RemoteHackPC.enabled,
+            slowBeast       = BeastTroll.slowBeast,
+            untieMe         = BeastTroll.untieMe,
+            untieAll        = BeastTroll.untieAll,
             autoRope        = MyHub.Config.AutoRope,
             hitAura         = MyHub.Config.HitAura,
             pcProgress      = MyHub.Config.PCProgress,
@@ -2152,6 +2319,10 @@ local function loadSettings()
         if data.espLockers      ~= nil then MyHub.Config.ESP.lockers     = data.espLockers      end
         if data.espVents        ~= nil then MyHub.Config.ESP.vents       = data.espVents        end
         if data.neverfail       ~= nil then MyHub.Config.NeverFail       = data.neverfail       end
+        if data.remoteHackPC    ~= nil then RemoteHackPC.enabled         = data.remoteHackPC    end
+        if data.slowBeast       ~= nil then BeastTroll.slowBeast         = data.slowBeast       end
+        if data.untieMe         ~= nil then BeastTroll.untieMe           = data.untieMe          end
+        if data.untieAll        ~= nil then BeastTroll.untieAll          = data.untieAll         end
         if data.autoRope        ~= nil then MyHub.Config.AutoRope            = data.autoRope        end
         if data.hitAura         ~= nil then MyHub.Config.HitAura            = data.hitAura         end
         if data.pcProgress      ~= nil then MyHub.Config.PCProgress      = data.pcProgress      end
@@ -2174,6 +2345,10 @@ local function loadSettings()
         reloadESP()
         task.defer(function()
             if syncFns.neverfail       then syncFns.neverfail(MyHub.Config.NeverFail)            end
+            if syncFns.remoteHackPC    then syncFns.remoteHackPC(RemoteHackPC.enabled)           end
+            if syncFns.slowBeast       then syncFns.slowBeast(BeastTroll.slowBeast)              end
+            if syncFns.untieMe         then syncFns.untieMe(BeastTroll.untieMe)                  end
+            if syncFns.untieAll        then syncFns.untieAll(BeastTroll.untieAll)                end
             if syncFns.espPlayer       then syncFns.espPlayer(MyHub.Config.ESP.player)           end
             if syncFns.espPods         then syncFns.espPods(MyHub.Config.ESP.pods)               end
             if syncFns.espPc           then syncFns.espPc(MyHub.Config.ESP.pc)                   end
@@ -2193,6 +2368,8 @@ local function loadSettings()
             if syncFns.shiftLockMobile then syncFns.shiftLockMobile(ShiftLockMobile.enabled) end
             if syncFns.selfMuting      then syncFns.selfMuting(SelfMuting.enabled)         end
             if MyHub.Config.PCProgress       then stopPCProgress(); startPCProgress()     end
+            if RemoteHackPC.enabled          then RemoteHackPC.stop(); RemoteHackPC.start() end
+            if BeastTroll.slowBeast or BeastTroll.untieMe or BeastTroll.untieAll then startBeastTroll() end
             if MyHub.Config.DoorProgress     then stopDoorProgress(); startDoorProgress() end
             if MyHub.Config.BeastTracker     then stopBeastTracker(); startBeastTracker()   end
             if SurvivorTracker.enabled then SurvivorTracker.stop(); SurvivorTracker.start() end
@@ -2222,21 +2399,23 @@ end)
 -- =========================================================
 -- UI CONSTRUCTION
 -- Toàn bộ khối này được bọc trong do...end để giới hạn
--- phạm vi ~60 biến local (Panel, Header, TitleL, v.v.)
--- không cộng dồn vào register limit 200 của main chunk.
+-- phạm vi biến local (Panel, Header, TitleL, v.v.)
+-- Dùng function thật (IIFE) thay vì do...end: do...end KHÔNG tạo
+-- register scope mới trong Luau, chỉ có function mới giới hạn được
+-- 200 register riêng biệt hoàn toàn với main chunk.
 -- =========================================================
-do
+local function _buildUI()
 
 local CFG = {
     Title    = "Extended Flee The Facility",
-    SubTitle = "v1.0.1 · ready",
+    SubTitle = "v1.0.2",
     W = 480, H = 320, SideW = 110,
     Tabs = {
         {name="Info",   icon="≡"},
         {name="Main",   icon="⌂"},
         {name="Auto",   icon="∞"},
         {name="ESP",    icon="◉"},
-        {name="Troll",  icon="👻"},
+        {name="Troll",  icon="✦"},
         {name="Misc",   icon="▣"},
         {name="Config", icon="⊙"},
     },
@@ -2318,12 +2497,8 @@ Panel.BackgroundColor3=CFG.Bg; Panel.BorderSizePixel=0
 Panel.ClipsDescendants=true; Panel.ZIndex=10
 corner(Panel,14); stroke(Panel,CFG.Border,1,0.88)
 
-local TopLine = Instance.new("Frame", Panel)
-TopLine.Size=UDim2.new(1,0,0,2); TopLine.BackgroundColor3=CFG.Accent
-TopLine.BorderSizePixel=0; TopLine.ZIndex=11
-
 local Header = Instance.new("Frame", Panel)
-Header.Size=UDim2.new(1,0,0,44); Header.Position=UDim2.new(0,0,0,2)
+Header.Size=UDim2.new(1,0,0,44); Header.Position=UDim2.new(0,0,0,0)
 Header.BackgroundTransparency=1; Header.ZIndex=11
 
 local LogoBox = Instance.new("Frame", Header)
@@ -2373,14 +2548,24 @@ Body.BackgroundTransparency=1; Body.ZIndex=11
 local Sidebar = Instance.new("Frame", Body)
 Sidebar.Size=UDim2.new(0,CFG.SideW,1,0); Sidebar.BackgroundColor3=CFG.Side
 Sidebar.BorderSizePixel=0; Sidebar.ZIndex=12
+corner(Sidebar,14)
+-- che phần bo tròn ở góc trên-phải/dưới-phải của Sidebar (chỉ cần bo bên trái,
+-- khớp với góc thật của Panel) bằng 1 lớp phủ vuông đè lên nửa bên phải
+local SidebarCornerFix = Instance.new("Frame", Sidebar)
+SidebarCornerFix.Size=UDim2.new(0,14,1,0); SidebarCornerFix.Position=UDim2.new(1,-14,0,0)
+SidebarCornerFix.BackgroundColor3=CFG.Side; SidebarCornerFix.BorderSizePixel=0; SidebarCornerFix.ZIndex=12
 
 local VDiv = Instance.new("Frame", Body)
 VDiv.Size=UDim2.new(0,1,1,-16); VDiv.Position=UDim2.new(0,CFG.SideW,0,8)
 VDiv.BackgroundColor3=CFG.Border; VDiv.BackgroundTransparency=0.9
 VDiv.BorderSizePixel=0; VDiv.ZIndex=12
 
-local TabList = Instance.new("Frame", Sidebar)
+local TabList = Instance.new("ScrollingFrame", Sidebar)
 TabList.Size=UDim2.new(1,0,1,0); TabList.BackgroundTransparency=1; TabList.ZIndex=13
+TabList.BorderSizePixel=0; TabList.ScrollBarThickness=3
+TabList.ScrollBarImageColor3=CFG.TextMute
+TabList.CanvasSize=UDim2.new(0,0,0,0); TabList.AutomaticCanvasSize=Enum.AutomaticSize.Y
+TabList.ScrollingDirection=Enum.ScrollingDirection.Y
 local TLayout = Instance.new("UIListLayout", TabList)
 TLayout.SortOrder=Enum.SortOrder.LayoutOrder; TLayout.Padding=UDim.new(0,3)
 pad(TabList,10,6,8,8)
@@ -2393,9 +2578,13 @@ local Panes = {}
 for i = 1, #CFG.Tabs do
     local pane
     if i == 1 then
-        pane = Instance.new("Frame", ContentFrame)
+        pane = Instance.new("ScrollingFrame", ContentFrame)
         pane.Size=UDim2.new(1,0,1,0); pane.BackgroundTransparency=1
-        pane.BorderSizePixel=0; pane.Visible=true; pane.ZIndex=13
+        pane.BorderSizePixel=0; pane.ClipsDescendants=true
+        pane.CanvasSize=UDim2.new(0,0,0,0); pane.AutomaticCanvasSize=Enum.AutomaticSize.Y
+        pane.ScrollBarThickness=3; pane.ScrollBarImageColor3=CFG.TextMute
+        pane.ScrollingDirection=Enum.ScrollingDirection.Y
+        pane.ElasticBehavior=Enum.ElasticBehavior.Always; pane.Visible=true; pane.ZIndex=13
         local pl = Instance.new("UIListLayout", pane)
         pl.SortOrder=Enum.SortOrder.LayoutOrder; pl.Padding=UDim.new(0,5)
         local pp = Instance.new("UIPadding", pane)
@@ -2645,9 +2834,10 @@ Pt.Font = Enum.Font.GothamBold
 Pb.Visible = false
 
 local Wp = Instance.new("Frame", Panes[1])
-Wp.Size = UDim2.new(1, 0, 0, 145)
+Wp.Size = UDim2.new(1, 0, 0, 110)
 Wp.BackgroundColor3 = CFG.Card
 Wp.BorderSizePixel = 0
+Wp.ClipsDescendants = true
 Wp.ZIndex = 15
 Wp.LayoutOrder = 3
 corner(Wp, 10)
@@ -2677,23 +2867,59 @@ HereBtn.ZIndex = 20
 HereBtn.Visible = false
 HereBtn.Text = ""
 
-local CL = Instance.new("TextLabel", Wp)
-CL.Size = UDim2.new(1, -24, 0, 14)
+-- Changelog box: hoàn toàn tách biệt khỏi khối Welcome/Thank you ở trên,
+-- riêng frame của nó với ClipsDescendants + ScrollingFrame cố định height
+-- để nội dung dài không bao giờ tràn ra ngoài, chỉ cuộn bên trong.
+local ChangelogBox = Instance.new("Frame", Panes[1])
+ChangelogBox.Size = UDim2.new(1, 0, 0, 0)
+ChangelogBox.AutomaticSize = Enum.AutomaticSize.Y
+ChangelogBox.BackgroundColor3 = CFG.Card
+ChangelogBox.BorderSizePixel = 0
+ChangelogBox.ZIndex = 15
+ChangelogBox.LayoutOrder = 4
+corner(ChangelogBox, 10)
+stroke(ChangelogBox, CFG.Border, 1, .94)
+
+local CLPad = Instance.new("UIPadding", ChangelogBox)
+CLPad.PaddingTop = UDim.new(0, 12); CLPad.PaddingBottom = UDim.new(0, 12)
+CLPad.PaddingLeft = UDim.new(0, 12); CLPad.PaddingRight = UDim.new(0, 12)
+
+local CLListLayout = Instance.new("UIListLayout", ChangelogBox)
+CLListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+CLListLayout.Padding = UDim.new(0, 6)
+
+local CL = Instance.new("TextLabel", ChangelogBox)
+CL.Size = UDim2.new(1, 0, 0, 14)
 CL.BackgroundTransparency = 1
 CL.TextColor3 = Color3.fromRGB(165, 155, 155)
 CL.TextSize = 11
 CL.Font = Enum.Font.GothamBold
 CL.TextXAlignment = "Left"
-CL.Text = ""
+CL.LayoutOrder = 1
+CL.Text = "- Change Logs -"
 
-local KB = Instance.new("TextLabel", Wp)
-KB.Size = UDim2.new(1, -24, 0, 14)
+local KB = Instance.new("TextLabel", ChangelogBox)
+KB.Size = UDim2.new(1, 0, 0, 0)
+KB.AutomaticSize = Enum.AutomaticSize.Y
 KB.BackgroundTransparency = 1
 KB.TextColor3 = CFG.TextMute
 KB.TextSize = 11
 KB.Font = Enum.Font.Code
 KB.TextXAlignment = "Left"
-KB.Text = ""
+KB.TextYAlignment = "Top"
+KB.TextWrapped = true
+KB.LineHeight = 1.25
+KB.LayoutOrder = 2
+KB.Text = table.concat({
+    "+ Add Troll tab",
+    "+ Add Open/Close All Doors (Troll tab)",
+    "+ Add Slow Beast (Troll tab)",
+    "+ Add Auto Untie Self (Troll tab)",
+    "+ Add Auto Untie All (Troll tab)",
+    "+ Add Far Hack (Main tab)",
+    "/ Improve Door ESP performance / reduce lag",
+    "/ UI improvements",
+}, "\n")
 
 HereBtn.MouseButton1Click:Connect(function()
     pcall(function()
@@ -2753,13 +2979,6 @@ task.spawn(function()
         HereBtn.Position = UDim2.new(0, 12 + llw - 4, 0, 12 + lineH * (nL - 1) - 1)
         HereBtn.Visible = true
         TypeGlitch(HereBtn, "here", TEXT_SPEED)
-    
-    local dy = 12 + (lineH * nL) + 7
-    CL.Position = UDim2.new(0, 12, 0, dy)
-    KB.Position = UDim2.new(0, 12, 0, dy + 16)
-    
-    TypeGlitch(CL, "- Change Logs -", TEXT_SPEED)
-    TypeGlitch(KB, "+ kilo beo", TEXT_SPEED)
 end)
 
 task.spawn(function()
@@ -2781,6 +3000,9 @@ end, "survivorTracker")
 addToggle(Panes[2], "⊘", "Never Fail",       "Auto pass minigame result to server",        false, 5, function(s)
     MyHub.Config.NeverFail = s; saveSettings()
 end, "neverfail")
+addToggle(Panes[2], "◍", "Far Hack", "hack PC from far, needs Never Fail", false, 6, function(s)
+    if s then RemoteHackPC.start() else RemoteHackPC.stop() end; saveSettings()
+end, "remoteHackPC")
 
 addSection(Panes[3], "Auto", 0)
 addToggle(Panes[3], "⊕", "Auto Rope", "For Beast: auto rope ragdoll survivors", false, 1, function(s)
@@ -2942,9 +3164,28 @@ addToggle(Panes[4], "▦", "Vent ESP", "highlights vent blocks on the map", fals
 end, "espVents")
 
 addSection(Panes[5], "Troll", 0)
-addToggle(Panes[5], "🚪", "Open/Close All Doors", "toggle: mo cua dang dong, bam lai de dong cua dang mo", false, 1, function(s)
-    DoorTroll.run(s)
-end, "doorTrollToggle")
+addButton(Panes[5], "D", "Open/Close All Doors", "opens all closed doors, closes all open doors", 1, function()
+    if DoorTroll.running then return end -- ignore clicks while a run is still in progress
+    local mode = not DoorTroll.isOpenMode
+    DoorTroll.isOpenMode = mode
+    DoorTroll.run(mode)
+end)
+
+addToggle(Panes[5], "S", "Slow Beast", "spams jump on every detected Beast", false, 2, function(s)
+    BeastTroll.slowBeast = s
+    if s then startBeastTroll() else stopBeastTrollIfIdle() end
+    saveSettings()
+end, "slowBeast")
+addToggle(Panes[5], "U", "Auto Untie Me", "forces the Beast to release only you", false, 3, function(s)
+    BeastTroll.untieMe = s
+    if s then startBeastTroll() else stopBeastTrollIfIdle() end
+    saveSettings()
+end, "untieMe")
+addToggle(Panes[5], "A", "Auto Untie All", "forces the Beast to release whoever they're holding", false, 4, function(s)
+    BeastTroll.untieAll = s
+    if s then startBeastTroll() else stopBeastTrollIfIdle() end
+    saveSettings()
+end, "untieAll")
 
 addSection(Panes[6], "Misc Features", 0)
 addToggle(Panes[6], "▣", "No Texture",  "Replaces world assets with solid plastic layers",  false, 1, function(s)
@@ -3065,7 +3306,7 @@ local isBusy  = false
 
 local ConfirmBg = Instance.new("Frame", SG)
 ConfirmBg.Size=UDim2.new(1,0,1,0); ConfirmBg.BackgroundColor3=Color3.fromRGB(0,0,0)
-ConfirmBg.BaCONSTRUCTIONsparency=0.5; ConfirmBg.ZIndex=200; ConfirmBg.Visible=false
+ConfirmBg.BackgroundTransparency=0.5; ConfirmBg.ZIndex=200; ConfirmBg.Visible=false
 
 local ConfirmBox = Instance.new("Frame", ConfirmBg)
 ConfirmBox.Size=UDim2.new(0,260,0,110); ConfirmBox.Position=UDim2.new(0.5,-130,0.5,-55)
@@ -3170,4 +3411,5 @@ task.defer(function()
     task.delay(0.6, loadSettings)
 end)
 
-end -- đóng do...end của khối UI CONSTRUCTION
+end -- đóng function _buildUI (thay cho do...end trước đây)
+_buildUI()
