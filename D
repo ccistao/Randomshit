@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Buổi thực hành nhiếp ảnh</title>
+</head>
+<body>
+
+    <!-- Tiêu đề chính và giới thiệu -->
+    <h1>Buổi thực hành nhiếp ảnh</h1>
+    <p>Hãy cùng học cách chụp ảnh bằng điện thoại. Buổi thực hành dành cho người mới bắt đầu, tổ chức vào sáng Chủ nhật.</p>
+
+    <!-- Chèn hình ảnh máy ảnh -->
+    <img src="mayanh.jpg" alt="Máy ảnh" width="320">
+
+    <!-- Danh sách không thứ tự -->
+    <h3>Những thứ cần mang theo:</h3>
+    <ul>
+        <li>Điện thoại đã sạc đầy pin.</li>
+        <li>Nước uống và mũ chống nắng.</li>
+        <li>Một ý tưởng muốn kể bằng ảnh.</li>
+    </ul>
+
+    <!-- Danh sách có thứ tự -->
+    <h3>Các bước thực hành:</h3>
+    <ol>
+        <li>Chọn chủ thể và tìm ánh sáng.</li>
+        <li>Thử ba góc chụp khác nhau.</li>
+        <li>Chọn ảnh và chia sẻ câu chuyện.</li>
+    </ol>
+
+    <!-- Bảng lịch hoạt động -->
+    <h3>Lịch hoạt động:</h3>
+    <table border="1" cellpadding="6" cellspacing="0">
+        <tr>
+            <th>Thời gian</th>
+            <th>Hoạt động</th>
+            <th>Địa điểm</th>
+        </tr>
+        <tr>
+            <td>07:30 - 08:00</td>
+            <td>Học cách chọn bố cục</td>
+            <td>Sân trường</td>
+        </tr>
+        <tr>
+            <td>08:00 - 09:00</td>
+            <td>Chụp ảnh theo nhóm</td>
+            <td>Vườn trường</td>
+        </tr>
+        <tr>
+            <td>09:00 - 09:30</td>
+            <td>Xem ảnh và góp ý</td>
+            <td>Phòng sinh hoạt</td>
+        </tr>
+    </table>
+
+    <!-- Khung nhập đăng ký -->
+    <h3>Đăng ký buổi thực hành:</h3>
+    <form>
+        <p>Họ tên:</p>
+        <input type="text" placeholder="Nhập họ tên...">
+
+        <p>Điện thoại:</p>
+        <input type="text" placeholder="Nhập số điện thoại...">
+
+        <br><br>
+        <button type="submit">Đăng ký</button>
+    </form>
+
+</body>
+</html>
