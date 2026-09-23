@@ -1,48 +1,16 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html>
 <head>
-    <meta charset="UTF-8">
     <title>Buổi thực hành nhiếp ảnh</title>
-    <style>
-        /* Tăng cỡ chữ toàn trang web */
-        body {
-            font-size: 19px;
-            line-height: 1.6;
-            font-family: Arial, sans-serif;
-            margin: 30px;
-        }
-
-        /* Làm phần lịch hoạt động to bằng chữ thường */
-        pre {
-            font-size: 18px;
-            font-family: Consolas, monospace;
-            line-height: 1.8;
-        }
-
-        /* Tăng kích thước ô nhập và nút bấm */
-        input[type="text"] {
-            font-size: 17px;
-            padding: 6px 10px;
-            width: 260px;
-        }
-
-        button {
-            font-size: 17px;
-            padding: 8px 16px;
-            cursor: pointer;
-        }
-    </style>
 </head>
 <body>
 
-    <!-- Tiêu đề và giới thiệu -->
     <h1>Buổi thực hành nhiếp ảnh</h1>
     <p>Hãy cùng học cách chụp ảnh bằng điện thoại. Buổi thực hành dành cho người mới bắt đầu, tổ chức vào sáng Chủ nhật.</p>
 
-    <!-- Hình máy ảnh -->
-    <img src="mayanh.jpg" alt="Máy ảnh" width="350">
+    <!-- Bạn thay link dưới bằng mayanh.jpg nếu đã tải ảnh về chung thư mục -->
+    <img src="https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=500" alt="Máy ảnh" width="300">
 
-    <!-- Những thứ cần mang theo -->
     <p><b>Những thứ cần mang theo:</b></p>
     <ul>
         <li>Điện thoại đã sạc đầy pin.</li>
@@ -50,7 +18,6 @@
         <li>Một ý tưởng muốn kể bằng ảnh.</li>
     </ul>
 
-    <!-- Các bước thực hành -->
     <p><b>Các bước thực hành:</b></p>
     <ol>
         <li>Chọn chủ thể và tìm ánh sáng.</li>
@@ -58,27 +25,22 @@
         <li>Chọn ảnh và chia sẻ câu chuyện.</li>
     </ol>
 
-    <!-- Lịch hoạt động -->
     <p><b>Lịch hoạt động:</b></p>
     <pre>
-<b>Thời gian         Hoạt động               Địa điểm</b>
+Thời gian         Hoạt động               Địa điểm
 07:30 - 08:00     Học cách chọn bố cục    Sân trường
 08:00 - 09:00     Chụp ảnh theo nhóm      Vườn trường
 09:00 - 09:30     Xem ảnh và góp ý        Phòng sinh hoạt
     </pre>
 
-    <!-- Khung đăng ký -->
     <p><b>Đăng ký buổi thực hành:</b></p>
-    <form>
-        <p>Họ tên:</p>
-        <input type="text">
+    <p>Họ tên:</p>
+    <input type="text">
 
-        <p>Điện thoại:</p>
-        <input type="text">
+    <p>Điện thoại:</p>
+    <input type="text">
 
-        <br><br>
-        <button type="button">Đăng ký</button>
-    </form>
+    <p><button>Đăng ký</button></p>
 
 </body>
 </html>
