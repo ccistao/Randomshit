@@ -3,6 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <title>Buổi thực hành nhiếp ảnh</title>
+    <style>
+        /* Tăng cỡ chữ toàn trang web */
+        body {
+            font-size: 19px;
+            line-height: 1.6;
+            font-family: Arial, sans-serif;
+            margin: 30px;
+        }
+
+        /* Làm phần lịch hoạt động to bằng chữ thường */
+        pre {
+            font-size: 18px;
+            font-family: Consolas, monospace;
+            line-height: 1.8;
+        }
+
+        /* Tăng kích thước ô nhập và nút bấm */
+        input[type="text"] {
+            font-size: 17px;
+            padding: 6px 10px;
+            width: 260px;
+        }
+
+        button {
+            font-size: 17px;
+            padding: 8px 16px;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
 
@@ -11,7 +40,7 @@
     <p>Hãy cùng học cách chụp ảnh bằng điện thoại. Buổi thực hành dành cho người mới bắt đầu, tổ chức vào sáng Chủ nhật.</p>
 
     <!-- Hình máy ảnh -->
-    <img src="mayanh.jpg" alt="Máy ảnh" width="320">
+    <img src="mayanh.jpg" alt="Máy ảnh" width="350">
 
     <!-- Những thứ cần mang theo -->
     <p><b>Những thứ cần mang theo:</b></p>
@@ -29,7 +58,7 @@
         <li>Chọn ảnh và chia sẻ câu chuyện.</li>
     </ol>
 
-    <!-- Lịch hoạt động (dùng pre không kẻ bảng) -->
+    <!-- Lịch hoạt động -->
     <p><b>Lịch hoạt động:</b></p>
     <pre>
 <b>Thời gian         Hoạt động               Địa điểm</b>
