@@ -27,6 +27,8 @@ local MyHub = {
         PCProgress      = false,
         DoorProgress    = false,
         BeastTracker    = false,
+        SkillSound      = false,
+        SkillSoundVolume = 100,
         SurvivorTracker = false,
         Wallhop         = false,
         NoTexture       = false,
@@ -379,6 +381,72 @@ function WallhopView.stop()
     WallhopView.connections = {}
     for p in pairs(WallhopView.cachedParts) do RemoveOutline(p) end
     WallhopView.cachedParts = {}
+end
+
+-- =========================================================
+-- BEAST CAM UNLOCK
+-- The game force-locks the Beast into first-person with tight zoom.
+-- This unlocks third-person + survivor-style zoom distances while
+-- you're playing as the Beast, and restores the original camera
+-- settings the moment you're no longer the Beast or the toggle is off.
+-- =========================================================
+local BeastCamUnlock = {enabled = false, connection = nil, original = nil}
+
+local BEAST_CAM_MAX_ZOOM = 10
+local BEAST_CAM_MIN_ZOOM = 0.5
+
+function BeastCamUnlock.start()
+    if BeastCamUnlock.enabled then return end
+    BeastCamUnlock.enabled = true
+
+    BeastCamUnlock.original = {
+        CameraMode = lp.CameraMode,
+        CameraMaxZoomDistance = lp.CameraMaxZoomDistance,
+        CameraMinZoomDistance = lp.CameraMinZoomDistance,
+    }
+
+    BeastCamUnlock.connection = task.spawn(function()
+        while BeastCamUnlock.enabled do
+            task.wait(0.1)
+            local stats = lp:FindFirstChild("TempPlayerStatsModule")
+            local isBeast = stats and stats:FindFirstChild("IsBeast") and stats.IsBeast.Value == true
+
+            pcall(function()
+                if isBeast then
+                    if lp.CameraMode == Enum.CameraMode.LockFirstPerson then
+                        lp.CameraMode = Enum.CameraMode.Classic
+                    end
+                    if lp.CameraMaxZoomDistance ~= BEAST_CAM_MAX_ZOOM then
+                        lp.CameraMaxZoomDistance = BEAST_CAM_MAX_ZOOM
+                    end
+                    if lp.CameraMinZoomDistance ~= BEAST_CAM_MIN_ZOOM then
+                        lp.CameraMinZoomDistance = BEAST_CAM_MIN_ZOOM
+                    end
+                else
+                    -- restore the game's own values whenever you're not the Beast,
+                    -- so survivor gameplay is never affected by this toggle
+                    lp.CameraMode = BeastCamUnlock.original.CameraMode
+                    lp.CameraMaxZoomDistance = BeastCamUnlock.original.CameraMaxZoomDistance
+                    lp.CameraMinZoomDistance = BeastCamUnlock.original.CameraMinZoomDistance
+                end
+            end)
+        end
+    end)
+end
+
+function BeastCamUnlock.stop()
+    BeastCamUnlock.enabled = false
+    if BeastCamUnlock.connection then
+        task.cancel(BeastCamUnlock.connection)
+        BeastCamUnlock.connection = nil
+    end
+    if BeastCamUnlock.original then
+        pcall(function()
+            lp.CameraMode = BeastCamUnlock.original.CameraMode
+            lp.CameraMaxZoomDistance = BeastCamUnlock.original.CameraMaxZoomDistance
+            lp.CameraMinZoomDistance = BeastCamUnlock.original.CameraMinZoomDistance
+        end)
+    end
 end
 
 local Flashlight = {enabled=false, connections={}, originalSettings={}}
@@ -783,21 +851,22 @@ local function ensureCooldownUI()
     return label
 end
 
-local function createRainbowBorder(frame)
-    local g = Instance.new("UIGradient")
-    g.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,    Color3.fromRGB(255,0,0)),
-        ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255,127,0)),
-        ColorSequenceKeypoint.new(0.33, Color3.fromRGB(255,255,0)),
-        ColorSequenceKeypoint.new(0.5,  Color3.fromRGB(0,255,0)),
-        ColorSequenceKeypoint.new(0.67, Color3.fromRGB(0,0,255)),
-        ColorSequenceKeypoint.new(0.83, Color3.fromRGB(75,0,130)),
-        ColorSequenceKeypoint.new(1,    Color3.fromRGB(148,0,211)),
-    })
-    g.Parent = frame
-    local conn
-    conn = RunService.RenderStepped:Connect(function()
-        if g and g.Parent then g.Rotation = (g.Rotation+2)%360 else conn:Disconnect() end
+local _lastNotifySoundTime = 0
+local function playNotifySound()
+    -- debounce: ignore calls within 0.3s of the last one, in case the
+    -- skill-detection logic fires from two code paths almost simultaneously
+    local now = os.clock()
+    if now - _lastNotifySoundTime < 0.3 then return end
+    _lastNotifySoundTime = now
+
+    pcall(function()
+        local snd = Instance.new("Sound")
+        snd.SoundId = "rbxassetid://4590662766"
+        snd.Volume = math.clamp(MyHub.Config.SkillSoundVolume, 30, 500) / 100
+        snd.Parent = workspace
+        snd:Play()
+        snd.Ended:Connect(function() snd:Destroy() end)
+        task.delay(2, function() if snd and snd.Parent then snd:Destroy() end end)
     end)
 end
 
@@ -809,17 +878,60 @@ local function showBanner(text, name)
     local label = Instance.new("TextLabel")
     label.Parent = gui; label.Size = UDim2.new(0,250,0,40)
     label.Position = UDim2.new(1,10,0,10)
-    label.BackgroundColor3 = Color3.fromRGB(30,30,30); label.TextColor3 = Color3.new(1,1,1)
+    label.BackgroundColor3 = Color3.fromRGB(24,23,23); label.BackgroundTransparency = 0.15; label.TextColor3 = Color3.new(1,1,1)
     label.Font = Enum.Font.GothamBold; label.TextScaled = true; label.Text = text
-    label.BorderSizePixel = 3; label.BorderColor3 = Color3.new(1,1,1)
+    label.BorderSizePixel = 0
+    local c = Instance.new("UICorner", label); c.CornerRadius = UDim.new(0,8)
+    local s = Instance.new("UIStroke", label); s.Color = Color3.fromRGB(185,45,45); s.Thickness = 1.5
     local p = Instance.new("UIPadding")
     p.PaddingLeft=UDim.new(0,10); p.PaddingRight=UDim.new(0,10)
     p.PaddingTop=UDim.new(0,5); p.PaddingBottom=UDim.new(0,5); p.Parent=label
-    createRainbowBorder(label)
     local tweenIn  = TweenService:Create(label, TweenInfo.new(0.4,Enum.EasingStyle.Back,Enum.EasingDirection.Out), {Position=UDim2.new(1,-260,0,10)})
     local tweenOut = TweenService:Create(label, TweenInfo.new(0.4,Enum.EasingStyle.Back,Enum.EasingDirection.In),  {Position=UDim2.new(1,10,0,10)})
     tweenIn:Play(); tweenIn.Completed:Wait()
     task.delay(3.4, function() tweenOut:Play(); tweenOut.Completed:Wait(); pcall(function() gui:Destroy() end) end)
+end
+
+local function showWarningToast(text)
+    local existing = pgui:FindFirstChild("WarningToast")
+    if existing then pcall(function() existing:Destroy() end) end
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "WarningToast"; gui.Parent = pgui; gui.ResetOnSpawn = false
+
+    local label = Instance.new("TextLabel")
+    label.Parent = gui
+    label.Size = UDim2.new(0, 260, 0, 44)
+    label.Position = UDim2.new(1, 10, 0, 10)
+    label.BackgroundColor3 = Color3.fromRGB(24, 23, 23)
+    label.BackgroundTransparency = 0.15
+    label.TextColor3 = Color3.fromRGB(225, 218, 218)
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 12
+    label.TextWrapped = true
+    label.Text = text
+    label.BorderSizePixel = 0
+
+    local corner_ = Instance.new("UICorner", label)
+    corner_.CornerRadius = UDim.new(0, 8)
+    local stroke_ = Instance.new("UIStroke", label)
+    stroke_.Color = Color3.fromRGB(185, 45, 45); stroke_.Thickness = 1.5
+
+    local pad_ = Instance.new("UIPadding", label)
+    pad_.PaddingLeft = UDim.new(0, 12); pad_.PaddingRight = UDim.new(0, 12)
+    pad_.PaddingTop = UDim.new(0, 4); pad_.PaddingBottom = UDim.new(0, 4)
+
+    -- slide in from the right edge 0.5s -> hold 1s -> slide out 0.5s
+    local tweenIn = TweenService:Create(label, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+        {Position = UDim2.new(1, -270, 0, 10)})
+    local tweenOut = TweenService:Create(label, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.In),
+        {Position = UDim2.new(1, 10, 0, 10)})
+
+    tweenIn:Play()
+    task.delay(0.5 + 1, function()
+        tweenOut:Play()
+        tweenOut.Completed:Connect(function() pcall(function() gui:Destroy() end) end)
+    end)
 end
 
 local function isGameActive()
@@ -856,6 +968,7 @@ local function triggerSkillUsed()
     local sd = SKILL_TIMES[skill] or {use=3.5, cooldown=22}
     usingTimeLeft = sd.use; cooldownTimeLeft = sd.cooldown
     showBanner("Beast used " .. getDisplaySkill() .. " !!!", "SkillUsedBanner")
+    if MyHub.Config.SkillSound then playNotifySound() end
     if labelCooldown then labelCooldown.Text = string.format("Using %s: %.1fs", getDisplaySkill(), usingTimeLeft) end
 end
 
@@ -1316,13 +1429,21 @@ end
 -- REMOTE HACK PC
 -- Lets the player walk away from a computer mid-hack without the
 -- server cancelling the progress: it intercepts the client's own
--- Trigger=false cancel call and keeps re-sending Trigger=true plus
--- an auto minigame pass in the background.
+-- Trigger=false cancel call and keeps re-sending Trigger=true in
+-- the background.
 -- Requires Never Fail to be enabled for smooth, uninterrupted operation
 -- (the minigame auto-pass call depends on the same server acceptance
 -- behaviour Never Fail relies on).
+-- Not compatible with Open/Close All Doors while active -- see the
+-- warning shown on that button in the Troll tab.
 -- =========================================================
-local RemoteHackPC = {enabled = false, stolenEvent = nil, hookInstalled = false}
+local RemoteHackPC = {enabled = false, stolenEvent = nil, hookInstalled = false, connections = {}}
+
+local function isCurrentlyHacking()
+    local stats = lp:FindFirstChild("TempPlayerStatsModule")
+    local anim = stats and stats:FindFirstChild("CurrentAnimation")
+    return anim ~= nil and anim.Value == "Typing"
+end
 
 local function installRemoteHackPCHook()
     if RemoteHackPC.hookInstalled then return end
@@ -1340,16 +1461,9 @@ local function installRemoteHackPCHook()
         local method = getnamecallmethod()
         local args = {...}
 
-        -- Compare against the actual RemoteEvent instance, not tostring(self),
-        -- to avoid matching unrelated objects and to fail closed if the
-        -- remote reference ever changes.
         if not checkcaller() and method == "FireServer" and self == remoteEventRef then
             if args[1] == "Input" and args[2] == "Trigger" then
                 local evt = args[4]
-                -- Only track/intercept events that belong to a ComputerTable's
-                -- own trigger tree, never doors or anything else -- otherwise
-                -- opening/closing a door right after hacking a PC would get
-                -- mistaken for the "stop hacking" signal and get swallowed.
                 local isComputerEvent = evt and evt:FindFirstAncestor("ComputerTable") ~= nil
 
                 if args[3] == true and evt ~= nil then
@@ -1357,10 +1471,19 @@ local function installRemoteHackPCHook()
                         RemoteHackPC.stolenEvent = evt
                     end
                 elseif args[3] == false then
-                    if RemoteHackPC.enabled and RemoteHackPC.stolenEvent == evt then
-                        -- swallow the client's own cancel call while hacking remotely,
-                        -- but only for the exact PC event we're tracking
-                        return
+                    -- Only protect the cancel signal while actually mid-hack
+                    -- (CurrentAnimation == "Typing"). Once the PC is done or
+                    -- you're no longer hacking, stop tracking it entirely so
+                    -- doors and everything else behave completely normally.
+                    -- Important: only touch stolenEvent when this cancel call
+                    -- is actually about the PC we're tracking -- any random
+                    -- door/other player's Trigger=false must never clear it.
+                    if evt == RemoteHackPC.stolenEvent then
+                        if RemoteHackPC.enabled and isCurrentlyHacking() then
+                            return
+                        else
+                            RemoteHackPC.stolenEvent = nil
+                        end
                     end
                 end
             end
@@ -1379,13 +1502,34 @@ function RemoteHackPC.start()
     task.spawn(function()
         local remote = Replicated:WaitForChild("RemoteEvent", 10)
         if not remote then return end
-        while RemoteHackPC.enabled do
-            task.wait(0.2)
-            if RemoteHackPC.stolenEvent then
+
+        local function tryRestore()
+            if not RemoteHackPC.enabled or not RemoteHackPC.stolenEvent then return end
+            local stats = lp:FindFirstChild("TempPlayerStatsModule")
+            local actionEvent = stats and stats:FindFirstChild("ActionEvent")
+            if actionEvent and actionEvent.Value == nil then
                 pcall(function()
                     remote:FireServer("Input", "Trigger", true, RemoteHackPC.stolenEvent)
                 end)
             end
+        end
+
+        -- React via the property-changed signal instead of a fixed 0.2s
+        -- poll, so re-triggering happens as close to instantly as possible
+        -- after the server clears ActionEvent -- this minimizes how much
+        -- progress is lost during the brief window before it recovers.
+        local stats = lp:FindFirstChild("TempPlayerStatsModule") or lp:WaitForChild("TempPlayerStatsModule", 5)
+        if stats then
+            local actionEvent = stats:FindFirstChild("ActionEvent")
+            if actionEvent then
+                table.insert(RemoteHackPC.connections, actionEvent:GetPropertyChangedSignal("Value"):Connect(tryRestore))
+            end
+        end
+
+        -- fallback slow poll in case the signal above doesn't cover every case
+        while RemoteHackPC.enabled do
+            task.wait(0.2)
+            tryRestore()
         end
     end)
 end
@@ -1393,6 +1537,10 @@ end
 function RemoteHackPC.stop()
     RemoteHackPC.enabled = false
     RemoteHackPC.stolenEvent = nil
+    for _, c in ipairs(RemoteHackPC.connections) do
+        if typeof(c) == "RBXScriptConnection" then c:Disconnect() end
+    end
+    RemoteHackPC.connections = {}
 end
 
 -- =========================================================
@@ -2101,14 +2249,11 @@ local function saveSettings()
             espVents        = MyHub.Config.ESP.vents,
             neverfail       = MyHub.Config.NeverFail,
             remoteHackPC    = RemoteHackPC.enabled,
-            slowBeast       = BeastTroll.slowBeast,
-            untieMe         = BeastTroll.untieMe,
-            untieAll        = BeastTroll.untieAll,
-            autoRope        = MyHub.Config.AutoRope,
-            hitAura         = MyHub.Config.HitAura,
             pcProgress      = MyHub.Config.PCProgress,
             doorProgress    = MyHub.Config.DoorProgress,
             beastTracker    = MyHub.Config.BeastTracker,
+            skillSound      = MyHub.Config.SkillSound,
+            skillSoundVolume = MyHub.Config.SkillSoundVolume,
             survivorTracker = SurvivorTracker.enabled,
             wallhop         = WallhopView.enabled,
             noTexture       = MyHub.Config.NoTexture,
@@ -2320,14 +2465,11 @@ local function loadSettings()
         if data.espVents        ~= nil then MyHub.Config.ESP.vents       = data.espVents        end
         if data.neverfail       ~= nil then MyHub.Config.NeverFail       = data.neverfail       end
         if data.remoteHackPC    ~= nil then RemoteHackPC.enabled         = data.remoteHackPC    end
-        if data.slowBeast       ~= nil then BeastTroll.slowBeast         = data.slowBeast       end
-        if data.untieMe         ~= nil then BeastTroll.untieMe           = data.untieMe          end
-        if data.untieAll        ~= nil then BeastTroll.untieAll          = data.untieAll         end
-        if data.autoRope        ~= nil then MyHub.Config.AutoRope            = data.autoRope        end
-        if data.hitAura         ~= nil then MyHub.Config.HitAura            = data.hitAura         end
         if data.pcProgress      ~= nil then MyHub.Config.PCProgress      = data.pcProgress      end
         if data.doorProgress    ~= nil then MyHub.Config.DoorProgress    = data.doorProgress    end
         if data.beastTracker    ~= nil then MyHub.Config.BeastTracker    = data.beastTracker    end
+        if data.skillSound      ~= nil then MyHub.Config.SkillSound      = data.skillSound      end
+        if data.skillSoundVolume ~= nil then MyHub.Config.SkillSoundVolume = data.skillSoundVolume end
         if data.survivorTracker ~= nil then SurvivorTracker.enabled= data.survivorTracker end
         if data.wallhop         ~= nil then WallhopView.enabled    = data.wallhop         end
         if data.noTexture       ~= nil then MyHub.Config.NoTexture            = data.noTexture       end
@@ -2346,20 +2488,17 @@ local function loadSettings()
         task.defer(function()
             if syncFns.neverfail       then syncFns.neverfail(MyHub.Config.NeverFail)            end
             if syncFns.remoteHackPC    then syncFns.remoteHackPC(RemoteHackPC.enabled)           end
-            if syncFns.slowBeast       then syncFns.slowBeast(BeastTroll.slowBeast)              end
-            if syncFns.untieMe         then syncFns.untieMe(BeastTroll.untieMe)                  end
-            if syncFns.untieAll        then syncFns.untieAll(BeastTroll.untieAll)                end
             if syncFns.espPlayer       then syncFns.espPlayer(MyHub.Config.ESP.player)           end
             if syncFns.espPods         then syncFns.espPods(MyHub.Config.ESP.pods)               end
             if syncFns.espPc           then syncFns.espPc(MyHub.Config.ESP.pc)                   end
             if syncFns.espExits        then syncFns.espExits(MyHub.Config.ESP.exits)             end
             if syncFns.espLockers      then syncFns.espLockers(MyHub.Config.ESP.lockers)         end
             if syncFns.espVents        then syncFns.espVents(MyHub.Config.ESP.vents)             end
-            if syncFns.autoRope        then syncFns.autoRope(MyHub.Config.AutoRope)                  end
-            if syncFns.hitAura         then syncFns.hitAura(MyHub.Config.HitAura)                   end
             if syncFns.pcProgress      then syncFns.pcProgress(MyHub.Config.PCProgress)          end
             if syncFns.doorProgress    then syncFns.doorProgress(MyHub.Config.DoorProgress)      end
             if syncFns.beastTracker    then syncFns.beastTracker(MyHub.Config.BeastTracker)      end
+            if syncFns.skillSound      then syncFns.skillSound(MyHub.Config.SkillSound)          end
+            if syncFns.skillSoundVolume then syncFns.skillSoundVolume(MyHub.Config.SkillSoundVolume) end
             if syncFns.survivorTracker then syncFns.survivorTracker(SurvivorTracker.enabled) end
             if syncFns.wallhop         then syncFns.wallhop(WallhopView.enabled)           end
             if syncFns.noTexture       then syncFns.noTexture(MyHub.Config.NoTexture)                 end
@@ -2369,7 +2508,6 @@ local function loadSettings()
             if syncFns.selfMuting      then syncFns.selfMuting(SelfMuting.enabled)         end
             if MyHub.Config.PCProgress       then stopPCProgress(); startPCProgress()     end
             if RemoteHackPC.enabled          then RemoteHackPC.stop(); RemoteHackPC.start() end
-            if BeastTroll.slowBeast or BeastTroll.untieMe or BeastTroll.untieAll then startBeastTroll() end
             if MyHub.Config.DoorProgress     then stopDoorProgress(); startDoorProgress() end
             if MyHub.Config.BeastTracker     then stopBeastTracker(); startBeastTracker()   end
             if SurvivorTracker.enabled then SurvivorTracker.stop(); SurvivorTracker.start() end
@@ -2408,14 +2546,13 @@ local function _buildUI()
 
 local CFG = {
     Title    = "Extended Flee The Facility",
-    SubTitle = "v1.0.2",
+    SubTitle = "v1.0.3",
     W = 480, H = 320, SideW = 110,
     Tabs = {
         {name="Info",   icon="≡"},
         {name="Main",   icon="⌂"},
         {name="Auto",   icon="∞"},
-        {name="ESP",    icon="◉"},
-        {name="Troll",  icon="✦"},
+        {name="Visuals", icon="◉"},
         {name="Misc",   icon="▣"},
         {name="Config", icon="⊙"},
     },
@@ -2911,13 +3048,10 @@ KB.TextWrapped = true
 KB.LineHeight = 1.25
 KB.LayoutOrder = 2
 KB.Text = table.concat({
-    "+ Add Troll tab",
-    "+ Add Open/Close All Doors (Troll tab)",
-    "+ Add Slow Beast (Troll tab)",
-    "+ Add Auto Untie Self (Troll tab)",
-    "+ Add Auto Untie All (Troll tab)",
-    "+ Add Far Hack (Main tab)",
-    "/ Improve Door ESP performance / reduce lag",
+    "+ Add Skill Sound + volume slider (Main tab)",
+    "* Fix Far Hack cancelling when passing near doors",
+    "* Renamed ESP tab to Visuals",
+    "/ Beast banner + warning toast use frosted glass style",
     "/ UI improvements",
 }, "\n")
 
@@ -2991,10 +3125,247 @@ task.spawn(function()
 end)
 
 addSection(Panes[2], "Main Features", 0)
-addToggle(Panes[2], "⊙", "Beast tracker",    "Tracks beast selections and skill triggers", false, 2, function(s)
-    if s then startBeastTracker() else stopBeastTracker() end; saveSettings()
-end, "beastTracker")
-addToggle(Panes[2], "∞", "Survivor tracker", "Renders overhead timer templates",           false, 3, function(s)
+do
+    local groupOpen = false
+    local headerRow = Instance.new("Frame", Panes[2])
+    headerRow.Size=UDim2.new(1,0,0,42); headerRow.BackgroundColor3=CFG.Card
+    headerRow.BorderSizePixel=0; headerRow.ZIndex=15; headerRow.LayoutOrder=1
+    corner(headerRow,9); stroke(headerRow,CFG.Border,1,0.91)
+
+    local hib = Instance.new("Frame", headerRow)
+    hib.Size=UDim2.new(0,26,0,26); hib.Position=UDim2.new(0,8,0.5,-13)
+    hib.BackgroundColor3=Color3.fromRGB(35,20,20); hib.BorderSizePixel=0; hib.ZIndex=16; corner(hib,7)
+    local hil = Instance.new("TextLabel", hib)
+    hil.Size=UDim2.new(1,0,1,0); hil.BackgroundTransparency=1
+    hil.Text="⊙"; hil.TextSize=12; hil.Font=Enum.Font.GothamBold; hil.ZIndex=17; hil.TextColor3=CFG.Accent
+
+    local hnl = Instance.new("TextLabel", headerRow)
+    hnl.Size=UDim2.new(0,130,0,15); hnl.Position=UDim2.new(0,42,0,8)
+    hnl.BackgroundTransparency=1; hnl.Text="Beast Tracker"; hnl.TextColor3=CFG.Text
+    hnl.TextSize=11; hnl.Font=Enum.Font.GothamBold
+    hnl.TextXAlignment=Enum.TextXAlignment.Left; hnl.ZIndex=16
+
+    local hdl = Instance.new("TextLabel", headerRow)
+    hdl.Size=UDim2.new(0,130,0,12); hdl.Position=UDim2.new(0,42,0,22)
+    hdl.BackgroundTransparency=1; hdl.Text="tracking + sound options"; hdl.TextColor3=CFG.TextMute
+    hdl.TextSize=9; hdl.Font=Enum.Font.Code
+    hdl.TextXAlignment=Enum.TextXAlignment.Left; hdl.ZIndex=16
+
+    local arrowLbl = Instance.new("TextLabel", headerRow)
+    arrowLbl.Size=UDim2.new(0,20,0,20); arrowLbl.Position=UDim2.new(1,-28,0.5,-10)
+    arrowLbl.BackgroundTransparency=1; arrowLbl.Text="↓"; arrowLbl.TextColor3=CFG.TextMute
+    arrowLbl.TextSize=13; arrowLbl.Font=Enum.Font.GothamBold; arrowLbl.ZIndex=16
+
+    local groupContent = Instance.new("Frame", Panes[2])
+    groupContent.Size=UDim2.new(1,0,0,0); groupContent.BackgroundTransparency=1
+    groupContent.BorderSizePixel=0; groupContent.ClipsDescendants=true
+    groupContent.Visible=false
+    groupContent.ZIndex=15; groupContent.LayoutOrder=2
+    local gcl = Instance.new("UIListLayout", groupContent)
+    gcl.SortOrder=Enum.SortOrder.LayoutOrder; gcl.Padding=UDim.new(0,5)
+    local gcp = Instance.new("UIPadding", groupContent); gcp.PaddingTop=UDim.new(0,5)
+
+    -- Row 1: Beast Tracker toggle
+    local btRow = Instance.new("Frame", groupContent)
+    btRow.Size=UDim2.new(1,0,0,42); btRow.BackgroundColor3=CFG.Card
+    btRow.BorderSizePixel=0; btRow.ZIndex=15; btRow.LayoutOrder=1
+    corner(btRow,9); stroke(btRow,CFG.Border,1,0.91)
+
+    local btib = Instance.new("Frame", btRow)
+    btib.Size=UDim2.new(0,26,0,26); btib.Position=UDim2.new(0,8,0.5,-13)
+    btib.BackgroundColor3=Color3.fromRGB(35,20,20); btib.BorderSizePixel=0; btib.ZIndex=16; corner(btib,7)
+    local btil = Instance.new("TextLabel", btib)
+    btil.Size=UDim2.new(1,0,1,0); btil.BackgroundTransparency=1
+    btil.Text="⊙"; btil.TextSize=12; btil.Font=Enum.Font.GothamBold; btil.ZIndex=17; btil.TextColor3=CFG.Accent
+
+    local btnl = Instance.new("TextLabel", btRow)
+    btnl.Size=UDim2.new(0,130,0,15); btnl.Position=UDim2.new(0,42,0,8)
+    btnl.BackgroundTransparency=1; btnl.Text="Beast tracker"; btnl.TextColor3=CFG.Text
+    btnl.TextSize=11; btnl.Font=Enum.Font.GothamBold
+    btnl.TextXAlignment=Enum.TextXAlignment.Left; btnl.ZIndex=16
+
+    local btdl = Instance.new("TextLabel", btRow)
+    btdl.Size=UDim2.new(0,130,0,12); btdl.Position=UDim2.new(0,42,0,22)
+    btdl.BackgroundTransparency=1; btdl.Text="Tracks beast selections and skill triggers"; btdl.TextColor3=CFG.TextMute
+    btdl.TextSize=9; btdl.Font=Enum.Font.Code
+    btdl.TextXAlignment=Enum.TextXAlignment.Left; btdl.ZIndex=16
+
+    local btpill = Instance.new("Frame", btRow)
+    btpill.Size=UDim2.new(0,32,0,18); btpill.Position=UDim2.new(1,-40,0.5,-9)
+    btpill.BackgroundColor3=Color3.fromRGB(42,36,36); btpill.BorderSizePixel=0; btpill.ZIndex=16; corner(btpill,9)
+    local btknob = Instance.new("Frame", btpill)
+    btknob.Size=UDim2.new(0,12,0,12); btknob.Position=UDim2.new(0,3,0.5,-6)
+    btknob.BackgroundColor3=Color3.fromRGB(255,255,255); btknob.BorderSizePixel=0; btknob.ZIndex=17; corner(btknob,6)
+
+    local btOn = false
+    local btBtn = Instance.new("TextButton", btRow)
+    btBtn.Size=UDim2.new(1,0,1,0); btBtn.BackgroundTransparency=1; btBtn.Text=""; btBtn.ZIndex=18
+    btBtn.MouseButton1Click:Connect(function()
+        btOn = not btOn
+        tw(btpill,fast,{BackgroundColor3=btOn and CFG.Accent or Color3.fromRGB(42,36,36)})
+        tw(btknob,fast,{Position=btOn and UDim2.new(1,-15,0.5,-6) or UDim2.new(0,3,0.5,-6)})
+        tw(btRow, fast,{BackgroundColor3=btOn and Color3.fromRGB(28,20,20) or CFG.Card})
+        if btOn then startBeastTracker() else stopBeastTracker() end
+        saveSettings()
+    end)
+    btBtn.MouseEnter:Connect(function() tw(btRow,fast,{BackgroundColor3=CFG.CardHov}) end)
+    btBtn.MouseLeave:Connect(function() tw(btRow,fast,{BackgroundColor3=btOn and Color3.fromRGB(28,20,20) or CFG.Card}) end)
+    syncFns["beastTracker"] = function(val)
+        btOn = val
+        btpill.BackgroundColor3 = val and CFG.Accent or Color3.fromRGB(42,36,36)
+        btknob.Position = val and UDim2.new(1,-15,0.5,-6) or UDim2.new(0,3,0.5,-6)
+        btRow.BackgroundColor3 = val and Color3.fromRGB(28,20,20) or CFG.Card
+    end
+
+    -- Row 2: Skill Sound toggle
+    local ssRow = Instance.new("Frame", groupContent)
+    ssRow.Size=UDim2.new(1,0,0,42); ssRow.BackgroundColor3=CFG.Card
+    ssRow.BorderSizePixel=0; ssRow.ZIndex=15; ssRow.LayoutOrder=2
+    corner(ssRow,9); stroke(ssRow,CFG.Border,1,0.91)
+
+    local ssib = Instance.new("Frame", ssRow)
+    ssib.Size=UDim2.new(0,26,0,26); ssib.Position=UDim2.new(0,8,0.5,-13)
+    ssib.BackgroundColor3=Color3.fromRGB(35,20,20); ssib.BorderSizePixel=0; ssib.ZIndex=16; corner(ssib,7)
+    local ssil = Instance.new("TextLabel", ssib)
+    ssil.Size=UDim2.new(1,0,1,0); ssil.BackgroundTransparency=1
+    ssil.Text="♪"; ssil.TextSize=12; ssil.Font=Enum.Font.GothamBold; ssil.ZIndex=17; ssil.TextColor3=CFG.Accent
+
+    local ssnl = Instance.new("TextLabel", ssRow)
+    ssnl.Size=UDim2.new(0,130,0,15); ssnl.Position=UDim2.new(0,42,0,8)
+    ssnl.BackgroundTransparency=1; ssnl.Text="Skill Sound"; ssnl.TextColor3=CFG.Text
+    ssnl.TextSize=11; ssnl.Font=Enum.Font.GothamBold
+    ssnl.TextXAlignment=Enum.TextXAlignment.Left; ssnl.ZIndex=16
+
+    local ssdl = Instance.new("TextLabel", ssRow)
+    ssdl.Size=UDim2.new(0,130,0,12); ssdl.Position=UDim2.new(0,42,0,22)
+    ssdl.BackgroundTransparency=1; ssdl.Text="Plays a beep when the Beast uses a skill"; ssdl.TextColor3=CFG.TextMute
+    ssdl.TextSize=9; ssdl.Font=Enum.Font.Code
+    ssdl.TextXAlignment=Enum.TextXAlignment.Left; ssdl.ZIndex=16
+
+    local sspill = Instance.new("Frame", ssRow)
+    sspill.Size=UDim2.new(0,32,0,18); sspill.Position=UDim2.new(1,-40,0.5,-9)
+    sspill.BackgroundColor3=Color3.fromRGB(42,36,36); sspill.BorderSizePixel=0; sspill.ZIndex=16; corner(sspill,9)
+    local ssknob = Instance.new("Frame", sspill)
+    ssknob.Size=UDim2.new(0,12,0,12); ssknob.Position=UDim2.new(0,3,0.5,-6)
+    ssknob.BackgroundColor3=Color3.fromRGB(255,255,255); ssknob.BorderSizePixel=0; ssknob.ZIndex=17; corner(ssknob,6)
+
+    local ssOn = false
+    local ssBtn = Instance.new("TextButton", ssRow)
+    ssBtn.Size=UDim2.new(1,0,1,0); ssBtn.BackgroundTransparency=1; ssBtn.Text=""; ssBtn.ZIndex=18
+    ssBtn.MouseButton1Click:Connect(function()
+        ssOn = not ssOn
+        tw(sspill,fast,{BackgroundColor3=ssOn and CFG.Accent or Color3.fromRGB(42,36,36)})
+        tw(ssknob,fast,{Position=ssOn and UDim2.new(1,-15,0.5,-6) or UDim2.new(0,3,0.5,-6)})
+        tw(ssRow, fast,{BackgroundColor3=ssOn and Color3.fromRGB(28,20,20) or CFG.Card})
+        MyHub.Config.SkillSound = ssOn
+        saveSettings()
+    end)
+    ssBtn.MouseEnter:Connect(function() tw(ssRow,fast,{BackgroundColor3=CFG.CardHov}) end)
+    ssBtn.MouseLeave:Connect(function() tw(ssRow,fast,{BackgroundColor3=ssOn and Color3.fromRGB(28,20,20) or CFG.Card}) end)
+    syncFns["skillSound"] = function(val)
+        ssOn = val
+        sspill.BackgroundColor3 = val and CFG.Accent or Color3.fromRGB(42,36,36)
+        ssknob.Position = val and UDim2.new(1,-15,0.5,-6) or UDim2.new(0,3,0.5,-6)
+        ssRow.BackgroundColor3 = val and Color3.fromRGB(28,20,20) or CFG.Card
+    end
+
+    -- Row 3: Volume slider (30% - 500%)
+    local volRow = Instance.new("Frame", groupContent)
+    volRow.Size=UDim2.new(1,0,0,52); volRow.BackgroundColor3=CFG.Card
+    volRow.BorderSizePixel=0; volRow.ZIndex=15; volRow.LayoutOrder=3
+    corner(volRow,9); stroke(volRow,CFG.Border,1,0.91)
+
+    local volib = Instance.new("Frame", volRow)
+    volib.Size=UDim2.new(0,26,0,26); volib.Position=UDim2.new(0,8,0,8)
+    volib.BackgroundColor3=Color3.fromRGB(35,20,20); volib.BorderSizePixel=0; volib.ZIndex=16; corner(volib,7)
+    local volil = Instance.new("TextLabel", volib)
+    volil.Size=UDim2.new(1,0,1,0); volil.BackgroundTransparency=1
+    volil.Text="▲"; volil.TextSize=12; volil.Font=Enum.Font.GothamBold; volil.ZIndex=17; volil.TextColor3=CFG.Accent
+
+    local volnl = Instance.new("TextLabel", volRow)
+    volnl.Size=UDim2.new(0,120,0,15); volnl.Position=UDim2.new(0,42,0,8)
+    volnl.BackgroundTransparency=1; volnl.Text="Sound Volume"; volnl.TextColor3=CFG.Text
+    volnl.TextSize=11; volnl.Font=Enum.Font.GothamBold
+    volnl.TextXAlignment=Enum.TextXAlignment.Left; volnl.ZIndex=16
+
+    local volValLbl = Instance.new("TextLabel", volRow)
+    volValLbl.Size=UDim2.new(0,60,0,15); volValLbl.Position=UDim2.new(1,-70,0,8)
+    volValLbl.BackgroundTransparency=1; volValLbl.Text=MyHub.Config.SkillSoundVolume.."%"; volValLbl.TextColor3=CFG.Accent
+    volValLbl.TextSize=11; volValLbl.Font=Enum.Font.GothamBold
+    volValLbl.TextXAlignment=Enum.TextXAlignment.Right; volValLbl.ZIndex=16
+
+    local sliderBg = Instance.new("Frame", volRow)
+    sliderBg.Size=UDim2.new(1,-24,0,8); sliderBg.Position=UDim2.new(0,12,0,32)
+    sliderBg.BackgroundColor3=Color3.fromRGB(42,36,36); sliderBg.BorderSizePixel=0; sliderBg.ZIndex=16
+    corner(sliderBg,4)
+
+    local sliderFill = Instance.new("Frame", sliderBg)
+    local VOL_MIN, VOL_MAX = 30, 500
+    local initFrac = (MyHub.Config.SkillSoundVolume - VOL_MIN) / (VOL_MAX - VOL_MIN)
+    sliderFill.Size=UDim2.new(initFrac,0,1,0); sliderFill.BackgroundColor3=CFG.Accent
+    sliderFill.BorderSizePixel=0; sliderFill.ZIndex=17
+    corner(sliderFill,4)
+
+    local sliderKnob = Instance.new("Frame", sliderBg)
+    sliderKnob.Size=UDim2.new(0,14,0,14); sliderKnob.AnchorPoint=Vector2.new(0.5,0.5)
+    sliderKnob.Position=UDim2.new(initFrac,0,0.5,0)
+    sliderKnob.BackgroundColor3=Color3.fromRGB(255,255,255); sliderKnob.BorderSizePixel=0; sliderKnob.ZIndex=18
+    corner(sliderKnob,7)
+
+    local sliderBtn = Instance.new("TextButton", sliderBg)
+    sliderBtn.Size=UDim2.new(1,0,1,0); sliderBtn.BackgroundTransparency=1; sliderBtn.Text=""; sliderBtn.ZIndex=19
+
+    local function setVolumeFromFrac(frac)
+        frac = math.clamp(frac, 0, 1)
+        local val = math.floor(VOL_MIN + frac * (VOL_MAX - VOL_MIN) + 0.5)
+        MyHub.Config.SkillSoundVolume = val
+        volValLbl.Text = val .. "%"
+        sliderFill.Size = UDim2.new(frac, 0, 1, 0)
+        sliderKnob.Position = UDim2.new(frac, 0, 0.5, 0)
+    end
+
+    local draggingSlider = false
+    sliderBtn.MouseButton1Down:Connect(function()
+        draggingSlider = true
+    end)
+    UserInputService.InputEnded:Connect(function(inp)
+        if draggingSlider and (inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch) then
+            draggingSlider = false
+            saveSettings()
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if draggingSlider and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
+            local relX = (inp.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X
+            setVolumeFromFrac(relX)
+        end
+    end)
+    sliderBtn.MouseButton1Click:Connect(function() end) -- consume click, drag handled above
+
+    syncFns["skillSoundVolume"] = function(val)
+        local frac = (val - VOL_MIN) / (VOL_MAX - VOL_MIN)
+        setVolumeFromFrac(frac)
+    end
+
+    local ITEM_H, GAP = 42, 5
+    local fullH = 42 + 5 + 42 + 5 + 52 + 5
+    local hBtn = Instance.new("TextButton", headerRow)
+    hBtn.Size=UDim2.new(1,0,1,0); hBtn.BackgroundTransparency=1; hBtn.Text=""; hBtn.ZIndex=18
+    hBtn.MouseButton1Click:Connect(function()
+        groupOpen = not groupOpen
+        tw(arrowLbl,fast,{TextColor3=groupOpen and CFG.Accent or CFG.TextMute})
+        arrowLbl.Text = groupOpen and "↑" or "↓"
+        if groupOpen then groupContent.Visible = true end
+        local sizeTween = tw(groupContent, TweenInfo.new(0.25,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),
+            {Size=UDim2.new(1,0,0,groupOpen and fullH or 0)})
+        if not groupOpen then
+            sizeTween.Completed:Connect(function() groupContent.Visible = false end)
+        end
+    end)
+    hBtn.MouseEnter:Connect(function() tw(headerRow,fast,{BackgroundColor3=CFG.CardHov}) end)
+    hBtn.MouseLeave:Connect(function() tw(headerRow,fast,{BackgroundColor3=CFG.Card}) end)
+end
+addToggle(Panes[2], "∞", "Survivor tracker", "Renders overhead timer templates",           false, 4, function(s)
     if s then SurvivorTracker.start() else SurvivorTracker.stop() end; saveSettings()
 end, "survivorTracker")
 addToggle(Panes[2], "⊘", "Never Fail",       "Auto pass minigame result to server",        false, 5, function(s)
@@ -3005,20 +3376,16 @@ addToggle(Panes[2], "◍", "Far Hack", "hack PC from far, needs Never Fail", fal
 end, "remoteHackPC")
 
 addSection(Panes[3], "Auto", 0)
-addToggle(Panes[3], "⊕", "Auto Rope", "For Beast: auto rope ragdoll survivors", false, 1, function(s)
-    MyHub.Config.AutoRope = s; saveSettings()
-end, "autoRope")
-addToggle(Panes[3], "⊙", "Hit Aura", "For Beast: Auto hit nearby survivors", false, 2, function(s)
-    MyHub.Config.HitAura = s; saveSettings()
-end, "hitAura")
-addToggle(Panes[3], "⛑", "Auto Save", "For Survivor: Auto save survivors without getting close", false, 3, function(s)
-    MyHub.Config.AutoSave = s; saveSettings()
-end, "autoSave")
-addToggle(Panes[3], "◈", "Auto Captured All", "For Beast: Auto win if u are beast", false, 4, function(s)
-    MyHub.Config.AutoBeastFull = s; saveSettings()
-end, "autoBeastFull")
+do
+    local note = Instance.new("TextLabel", Panes[3])
+    note.Size=UDim2.new(1,0,0,30); note.BackgroundTransparency=1
+    note.Text="Auto farm will be available here in the future."
+    note.TextColor3=CFG.TextMute; note.TextSize=11; note.Font=Enum.Font.Gotham
+    note.TextXAlignment=Enum.TextXAlignment.Left; note.TextWrapped=true
+    note.ZIndex=16; note.LayoutOrder=1
+end
 
-addSection(Panes[4], "Visuals", 0)
+addSection(Panes[4], "ESP", 0)
 do
     local ESP_OPTIONS = {
         {key="player", label="Player ESP", icon="◉", desc="survivors green / beast red", order=2},
@@ -3163,51 +3530,27 @@ addToggle(Panes[4], "▦", "Vent ESP", "highlights vent blocks on the map", fals
     saveSettings()
 end, "espVents")
 
-addSection(Panes[5], "Troll", 0)
-addButton(Panes[5], "D", "Open/Close All Doors", "opens all closed doors, closes all open doors", 1, function()
-    if DoorTroll.running then return end -- ignore clicks while a run is still in progress
-    local mode = not DoorTroll.isOpenMode
-    DoorTroll.isOpenMode = mode
-    DoorTroll.run(mode)
-end)
-
-addToggle(Panes[5], "S", "Slow Beast", "spams jump on every detected Beast", false, 2, function(s)
-    BeastTroll.slowBeast = s
-    if s then startBeastTroll() else stopBeastTrollIfIdle() end
-    saveSettings()
-end, "slowBeast")
-addToggle(Panes[5], "U", "Auto Untie Me", "forces the Beast to release only you", false, 3, function(s)
-    BeastTroll.untieMe = s
-    if s then startBeastTroll() else stopBeastTrollIfIdle() end
-    saveSettings()
-end, "untieMe")
-addToggle(Panes[5], "A", "Auto Untie All", "forces the Beast to release whoever they're holding", false, 4, function(s)
-    BeastTroll.untieAll = s
-    if s then startBeastTroll() else stopBeastTrollIfIdle() end
-    saveSettings()
-end, "untieAll")
-
-addSection(Panes[6], "Misc Features", 0)
-addToggle(Panes[6], "▣", "No Texture",  "Replaces world assets with solid plastic layers",  false, 1, function(s)
+addSection(Panes[5], "Misc Features", 0)
+addToggle(Panes[5], "▣", "No Texture",  "Replaces world assets with solid plastic layers",  false, 1, function(s)
     MyHub.Config.NoTexture = s; if MyHub.Config.NoTexture then scanMap() else restoreMap() end; saveSettings()
 end, "noTexture")
-addToggle(Panes[6], "☼", "Flashlight",  "Forces light shifts into bright ambient modes",     false, 2, function(s)
+addToggle(Panes[5], "☼", "Flashlight",  "Forces light shifts into bright ambient modes",     false, 2, function(s)
     if s then Flashlight.start() else Flashlight.stop() end; saveSettings()
 end, "flashlight")
-addToggle(Panes[6], "☁", "No Fog",      "Removes map fog for clearer visibility",            false, 3, function(s)
+addToggle(Panes[5], "☁", "No Fog",      "Removes map fog for clearer visibility",            false, 3, function(s)
     if s then NoFog.start() else NoFog.stop() end; saveSettings()
 end, "noFog")
-addToggle(Panes[6], "⊗", "Self muting", "Silences local player character audio triggers",    false, 4, function(s)
+addToggle(Panes[5], "⊗", "Self muting", "Silences local player character audio triggers",    false, 4, function(s)
     if s then SelfMuting.start() else SelfMuting.stop() end; saveSettings()
 end, "selfMuting")
-addToggle(Panes[6], "◆", "Wallhop view","Highlights walls around player",                    false, 5, function(s)
+addToggle(Panes[5], "◆", "Wallhop view","Highlights walls around player",                    false, 5, function(s)
     if s then WallhopView.start() else WallhopView.stop() end; saveSettings()
 end, "wallhop")
-addToggle(Panes[6], "⇄", "Shift Lock",  "Mobile draggable icon to toggle shift lock camera", false, 6, function(s)
+addToggle(Panes[5], "⇄", "Shift Lock",  "Mobile draggable icon to toggle shift lock camera", false, 6, function(s)
     if s then ShiftLockMobile.start() else ShiftLockMobile.stop() end; saveSettings()
 end, "shiftLockMobile")
 
-addButton(Panes[6], "⊕", "Join Server Pro", "Auto Join or Leave Pro Server", 7, function()
+addButton(Panes[5], "⊕", "Join Server Pro", "Auto Join or Leave Pro Server", 7, function()
     local a = Players.LocalPlayer
     local b = a.Character or a.CharacterAdded:Wait()
     local c = b:WaitForChild("HumanoidRootPart")
@@ -3241,8 +3584,8 @@ addButton(Panes[6], "⊕", "Join Server Pro", "Auto Join or Leave Pro Server", 7
     end
 end)
 
-addSection(Panes[7], "Keybind", 0)
-local keybindRow = Instance.new("Frame", Panes[7])
+addSection(Panes[6], "Keybind", 0)
+local keybindRow = Instance.new("Frame", Panes[6])
 keybindRow.Size=UDim2.new(1,0,0,42); keybindRow.BackgroundColor3=CFG.Card
 keybindRow.BorderSizePixel=0; keybindRow.ZIndex=15; keybindRow.LayoutOrder=1
 corner(keybindRow,9); stroke(keybindRow,CFG.Border,1,0.91)
