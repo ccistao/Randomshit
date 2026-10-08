@@ -1,4 +1,3 @@
-loadstring(game:HttpGet("https://raw.githubusercontent.com/ccistao/Randomshit/refs/heads/main/Hookquep"))()
 local Players          = game:GetService("Players")
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -11,20 +10,10 @@ local HttpService      = game:GetService("HttpService")
 
 local lp = Players.LocalPlayer
 
--- =========================================================
--- MYHUB: single master table holding all script state.
--- All toggles/state live in MyHub.Config,
--- all logic handlers live in MyHub.Core,
--- avoids hitting the 200 local-variable limit at top-level scope.
--- =========================================================
 local MyHub = {
     Config = {
         ESP = { player=false, pods=false, pc=false, exits=false, lockers=false, vents=false },
         NeverFail       = false,
-        AutoRope        = false,
-        HitAura         = false,
-        AutoSave        = false,
-        AutoBeastFull   = false,
         PCProgress      = false,
         DoorProgress    = false,
         BeastTracker    = false,
@@ -294,7 +283,7 @@ local function TypeGlitch(lbl, text, speed)
         end
         lbl.Text = text:sub(1, currentEnd)
         i = currentEnd + 1
-        task.wait(speed)   
+        task.wait(speed)
     end
 end
 
@@ -382,72 +371,6 @@ function WallhopView.stop()
     WallhopView.connections = {}
     for p in pairs(WallhopView.cachedParts) do RemoveOutline(p) end
     WallhopView.cachedParts = {}
-end
-
--- =========================================================
--- BEAST CAM UNLOCK
--- The game force-locks the Beast into first-person with tight zoom.
--- This unlocks third-person + survivor-style zoom distances while
--- you're playing as the Beast, and restores the original camera
--- settings the moment you're no longer the Beast or the toggle is off.
--- =========================================================
-local BeastCamUnlock = {enabled = false, connection = nil, original = nil}
-
-local BEAST_CAM_MAX_ZOOM = 10
-local BEAST_CAM_MIN_ZOOM = 0.5
-
-function BeastCamUnlock.start()
-    if BeastCamUnlock.enabled then return end
-    BeastCamUnlock.enabled = true
-
-    BeastCamUnlock.original = {
-        CameraMode = lp.CameraMode,
-        CameraMaxZoomDistance = lp.CameraMaxZoomDistance,
-        CameraMinZoomDistance = lp.CameraMinZoomDistance,
-    }
-
-    BeastCamUnlock.connection = task.spawn(function()
-        while BeastCamUnlock.enabled do
-            task.wait(0.1)
-            local stats = lp:FindFirstChild("TempPlayerStatsModule")
-            local isBeast = stats and stats:FindFirstChild("IsBeast") and stats.IsBeast.Value == true
-
-            pcall(function()
-                if isBeast then
-                    if lp.CameraMode == Enum.CameraMode.LockFirstPerson then
-                        lp.CameraMode = Enum.CameraMode.Classic
-                    end
-                    if lp.CameraMaxZoomDistance ~= BEAST_CAM_MAX_ZOOM then
-                        lp.CameraMaxZoomDistance = BEAST_CAM_MAX_ZOOM
-                    end
-                    if lp.CameraMinZoomDistance ~= BEAST_CAM_MIN_ZOOM then
-                        lp.CameraMinZoomDistance = BEAST_CAM_MIN_ZOOM
-                    end
-                else
-                    -- restore the game's own values whenever you're not the Beast,
-                    -- so survivor gameplay is never affected by this toggle
-                    lp.CameraMode = BeastCamUnlock.original.CameraMode
-                    lp.CameraMaxZoomDistance = BeastCamUnlock.original.CameraMaxZoomDistance
-                    lp.CameraMinZoomDistance = BeastCamUnlock.original.CameraMinZoomDistance
-                end
-            end)
-        end
-    end)
-end
-
-function BeastCamUnlock.stop()
-    BeastCamUnlock.enabled = false
-    if BeastCamUnlock.connection then
-        task.cancel(BeastCamUnlock.connection)
-        BeastCamUnlock.connection = nil
-    end
-    if BeastCamUnlock.original then
-        pcall(function()
-            lp.CameraMode = BeastCamUnlock.original.CameraMode
-            lp.CameraMaxZoomDistance = BeastCamUnlock.original.CameraMaxZoomDistance
-            lp.CameraMinZoomDistance = BeastCamUnlock.original.CameraMinZoomDistance
-        end)
-    end
 end
 
 local Flashlight = {enabled=false, connections={}, originalSettings={}}
@@ -541,7 +464,7 @@ end
 
 local ShiftLockMobile = {enabled=false, connections={}, renderConn=nil, gui=nil, locked=false}
 
-local DRAG_THRESHOLD = 5 -- px: dưới ngưỡng này tính là click, từ ngưỡng trở lên tính là kéo
+local DRAG_THRESHOLD = 5
 
 local function applyShiftLockState(icon)
     local hum = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
@@ -552,8 +475,6 @@ local function applyShiftLockState(icon)
             if hum then hum.AutoRotate = false end
             if icon then icon.ImageColor3 = Color3.fromRGB(255,150,60) end
 
-            -- Xoay nhân vật theo hướng camera mỗi frame, đúng hành vi Shift Lock thật:
-            -- nhân vật quay mặt theo hướng người chơi đang nhìn, không phải hướng di chuyển cuối.
             if ShiftLockMobile.renderConn then ShiftLockMobile.renderConn:Disconnect() end
             ShiftLockMobile.renderConn = RunService.RenderStepped:Connect(function()
                 local char = lp.Character
@@ -596,7 +517,7 @@ local function createShiftLockIcon()
     icon.Position = UDim2.new(1, -70, 1, -160)
     icon.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     icon.BackgroundTransparency = 0.25
-    icon.Image = "rbxasset://textures/MouseLockedCursor.png" -- icon shift lock gốc của Roblox
+    icon.Image = "rbxasset://textures/MouseLockedCursor.png"
     icon.ImageColor3 = Color3.new(1,1,1)
     icon.AutoButtonColor = false
     icon.Parent = gui
@@ -615,9 +536,6 @@ function ShiftLockMobile.start()
     local gui, icon = createShiftLockIcon()
     ShiftLockMobile.gui = gui
 
-    -- state kéo/click theo đúng 1 ngón tay duy nhất đang giữ icon.
-    -- activeTouchId đảm bảo chỉ input của đúng ngón đang giữ mới được xử lý,
-    -- các ngón khác chạm màn hình cùng lúc bị bỏ qua hoàn toàn để icon không nhảy lung tung.
     local activeTouchId = nil
     local startPos = nil
     local iconStartPos = nil
@@ -625,7 +543,7 @@ function ShiftLockMobile.start()
 
     local function onBegan(input)
         if input.UserInputType ~= Enum.UserInputType.Touch then return end
-        if activeTouchId ~= nil then return end -- another finger is already holding it, ignore
+        if activeTouchId ~= nil then return end
 
         activeTouchId = input
         startPos = input.Position
@@ -636,7 +554,7 @@ function ShiftLockMobile.start()
     local function onEnded(input)
         if input ~= activeTouchId then return end
         if not isDragging then
-            -- dưới ngưỡng 5px toàn bộ quá trình -> tính là click thật
+
             ShiftLockMobile.locked = not ShiftLockMobile.locked
             applyShiftLockState(icon)
         end
@@ -648,9 +566,6 @@ function ShiftLockMobile.start()
 
     table.insert(ShiftLockMobile.connections, icon.InputBegan:Connect(onBegan))
 
-    -- Dùng UserInputService.InputChanged (toàn cục, fire liên tục kể cả khi
-    -- ngón tay đã rời khỏi phạm vi icon) thay vì icon.InputChanged/TouchMoved
-    -- so fast dragging doesn't get cut off or miss events.
     table.insert(ShiftLockMobile.connections, UserInputService.InputChanged:Connect(function(input)
         if input ~= activeTouchId then return end
         if input.UserInputType ~= Enum.UserInputType.Touch then return end
@@ -666,11 +581,8 @@ function ShiftLockMobile.start()
         end
     end))
 
-    -- Bắt InputEnded toàn cục để không phụ thuộc việc ngón tay có đang
-    -- nằm trên icon hay không lúc thả ra (tránh miss sự kiện khi kéo nhanh).
     table.insert(ShiftLockMobile.connections, UserInputService.InputEnded:Connect(onEnded))
 
-    -- Nếu character respawn trong lúc đang lock, áp lại state cho Humanoid mới
     table.insert(ShiftLockMobile.connections, lp.CharacterAdded:Connect(function()
         task.wait(0.2)
         if ShiftLockMobile.enabled then applyShiftLockState(icon) end
@@ -854,8 +766,7 @@ end
 
 local _lastNotifySoundTime = 0
 local function playNotifySound()
-    -- debounce: ignore calls within 0.3s of the last one, in case the
-    -- skill-detection logic fires from two code paths almost simultaneously
+
     local now = os.clock()
     if now - _lastNotifySoundTime < 0.3 then return end
     _lastNotifySoundTime = now
@@ -922,7 +833,6 @@ local function showWarningToast(text)
     pad_.PaddingLeft = UDim.new(0, 12); pad_.PaddingRight = UDim.new(0, 12)
     pad_.PaddingTop = UDim.new(0, 4); pad_.PaddingBottom = UDim.new(0, 4)
 
-    -- slide in from the right edge 0.5s -> hold 1s -> slide out 0.5s
     local tweenIn = TweenService:Create(label, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
         {Position = UDim2.new(1, -270, 0, 10)})
     local tweenOut = TweenService:Create(label, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.In),
@@ -1376,8 +1286,8 @@ local function startPCProgress()
             local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
             if map and map.Parent then
                 for _, d in ipairs(map:GetDescendants()) do
-                    if d.Name == "ComputerTable" and not d:GetFullName():lower():find("prefab") then 
-                        createBillboard(d); watchPC(d) 
+                    if d.Name == "ComputerTable" and not d:GetFullName():lower():find("prefab") then
+                        createBillboard(d); watchPC(d)
                     end
                 end
             end
@@ -1409,10 +1319,6 @@ local function startPCProgress()
     end))
 end
 
--- =========================================================
--- DOOR PROGRESS ESP
--- =========================================================
-
 local doorConnections = {}
 local activeDoors = {}
 
@@ -1422,22 +1328,6 @@ local function getTriggerPart(trigger)
     return trigger:FindFirstChildWhichIsA("BasePart", true)
 end
 
--- =========================================================
--- DOOR TROLL: mở/đóng hết cửa trên map, chỉ tác động cửa nào
--- cần đổi trạng thái (bỏ qua cửa đã đúng trạng thái mong muốn).
--- =========================================================
--- =========================================================
--- REMOTE HACK PC
--- Lets the player walk away from a computer mid-hack without the
--- server cancelling the progress: it intercepts the client's own
--- Trigger=false cancel call and keeps re-sending Trigger=true in
--- the background.
--- Requires Never Fail to be enabled for smooth, uninterrupted operation
--- (the minigame auto-pass call depends on the same server acceptance
--- behaviour Never Fail relies on).
--- Not compatible with Open/Close All Doors while active -- see the
--- warning shown on that button in the Troll tab.
--- =========================================================
 local RemoteHackPC = {enabled = false, stolenEvent = nil, hookInstalled = false, connections = {}}
 
 local function isCurrentlyHacking()
@@ -1472,13 +1362,7 @@ local function installRemoteHackPCHook()
                         RemoteHackPC.stolenEvent = evt
                     end
                 elseif args[3] == false then
-                    -- Only protect the cancel signal while actually mid-hack
-                    -- (CurrentAnimation == "Typing"). Once the PC is done or
-                    -- you're no longer hacking, stop tracking it entirely so
-                    -- doors and everything else behave completely normally.
-                    -- Important: only touch stolenEvent when this cancel call
-                    -- is actually about the PC we're tracking -- any random
-                    -- door/other player's Trigger=false must never clear it.
+
                     if evt == RemoteHackPC.stolenEvent then
                         if RemoteHackPC.enabled and isCurrentlyHacking() then
                             return
@@ -1515,10 +1399,6 @@ function RemoteHackPC.start()
             end
         end
 
-        -- React via the property-changed signal instead of a fixed 0.2s
-        -- poll, so re-triggering happens as close to instantly as possible
-        -- after the server clears ActionEvent -- this minimizes how much
-        -- progress is lost during the brief window before it recovers.
         local stats = lp:FindFirstChild("TempPlayerStatsModule") or lp:WaitForChild("TempPlayerStatsModule", 5)
         if stats then
             local actionEvent = stats:FindFirstChild("ActionEvent")
@@ -1527,7 +1407,6 @@ function RemoteHackPC.start()
             end
         end
 
-        -- fallback slow poll in case the signal above doesn't cover every case
         while RemoteHackPC.enabled do
             task.wait(0.2)
             tryRestore()
@@ -1544,180 +1423,6 @@ function RemoteHackPC.stop()
     RemoteHackPC.connections = {}
 end
 
--- =========================================================
--- BEAST TROLL: three independent toggles that act on every
--- player currently detected as the Beast.
--- - Slow Beast: spams the Beast's jump power event so their
---   movement stutters.
--- - Auto Untie Me: watches every RopeConstraint on the Beast's
---   character and, if it's attached to the local player, forces
---   the Beast to let go (only affects ropes tied to yourself).
--- - Auto Untie All: forces the Beast to let go of anyone they're
---   currently holding, regardless of who it is.
--- =========================================================
-local BeastTroll = {slowBeast = false, untieMe = false, untieAll = false, connection = nil}
-
-local function getAllBeasts()
-    local beasts = {}
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= lp then
-            local stats = p:FindFirstChild("TempPlayerStatsModule")
-            if stats and stats:FindFirstChild("IsBeast") and stats.IsBeast.Value
-                and p.Character and p.Character:FindFirstChild("Hammer")
-                and p.Character.Hammer:FindFirstChild("HammerEvent")
-                and p.Character:FindFirstChild("BeastPowers")
-                and p.Character.BeastPowers:FindFirstChild("PowersEvent")
-            then
-                table.insert(beasts, p)
-            end
-        end
-    end
-    return beasts
-end
-
-local function startBeastTroll()
-    if BeastTroll.connection then return end
-    BeastTroll.connection = RunService.Heartbeat:Connect(function()
-        if not (BeastTroll.slowBeast or BeastTroll.untieMe or BeastTroll.untieAll) then return end
-
-        for _, beast in ipairs(getAllBeasts()) do
-            local hammerEvent = beast.Character.Hammer.HammerEvent
-
-            if BeastTroll.untieAll then
-                pcall(function() hammerEvent:FireServer("HammerClick", true) end)
-            end
-
-            if BeastTroll.untieMe and lp.Character then
-                for _, rope in ipairs(beast.Character:GetDescendants()) do
-                    if rope:IsA("RopeConstraint") then
-                        local a0 = rope.Attachment0
-                        local a1 = rope.Attachment1
-                        if (a0 and a0:IsDescendantOf(lp.Character)) or (a1 and a1:IsDescendantOf(lp.Character)) then
-                            pcall(function() hammerEvent:FireServer("HammerClick", true) end)
-                        end
-                    end
-                end
-            end
-
-            if BeastTroll.slowBeast then
-                pcall(function() beast.Character.BeastPowers.PowersEvent:FireServer("Jumped") end)
-            end
-        end
-    end)
-end
-
-local function stopBeastTrollIfIdle()
-    if not (BeastTroll.slowBeast or BeastTroll.untieMe or BeastTroll.untieAll) and BeastTroll.connection then
-        BeastTroll.connection:Disconnect()
-        BeastTroll.connection = nil
-    end
-end
-
-local DoorTroll = {running = false, isOpenMode = true}
-local DOOR_TROLL_TIMEOUT = 4 -- longer than the single-door 2s timeout because
-                              -- opening/closing every door at once puts more
-                              -- load on the server, so doors can take longer
-                              -- to settle than when triggered one at a time
-
-local function doorTroll_collectDoors()
-    local doors = {}
-    local map = Replicated:FindFirstChild("CurrentMap")
-    if not (map and map.Value) then return doors end
-
-    for _, obj in ipairs(map.Value:GetDescendants()) do
-        if obj.Name == "DoorTrigger" and obj:IsA("BasePart") then
-            local evt = obj:FindFirstChild("Event")
-            local sign = obj:FindFirstChild("ActionSign")
-            if evt and sign then
-                table.insert(doors, {trigger = obj, evt = evt, sign = sign})
-            end
-        end
-    end
-    return doors
-end
-
-local function doorTroll_triggerDoor(remote, door)
-    task.wait(math.random(0, 3) / 10) -- jitter nhẹ, tránh spam đồng loạt 1 tick
-    pcall(function()
-        remote:FireServer("Input", "Trigger", true, door.evt)
-        remote:FireServer("Input", "Action", true)
-        remote:FireServer("Input", "Action", false)
-    end)
-end
-
--- Chờ 1 cửa đạt đúng cột mốc hoàn tất (mở xong = 11, đóng xong = quay lại 0 sau khi qua 10)
--- Trả về true nếu đạt đúng cột mốc, false nếu bị timeout (chưa xong thật sự)
-local function doorTroll_waitSettled(door, opening)
-    local waited = 0
-    local sawTen = false
-    while waited < DOOR_TROLL_TIMEOUT do
-        if opening then
-            if door.sign.Value == 11 then return true end
-        else
-            if door.sign.Value == 10 then sawTen = true end
-            if sawTen and door.sign.Value == 0 then return true end
-        end
-        task.wait(0.1)
-        waited = waited + 0.1
-    end
-    return false
-end
-
--- Mở hết cửa đang đóng, đóng hết cửa đang mở (bỏ qua cửa đã đúng trạng thái)
-function DoorTroll.run(openMode)
-    if DoorTroll.running then return end
-    DoorTroll.running = true
-
-    task.spawn(function()
-        local remote = Replicated:WaitForChild("RemoteEvent", 10)
-        if not remote then DoorTroll.running = false; return end
-
-        local doors = doorTroll_collectDoors()
-        local targetDoors = {}
-
-        for _, door in ipairs(doors) do
-            local isCurrentlyOpen = door.sign.Value == 11
-            -- chỉ tác động cửa cần đổi trạng thái, bỏ qua cửa đã đúng ý
-            if openMode and not isCurrentlyOpen then
-                table.insert(targetDoors, door)
-            elseif not openMode and isCurrentlyOpen then
-                table.insert(targetDoors, door)
-            end
-        end
-
-        -- bấm gần như song song cho các cửa cần đổi
-        for _, door in ipairs(targetDoors) do
-            task.spawn(doorTroll_triggerDoor, remote, door)
-        end
-
-        -- chờ tất cả đạt cột mốc hoàn tất, ghi nhớ cửa nào thật sự xong
-        local settledResults = {}
-        local waitThreads = {}
-        for _, door in ipairs(targetDoors) do
-            table.insert(waitThreads, task.spawn(function()
-                settledResults[door] = doorTroll_waitSettled(door, openMode)
-            end))
-        end
-        for _, th in ipairs(waitThreads) do
-            while coroutine.status(th) ~= "dead" do
-                task.wait(0.05)
-            end
-        end
-
-        -- Chỉ buông tay (Trigger false) cho cửa đã đạt đúng cột mốc.
-        -- Cửa bị timeout giữ nguyên Trigger true -- buông tay giữa chừng
-        -- sẽ làm hỏng ActionSign của server cho cửa đó (kẹt ở giá trị
-        -- trung gian), khiến ESP/progress không còn nhận diện đúng nữa.
-        for _, door in ipairs(targetDoors) do
-            if settledResults[door] then
-                pcall(function() remote:FireServer("Input", "Trigger", false, door.evt) end)
-            end
-        end
-
-        DoorTroll.running = false
-    end)
-end
-
 local _sharedOverlapParams = OverlapParams.new()
 _sharedOverlapParams.FilterType = Enum.RaycastFilterType.Exclude
 _sharedOverlapParams.FilterDescendantsInstances = {}
@@ -1728,7 +1433,6 @@ local function isCharacterInsideTrigger(character, triggerPart)
     local hrp = character:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
 
-    -- lọc sơ bộ bằng khoảng cách rẻ trước khi query vật lý nặng
     local roughDist = (hrp.Position - triggerPart.Position).Magnitude
     if roughDist > 15 then return false end
 
@@ -1832,7 +1536,6 @@ local function startDoorProgress()
         end
     end
 
-    -- Quét cửa 1 lần ngay khi bật, và mỗi khi map đổi (không quét lại mỗi 0.1s)
     scanForDoors()
     table.insert(doorConnections, Replicated:WaitForChild("CurrentMap").Changed:Connect(function()
         task.wait(3)
@@ -1848,7 +1551,6 @@ local function startDoorProgress()
                 continue
             end
 
-            -- lấy highlight hiện tại (được reloadESP tạo/xóa theo toggle Door ESP)
             esp.highlight = esp.doorVisual and esp.doorVisual:FindFirstChild("DoorESPHL")
 
             if esp.sign and esp.sign.Parent and esp.sign.Value == 11 then
@@ -1890,8 +1592,6 @@ local function startDoorProgress()
 
             local percent = progressCache[trigger] or 0
 
-            -- Đồng bộ màu Highlight (do reloadESP tạo) theo đúng trạng thái cửa,
-            -- không để nó đứng yên màu cam cố định như trước.
             if esp.highlight and esp.highlight.Parent then
                 if esp.sign and esp.sign.Parent and esp.sign.Value == 11 then
                     esp.highlight.FillColor = Color3.fromRGB(60,255,90)
@@ -1923,7 +1623,6 @@ local function startDoorProgress()
     end))
 end
 
-
 task.spawn(function()
     local re = Replicated:WaitForChild("RemoteEvent", 10)
     if not re then return end
@@ -1931,271 +1630,6 @@ task.spawn(function()
         task.wait(0.5)
         if not MyHub.Config.NeverFail then continue end
         pcall(function() re:FireServer("SetPlayerMinigameResult", true) end)
-    end
-end)
-
-
-local function isSelfBeast()
-    local stats = lp:FindFirstChild("TempPlayerStatsModule")
-    if not stats then return false end
-    local flag = stats:FindFirstChild("IsBeast")
-    return flag and flag.Value == true
-end
-
-local function getHammerEvent()
-    local char = lp.Character
-    local hammer = char and char:FindFirstChild("Hammer")
-    return hammer and hammer:FindFirstChild("HammerEvent")
-end
-
-local function getNearestRagdoll()
-    local char = lp.Character
-    if not char then return nil end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return nil end
-    local nearest, nearestDist = nil, math.huge
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= lp and p.Character then
-            local hum = p.Character:FindFirstChild("Humanoid")
-            local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
-            if hum and torso and hum.PlatformStand then
-                local dist = (root.Position - torso.Position).Magnitude
-                if dist < nearestDist then nearest = p; nearestDist = dist end
-            end
-        end
-    end
-    return nearest
-end
-
-task.spawn(function()
-    while true do
-        task.wait(0.1)
-        if not MyHub.Config.AutoRope or not isSelfBeast() then continue end
-        local remote = getHammerEvent()
-        if not remote then continue end
-        local char = lp.Character
-        if not char then continue end
-        if char:FindFirstChild("RopeConstraint", true) then continue end
-        local target = getNearestRagdoll()
-        if not target or not target.Character then continue end
-        local torso = target.Character:FindFirstChild("UpperTorso") or target.Character:FindFirstChild("Torso")
-        if not torso then continue end
-        local timer = 0
-        while timer < 2 do
-            remote:FireServer("HammerTieUp", torso, torso.Position)
-            if lp.Character and lp.Character:FindFirstChild("RopeConstraint", true) then break end
-            task.wait(0.15); timer = timer + 0.15
-        end
-    end
-end)
-
-local hitRadius = 10
-
-local function getValidTargetPart()
-    local char = lp.Character
-    if not char then return nil end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return nil end
-
-    local bestPart = nil
-    local nearestDist = hitRadius
-
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= lp and p.Character then
-            local hum = p.Character:FindFirstChild("Humanoid")
-            local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
-            
-            if hum and torso and not hum.PlatformStand and hum.Health > 0 then
-                local dist = (root.Position - torso.Position).Magnitude
-                if dist <= nearestDist then
-                    bestPart = torso
-                    nearestDist = dist
-                end
-            end
-        end
-    end
-    return bestPart
-end
-
-task.spawn(function()
-    while true do
-        task.wait(0.1)
-        if not MyHub.Config.HitAura or not isSelfBeast() then continue end
-        
-        local remote = getHammerEvent()
-        if not remote then continue end
-        
-        local targetPart = getValidTargetPart()
-        if targetPart then
-            pcall(function()
-                remote:FireServer("HammerClick", true)
-                remote:FireServer("HammerHit", targetPart)
-            end)
-        end
-    end
-end)
-
-task.spawn(function()
-    local re = Replicated:WaitForChild("RemoteEvent", 10)
-    if not re then return end
-    while true do
-        task.wait(0.05)
-        if not MyHub.Config.AutoSave then continue end
-
-        local stats = lp:FindFirstChild("TempPlayerStatsModule")
-        if not stats then continue end
-        local isBeast = stats:FindFirstChild("IsBeast")
-        if isBeast and isBeast.Value then continue end 
-
-        local hp = stats:FindFirstChild("Health")
-        local ragdoll = stats:FindFirstChild("Ragdoll")
-        local captured = stats:FindFirstChild("Captured")
-
-        if (hp and hp.Value <= 0) or (ragdoll and ragdoll.Value) or (captured and captured.Value) then
-            continue
-        end
-
-        local map = Replicated:FindFirstChild("CurrentMap")
-        if not map or not map.Value then continue end
-
-        local eventToTrigger = nil
-        for _, obj in ipairs(map.Value:GetChildren()) do
-            if obj.Name == "FreezePod" then
-                local trigger = obj:FindFirstChild("PodTrigger", true)
-                if trigger then
-                    local capTorso = trigger:FindFirstChild("CapturedTorso")
-                    local evt = trigger:FindFirstChild("Event")
-                    if capTorso and evt and capTorso:IsA("ObjectValue") and capTorso.Value then
-                        eventToTrigger = evt
-                        break
-                    end
-                end
-            end
-        end
-
-        if eventToTrigger then
-            for _, p in ipairs(Players:GetPlayers()) do
-                if p == lp then continue end
-                local pStats = p:FindFirstChild("TempPlayerStatsModule")
-                local pCap = pStats and pStats:FindFirstChild("Captured")
-                if pCap and pCap.Value then
-                    pcall(function()
-                        re:FireServer("Input", "Trigger", true, eventToTrigger)
-                        re:FireServer("Input", "Action", true)
-                    end)
-                    break
-                end
-            end
-        end
-    end
-end)
-
-task.spawn(function()
-    local Players = game:GetService("Players")
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local lp = Players.LocalPlayer
-
-    local re = ReplicatedStorage:WaitForChild("RemoteEvent", 10)
-    if not re then return end
-
-    local function isGameActive()
-        local gs = ReplicatedStorage:FindFirstChild("GameStatus")
-        if not gs then return false end
-        local txt = tostring(gs.Value):upper()
-        if txt:find("GAME OVER") then
-            return false
-        end
-        return true
-    end
-
-    while true do
-        task.wait()
-        if not MyHub.Config.AutoBeastFull then continue end
-        if not isGameActive() then continue end
-
-        local stats = lp:FindFirstChild("TempPlayerStatsModule")
-        if not stats then continue end
-        local isBeast = stats:FindFirstChild("IsBeast")
-        if not isBeast or not isBeast.Value then continue end
-
-        local char = lp.Character
-        local root = char and char:FindFirstChild("HumanoidRootPart")
-        local hammer = char and char:FindFirstChild("Hammer")
-        local he = hammer and hammer:FindFirstChild("HammerEvent")
-        if not root or not he then continue end
-
-        local capturedTorsos = {}
-        local emptyCages = {}
-        local map = ReplicatedStorage:FindFirstChild("CurrentMap")
-        
-        if map and map.Value then
-            for _, v in ipairs(map.Value:GetChildren()) do
-                if v.Name == "FreezePod" then
-                    local ct = v:FindFirstChild("CapturedTorso", true)
-                    if ct then
-                        if ct.Value ~= nil then
-                            capturedTorsos[ct.Value] = true
-                        else
-                            local trig = v:FindFirstChild("PodTrigger", true)
-                            if trig then table.insert(emptyCages, trig) end
-                        end
-                    end
-                end
-            end
-        end
-
-        local standing = {}
-        local ragdolled = {}
-
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= lp and p.Character then
-                local tStats = p:FindFirstChild("TempPlayerStatsModule")
-                if not tStats then continue end
-                
-                local tIsBeast = tStats:FindFirstChild("IsBeast")
-                local tHealth = tStats:FindFirstChild("Health")
-                
-                if tIsBeast and tIsBeast.Value == true then continue end
-                if not tHealth or tHealth.Value <= 0 then continue end
-
-                local hum = p.Character:FindFirstChild("Humanoid")
-                local torso = p.Character:FindFirstChild("UpperTorso") or p.Character:FindFirstChild("Torso")
-                
-                if hum and torso and not capturedTorsos[torso] then
-                    if hum.PlatformStand then
-                        table.insert(ragdolled, torso)
-                    else
-                        table.insert(standing, torso)
-                    end
-                end
-            end
-        end
-
-        if char:FindFirstChild("RopeConstraint", true) then
-            if #emptyCages > 0 then
-                local trigger = emptyCages[1]
-                pcall(function() firetouchinterest(root, trigger, 0) end)
-                pcall(function() firetouchinterest(root, trigger, 1) end)
-                pcall(function() re:FireServer("Input", "Action", true) end)
-                if trigger:FindFirstChild("Event") then
-                    pcall(function() re:FireServer("Input", "Trigger", true, trigger.Event) end)
-                end
-            end
-        elseif #standing > 0 then
-            local target = standing[1]
-            root.CFrame = CFrame.new(target.Position + Vector3.new(0, 0, 1.5))
-            root.AssemblyLinearVelocity = Vector3.zero
-            root.AssemblyAngularVelocity = Vector3.zero
-            pcall(function()
-                he:FireServer("HammerClick", true)
-                he:FireServer("HammerHit", target)
-            end)
-        elseif #ragdolled > 0 then
-            local target = ragdolled[1]
-            pcall(function()
-                he:FireServer("HammerTieUp", target, target.Position)
-            end)
-        end
     end
 end)
 
@@ -2275,7 +1709,6 @@ local ventParts = {}
 local function updateVentESP()
     local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
 
-    -- Tắt: dọn hết SurfaceGui đã tạo trước đó
     if not MyHub.Config.ESP.vents then
         for i = #ventParts, 1, -1 do
             local part = ventParts[i]
@@ -2384,9 +1817,6 @@ local function reloadESP()
                 end
             end
 
-            -- Door ESP: gộp chung điều khiển với Door Progress (1 toggle duy nhất).
-            -- DoorTrigger nằm sâu trong descendants (Facility_x.SingleDoor.DoorTrigger),
-            -- highlight bọc vào chính model cửa (parent của DoorTrigger), không phải trigger vô hình.
             for _, obj in ipairs(map:GetDescendants()) do
                 if obj.Name == "DoorTrigger" and obj:FindFirstChild("ActionSign") then
                     local doorModel = obj.Parent
@@ -2411,12 +1841,12 @@ local function reloadESP()
         for _, locker in ipairs(CollectionService:GetTagged("LOCKER")) do
             if not locker then continue end
             local h = locker:FindFirstChildOfClass("Highlight")
-            
+
             if CollectionService:HasTag(locker, "MUST_CRAWL") then
                 if h then h:Destroy() end
                 continue
             end
-            
+
             if h and not MyHub.Config.ESP.lockers then h:Destroy()
             elseif not h and MyHub.Config.ESP.lockers then
                 local a = Instance.new("Highlight", locker)
@@ -2535,14 +1965,6 @@ task.spawn(function()
     end)
 end)
 
--- =========================================================
--- UI CONSTRUCTION
--- Toàn bộ khối này được bọc trong do...end để giới hạn
--- phạm vi biến local (Panel, Header, TitleL, v.v.)
--- Dùng function thật (IIFE) thay vì do...end: do...end KHÔNG tạo
--- register scope mới trong Luau, chỉ có function mới giới hạn được
--- 200 register riêng biệt hoàn toàn với main chunk.
--- =========================================================
 local function _buildUI()
 
 local CFG = {
@@ -2687,8 +2109,7 @@ local Sidebar = Instance.new("Frame", Body)
 Sidebar.Size=UDim2.new(0,CFG.SideW,1,0); Sidebar.BackgroundColor3=CFG.Side
 Sidebar.BorderSizePixel=0; Sidebar.ZIndex=12
 corner(Sidebar,14)
--- che phần bo tròn ở góc trên-phải/dưới-phải của Sidebar (chỉ cần bo bên trái,
--- khớp với góc thật của Panel) bằng 1 lớp phủ vuông đè lên nửa bên phải
+
 local SidebarCornerFix = Instance.new("Frame", Sidebar)
 SidebarCornerFix.Size=UDim2.new(0,14,1,0); SidebarCornerFix.Position=UDim2.new(1,-14,0,0)
 SidebarCornerFix.BackgroundColor3=CFG.Side; SidebarCornerFix.BorderSizePixel=0; SidebarCornerFix.ZIndex=12
@@ -2946,7 +2367,7 @@ local function mk(y)
     x.TextSize = 11
     x.Font = Enum.Font.GothamBold
     x.TextXAlignment = "Left"
-    x.Text = "" 
+    x.Text = ""
     return x
 end
 
@@ -3005,9 +2426,6 @@ HereBtn.ZIndex = 20
 HereBtn.Visible = false
 HereBtn.Text = ""
 
--- Changelog box: hoàn toàn tách biệt khỏi khối Welcome/Thank you ở trên,
--- riêng frame của nó với ClipsDescendants + ScrollingFrame cố định height
--- để nội dung dài không bao giờ tràn ra ngoài, chỉ cuộn bên trong.
 local ChangelogBox = Instance.new("Frame", Panes[1])
 ChangelogBox.Size = UDim2.new(1, 0, 0, 0)
 ChangelogBox.AutomaticSize = Enum.AutomaticSize.Y
@@ -3050,7 +2468,7 @@ KB.LineHeight = 1.25
 KB.LayoutOrder = 2
 KB.Text = table.concat({
     "+ Add Skill Sound + volume slider (Main tab)",
-    "* Fix Far Hack cancelling when passing near doors",
+    "- Removed some patched features",
     "* Renamed ESP tab to Visuals",
     "/ Beast banner + warning toast use frosted glass style",
     "/ UI improvements",
@@ -3075,7 +2493,7 @@ task.spawn(function()
         if cr then money = tostring(cr.Value) end
         if lv then level = tostring(lv.Value) end
     end
-    
+
     TypeGlitch(Nm, "---- Name: " .. lp.Name, TEXT_SPEED)
     TypeGlitch(Mn, "---- Money: " .. money, TEXT_SPEED)
     TypeGlitch(Lv, "---- Level: " .. level, TEXT_SPEED)
@@ -3094,22 +2512,22 @@ task.spawn(function()
     local maxW = 315
     local lines = {first}
     local cur = ""
-    
+
     for wd in rest:gmatch("%S+") do
         local tst = cur == "" and wd or cur .. " " .. wd
-        if TextService:GetTextSize(tst, 11, Enum.Font.Code, Vector2.new(9999, 16)).X <= maxW then 
+        if TextService:GetTextSize(tst, 11, Enum.Font.Code, Vector2.new(9999, 16)).X <= maxW then
             cur = tst
-        else 
+        else
             table.insert(lines, cur)
-            cur = wd 
+            cur = wd
         end
     end
     if cur ~= "" then table.insert(lines, cur) end
-    
+
     local FULL = table.concat(lines, "\n")
     local nL = #lines
     TypeGlitch(Wt, FULL, TEXT_SPEED)
-    
+
         local llw = TextService:GetTextSize(lines[nL], 11, Enum.Font.Code, Vector2.new(9999, 16)).X
         HereBtn.Position = UDim2.new(0, 12 + llw - 4, 0, 12 + lineH * (nL - 1) - 1)
         HereBtn.Visible = true
@@ -3117,7 +2535,7 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    local m = lp:WaitForChild("SavedPlayerStatsModule", 5) 
+    local m = lp:WaitForChild("SavedPlayerStatsModule", 5)
     if not m then return end
     local cr = m:FindFirstChild("Credits")
     local lv = m:FindFirstChild("Level")
@@ -3166,7 +2584,6 @@ do
     gcl.SortOrder=Enum.SortOrder.LayoutOrder; gcl.Padding=UDim.new(0,5)
     local gcp = Instance.new("UIPadding", groupContent); gcp.PaddingTop=UDim.new(0,5)
 
-    -- Row 1: Beast Tracker toggle
     local btRow = Instance.new("Frame", groupContent)
     btRow.Size=UDim2.new(1,0,0,42); btRow.BackgroundColor3=CFG.Card
     btRow.BorderSizePixel=0; btRow.ZIndex=15; btRow.LayoutOrder=1
@@ -3218,7 +2635,6 @@ do
         btRow.BackgroundColor3 = val and Color3.fromRGB(28,20,20) or CFG.Card
     end
 
-    -- Row 2: Skill Sound toggle
     local ssRow = Instance.new("Frame", groupContent)
     ssRow.Size=UDim2.new(1,0,0,42); ssRow.BackgroundColor3=CFG.Card
     ssRow.BorderSizePixel=0; ssRow.ZIndex=15; ssRow.LayoutOrder=2
@@ -3270,7 +2686,6 @@ do
         ssRow.BackgroundColor3 = val and Color3.fromRGB(28,20,20) or CFG.Card
     end
 
-    -- Row 3: Volume slider (30% - 500%)
     local volRow = Instance.new("Frame", groupContent)
     volRow.Size=UDim2.new(1,0,0,52); volRow.BackgroundColor3=CFG.Card
     volRow.BorderSizePixel=0; volRow.ZIndex=15; volRow.LayoutOrder=3
@@ -3341,7 +2756,7 @@ do
             setVolumeFromFrac(relX)
         end
     end)
-    sliderBtn.MouseButton1Click:Connect(function() end) -- consume click, drag handled above
+    sliderBtn.MouseButton1Click:Connect(function() end)
 
     syncFns["skillSoundVolume"] = function(val)
         local frac = (val - VOL_MIN) / (VOL_MAX - VOL_MIN)
@@ -3755,5 +3170,5 @@ task.defer(function()
     task.delay(0.6, loadSettings)
 end)
 
-end -- đóng function _buildUI (thay cho do...end trước đây)
+end
 _buildUI()
