@@ -1,5 +1,3 @@
--- DONT DELETE THIS LOADSTRING
-loadstring(game:HttpGet("https://raw.githubusercontent.com/ccistao/Randomshit/refs/heads/main/Hookquep"))()
 local Players          = game:GetService("Players")
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -1445,6 +1443,18 @@ local function isCharacterInsideTrigger(character, triggerPart)
     return false
 end
 
+local function isRagdolled(plr, stats)
+    stats = stats or plr:FindFirstChild("TempPlayerStatsModule")
+    local rd = stats and stats:FindFirstChild("Ragdoll")
+    if rd and rd.Value == true then return true end
+    local anim = stats and stats:FindFirstChild("CurrentAnimation")
+    if anim and tostring(anim.Value) == "Ragdoll" then return true end
+    local char = plr.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum and (hum.PlatformStand or hum:GetState() == Enum.HumanoidStateType.Ragdoll) then return true end
+    return false
+end
+
 local function disconnectDoorProgress()
     for _, c in ipairs(doorConnections) do
         if typeof(c)=="RBXScriptConnection" then c:Disconnect() end
@@ -1466,6 +1476,7 @@ local function startDoorProgress()
     MyHub.Config.DoorProgress = true
 
     local OVERLAP_CHECK_INTERVAL = 0.1
+    local FALLBACK_RADIUS = 8
     local lastOverlapCheck = 0
     local progressCache = {}
 
@@ -1528,11 +1539,28 @@ local function startDoorProgress()
                     local bb, barFill, tl = createBillboard(triggerPart)
                     local doorModel = obj.Parent
                     local doorVisual = doorModel and (doorModel:FindFirstChild("Door") or doorModel)
-                    activeDoors[obj] = {
+                    local entry = {
                         bb = bb, barFill = barFill, textLabel = tl,
                         sign = obj.ActionSign, triggerPart = triggerPart,
-                        doorVisual = doorVisual,
+                        doorVisual = doorVisual, doorModel = doorModel,
+                        dynamic = {}, parts = {}, open = false,
                     }
+                    activeDoors[obj] = entry
+
+                    local function trackPart(part)
+                        table.insert(entry.parts, part)
+                        table.insert(doorConnections, part:GetPropertyChangedSignal("CanCollide"):Connect(function()
+                            entry.dynamic[part] = true
+                        end))
+                    end
+                    if doorVisual then
+                        if doorVisual:IsA("BasePart") then trackPart(doorVisual) end
+                        for _, d in ipairs(doorVisual:GetDescendants()) do
+                            if d:IsA("BasePart") and d ~= triggerPart and not d:IsDescendantOf(obj) then
+                                trackPart(d)
+                            end
+                        end
+                    end
                 end
             end
         end
@@ -1544,7 +1572,50 @@ local function startDoorProgress()
         if MyHub.Config.DoorProgress then scanForDoors() end
     end))
 
+    local function computeOpen(esp)
+        local anyDynamic = false
+        for part in pairs(esp.dynamic) do
+            if part.Parent then
+                anyDynamic = true
+                if part.CanCollide then return false end
+            end
+        end
+        if anyDynamic then return true end
+        if esp.sign and esp.sign.Parent and esp.sign.Value == 11 then return true end
+        if #esp.parts > 0 then
+            for _, p in ipairs(esp.parts) do
+                if p.Parent and p.CanCollide then return false end
+            end
+            return true
+        end
+        return false
+    end
+
     local function refreshOverlapChecks()
+        local fallbackProg = {}
+        for _, plr in ipairs(Players:GetPlayers()) do
+            local char = plr.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local stats = plr:FindFirstChild("TempPlayerStatsModule")
+            local progress = stats and stats:FindFirstChild("ActionProgress")
+            local animation = stats and stats:FindFirstChild("CurrentAnimation")
+            if hrp and progress and progress.Value > 0 then
+                local av = animation and tostring(animation.Value) or ""
+                if av ~= "Typing" and av ~= "Ragdoll" and not isRagdolled(plr, stats) then
+                    local best, bestD
+                    for trigger, esp in pairs(activeDoors) do
+                        if esp.triggerPart and esp.triggerPart.Parent then
+                            local d = (hrp.Position - esp.triggerPart.Position).Magnitude
+                            if not bestD or d < bestD then best, bestD = trigger, d end
+                        end
+                    end
+                    if best and bestD <= FALLBACK_RADIUS then
+                        fallbackProg[best] = math.max(fallbackProg[best] or 0, progress.Value)
+                    end
+                end
+            end
+        end
+
         for trigger, esp in pairs(activeDoors) do
             if not trigger.Parent or not esp.triggerPart or not esp.triggerPart.Parent then
                 if esp.bb then esp.bb:Destroy() end
@@ -1555,7 +1626,8 @@ local function startDoorProgress()
 
             esp.highlight = esp.doorVisual and esp.doorVisual:FindFirstChild("DoorESPHL")
 
-            if esp.sign and esp.sign.Parent and esp.sign.Value == 11 then
+            esp.open = computeOpen(esp)
+            if esp.open then
                 progressCache[trigger] = -1
                 continue
             end
@@ -1570,12 +1642,16 @@ local function startDoorProgress()
                         local animation = stats:FindFirstChild("CurrentAnimation")
                         if progress and progress.Value > 0 then
                             local animationValue = animation and tostring(animation.Value) or ""
-                            if animationValue ~= "Typing" and animationValue ~= "Ragdoll" then
+                            if animationValue ~= "Typing" and animationValue ~= "Ragdoll" and not isRagdolled(plr, stats) then
                                 if progress.Value > highestProg then highestProg = progress.Value end
                             end
                         end
                     end
                 end
+            end
+
+            if highestProg == 0 and fallbackProg[trigger] then
+                highestProg = fallbackProg[trigger]
             end
 
             progressCache[trigger] = math.floor(highestProg * 100)
@@ -1595,7 +1671,7 @@ local function startDoorProgress()
             local percent = progressCache[trigger] or 0
 
             if esp.highlight and esp.highlight.Parent then
-                if esp.sign and esp.sign.Parent and esp.sign.Value == 11 then
+                if esp.open then
                     esp.highlight.FillColor = Color3.fromRGB(60,255,90)
                     esp.highlight.OutlineColor = Color3.fromRGB(120,255,150)
                 else
@@ -1971,7 +2047,7 @@ local function _buildUI()
 
 local CFG = {
     Title    = "Extended Flee The Facility",
-    SubTitle = "v1.0.2.5",
+    SubTitle = "v1.0.2.7",
     W = 480, H = 320, SideW = 110,
     Tabs = {
         {name="Info",   icon="≡"},
