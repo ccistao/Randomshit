@@ -1971,7 +1971,7 @@ local function _buildUI()
 
 local CFG = {
     Title    = "Extended Flee The Facility",
-    SubTitle = "v1.0.3.5",
+    SubTitle = "v1.0.2.5",
     W = 480, H = 320, SideW = 110,
     Tabs = {
         {name="Info",   icon="≡"},
