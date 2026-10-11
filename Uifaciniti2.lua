@@ -3246,17 +3246,28 @@ end)
 
 WallhopNoBtn.MouseButton1Click:Connect(function()
     WallhopConfirmBg.Visible = false
-    if wallhopSlider then
-        local vl = wallhopSlider:GetChildren()[3]
-        local bg = wallhopSlider:GetChildren()[4]
-        if bg and vl then
-            local fill = bg:GetChildren()[1]
-            local knob = bg:GetChildren()[2]
-            
-            local frac = 95 / 96
-            vl.Text = "100 studs"
-            fill.Size = UDim2.new(frac, 0, 1, 0)
-            knob.Position = UDim2.new(frac, 0, 0.5, 0)
+    for _, row in ipairs(Panes[5]:GetChildren()) do
+        if row:IsA("Frame") then
+            local nl, vl, bg
+            for _, child in ipairs(row:GetChildren()) do
+                if child:IsA("TextLabel") and child.Text == "Wallhop Range" then nl = child
+                elseif child:IsA("TextLabel") and child.TextXAlignment == Enum.TextXAlignment.Right then vl = child
+                elseif child:IsA("Frame") and child.BackgroundTransparency == 0 then bg = child end
+            end
+            if nl and vl and bg then
+                local fill, knob
+                for _, c in ipairs(bg:GetChildren()) do
+                    if c.BackgroundColor3 == CFG.Accent then fill = c
+                    elseif c.Size.X.Offset == 14 then knob = c end
+                end
+                if fill and knob then
+                    local frac = 95 / 96
+                    vl.Text = "100 studs"
+                    fill.Size = UDim2.new(frac, 0, 1, 0)
+                    knob.Position = UDim2.new(frac, 0, 0.5, 0)
+                end
+                break
+            end
         end
     end
 end)
