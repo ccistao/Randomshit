@@ -3156,7 +3156,7 @@ corner(WallhopNoBtn,8)
 
 WallhopYesBtn.MouseButton1Click:Connect(function()
     WallhopConfirmBg.Visible = false
-    WallhopView.setRange(100)
+    WallhopView.setRange(500)
     saveSettings()
 end)
 
@@ -3280,16 +3280,16 @@ end, "selfMuting")
 addToggle(Panes[5], "◆", "Wallhop view","Highlights walls around player",                    false, 9, function(s)
     if s then WallhopView.start() else WallhopView.stop() end; saveSettings()
 end, "wallhop")
-addSliderRow(Panes[5], 10, "↔", "Wallhop Range", (WallhopView.radius - 5) / 96,
+addSliderRow(Panes[5], 10, "↔", "Wallhop Range", (WallhopView.radius > 100 and 1 or (WallhopView.radius - 5) / 96),
     function(f)
         local v = math.floor(5 + f * 96 + 0.5)
-        return v >= 100 and "Max" or (v .. " studs")
+        return v > 100 and "Max (500)" or (v .. " studs")
     end,
     function(f) 
         local v = math.floor(5 + f * 96 + 0.5)
-        if v >= 100 then
-            if not WallhopView.maxMode then
-                WallhopConfirmBg.Visible = true 
+        if v > 100 then
+            if WallhopView.radius ~= 500 then
+                WallhopConfirmBg.Visible = true
             end
         else
             WallhopView.setRange(v)
