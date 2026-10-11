@@ -2903,9 +2903,49 @@ do
         ssRow.BackgroundColor3 = val and Color3.fromRGB(28,20,20) or CFG.Card
     end
 
+    local idRow = Instance.new("Frame", groupContent)
+    idRow.Size=UDim2.new(1,0,0,42); idRow.BackgroundColor3=CFG.Card
+    idRow.BorderSizePixel=0; idRow.ZIndex=15; idRow.LayoutOrder=3
+    corner(idRow,9); stroke(idRow,CFG.Border,1,0.91)
+
+    local idib = Instance.new("Frame", idRow)
+    idib.Size=UDim2.new(0,26,0,26); idib.Position=UDim2.new(0,8,0.5,-13)
+    idib.BackgroundColor3=Color3.fromRGB(35,20,20); idib.BorderSizePixel=0; idib.ZIndex=16; corner(idib,7)
+    local idil = Instance.new("TextLabel", idib)
+    idil.Size=UDim2.new(1,0,1,0); idil.BackgroundTransparency=1
+    idil.Text="ID"; idil.TextSize=11; idil.Font=Enum.Font.GothamBold; idil.ZIndex=17; idil.TextColor3=CFG.Accent
+
+    local idnl = Instance.new("TextLabel", idRow)
+    idnl.Size=UDim2.new(0,100,0,15); idnl.Position=UDim2.new(0,42,0,8)
+    idnl.BackgroundTransparency=1; idnl.Text="Sound ID"; idnl.TextColor3=CFG.Text
+    idnl.TextSize=11; idnl.Font=Enum.Font.GothamBold
+    idnl.TextXAlignment=Enum.TextXAlignment.Left; idnl.ZIndex=16
+
+    local idBox = Instance.new("TextBox", idRow)
+    idBox.Size=UDim2.new(0,120,0,24); idBox.Position=UDim2.new(1,-128,0.5,-12)
+    idBox.BackgroundColor3=Color3.fromRGB(30,18,18); idBox.BorderSizePixel=0
+    idBox.Text=MyHub.Config.SkillSoundID or "223148658"
+    idBox.PlaceholderText="Recomended 114903799132334"
+    idBox.TextColor3=CFG.Text; idBox.PlaceholderColor3=CFG.TextMute
+    idBox.TextSize=9; idBox.Font=Enum.Font.GothamBold
+    idBox.TextXAlignment=Enum.TextXAlignment.Center
+    idBox.ClearTextOnFocus=false; idBox.ZIndex=18
+    corner(idBox,6); stroke(idBox,CFG.Accent,1,0.6)
+
+    idBox.FocusLost:Connect(function()
+        local raw = idBox.Text:gsub("%s+","")
+        if raw == "" then
+            idBox.Text = ""
+            MyHub.Config.SkillSoundID = ""
+        else
+            MyHub.Config.SkillSoundID = raw
+        end
+        saveSettings()
+    end)
+
     local volRow = Instance.new("Frame", groupContent)
     volRow.Size=UDim2.new(1,0,0,52); volRow.BackgroundColor3=CFG.Card
-    volRow.BorderSizePixel=0; volRow.ZIndex=15; volRow.LayoutOrder=3
+    volRow.BorderSizePixel=0; volRow.ZIndex=15; volRow.LayoutOrder=4
     corner(volRow,9); stroke(volRow,CFG.Border,1,0.91)
 
     local volib = Instance.new("Frame", volRow)
@@ -2923,7 +2963,7 @@ do
 
     local volValLbl = Instance.new("TextLabel", volRow)
     volValLbl.Size=UDim2.new(0,60,0,15); volValLbl.Position=UDim2.new(1,-70,0,8)
-    volValLbl.BackgroundTransparency=1; volValLbl.Text=MyHub.Config.SkillSoundVolume.."%"; volValLbl.TextColor3=CFG.Accent
+    volValLbl.BackgroundTransparency=1; volValLbl.Text=MyHub.Config.SkillSoundVolume; volValLbl.TextColor3=CFG.Accent
     volValLbl.TextSize=11; volValLbl.Font=Enum.Font.GothamBold
     volValLbl.TextXAlignment=Enum.TextXAlignment.Right; volValLbl.ZIndex=16
 
@@ -2933,7 +2973,7 @@ do
     corner(sliderBg,4)
 
     local sliderFill = Instance.new("Frame", sliderBg)
-    local VOL_MIN, VOL_MAX = 30, 500
+    local VOL_MIN, VOL_MAX = 1, 10
     local initFrac = (MyHub.Config.SkillSoundVolume - VOL_MIN) / (VOL_MAX - VOL_MIN)
     sliderFill.Size=UDim2.new(initFrac,0,1,0); sliderFill.BackgroundColor3=CFG.Accent
     sliderFill.BorderSizePixel=0; sliderFill.ZIndex=17
@@ -2952,7 +2992,7 @@ do
         frac = math.clamp(frac, 0, 1)
         local val = math.floor(VOL_MIN + frac * (VOL_MAX - VOL_MIN) + 0.5)
         MyHub.Config.SkillSoundVolume = val
-        volValLbl.Text = val .. "%"
+        volValLbl.Text = val
         sliderFill.Size = UDim2.new(frac, 0, 1, 0)
         sliderKnob.Position = UDim2.new(frac, 0, 0.5, 0)
     end
@@ -2973,15 +3013,13 @@ do
             setVolumeFromFrac(relX)
         end
     end)
-    sliderBtn.MouseButton1Click:Connect(function() end)
 
     syncFns["skillSoundVolume"] = function(val)
         local frac = (val - VOL_MIN) / (VOL_MAX - VOL_MIN)
         setVolumeFromFrac(frac)
     end
 
-    local ITEM_H, GAP = 42, 5
-    local fullH = 42 + 5 + 42 + 5 + 52 + 5
+    local fullH = 42 + 5 + 42 + 5 + 42 + 5 + 52 + 5
     local hBtn = Instance.new("TextButton", headerRow)
     hBtn.Size=UDim2.new(1,0,1,0); hBtn.BackgroundTransparency=1; hBtn.Text=""; hBtn.ZIndex=18
     hBtn.MouseButton1Click:Connect(function()
