@@ -2166,6 +2166,26 @@ local function loadSettings()
     end)
 end
 
+task.spawn(function()
+    local ContentProvider = game:GetService("ContentProvider")
+    
+    local preloadSound1 = Instance.new("Sound")
+    preloadSound1.SoundId = "rbxassetid://114903799132334"
+    
+    local currentID = MyHub.Config.SkillSoundID
+    if not currentID or currentID == "" then 
+        currentID = "223148658" 
+    end
+    local preloadSound2 = Instance.new("Sound")
+    preloadSound2.SoundId = "rbxassetid://" .. currentID
+    
+    pcall(function()
+        ContentProvider:PreloadAsync({preloadSound1, preloadSound2})
+    end)
+    
+    preloadSound1:Destroy()
+    preloadSound2:Destroy()
+end)
 
 task.spawn(function()
     Replicated:WaitForChild("CurrentMap").Changed:Connect(function() task.wait(5); reloadESP() end)
