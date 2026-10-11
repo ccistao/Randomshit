@@ -334,9 +334,14 @@ local function RemoveOutline(part)
 end
 
 local function wallQualifies(p)
-    return p:IsA("Part") and p.Shape == Enum.PartType.Block
-        and not IsCharacterPart(p) and p.Transparency < 0.95
-        and p.CanCollide and (p.Size.X*p.Size.Y*p.Size.Z) >= 30
+    if not p:IsA("BasePart") then return false end
+    if IsCharacterPart(p) then return false end
+    if not p.CanCollide or p.Transparency >= 0.95 then return false end
+    if p:IsA("Part") and p.Shape ~= Enum.PartType.Block then return false end
+    local size = p.Size
+    local volume = size.X * size.Y * size.Z
+    if volume < 5 then return false end
+    return true
 end
 
 local function scanFullMap()
@@ -411,7 +416,7 @@ end
 
 function WallhopView.setRange(v)
     local wasMax = WallhopView.maxMode
-    WallhopView.maxMode = v > 80
+    WallhopView.maxMode = v > 100
     if not WallhopView.maxMode then WallhopView.radius = v end
     if WallhopView.enabled and wasMax ~= WallhopView.maxMode then
         WallhopView.stop()
