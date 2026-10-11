@@ -3246,6 +3246,19 @@ end)
 
 WallhopNoBtn.MouseButton1Click:Connect(function()
     WallhopConfirmBg.Visible = false
+    if wallhopSlider then
+        local vl = wallhopSlider:GetChildren()[3]
+        local bg = wallhopSlider:GetChildren()[4]
+        if bg and vl then
+            local fill = bg:GetChildren()[1]
+            local knob = bg:GetChildren()[2]
+            
+            local frac = 95 / 96
+            vl.Text = "100 studs"
+            fill.Size = UDim2.new(frac, 0, 1, 0)
+            knob.Position = UDim2.new(frac, 0, 0.5, 0)
+        end
+    end
 end)
 
 local function addSliderRow(pane, order, icon, name, initFrac, formatFn, onChange)
