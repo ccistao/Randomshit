@@ -2135,9 +2135,16 @@ local function loadSettings()
             if NoFog.enabled           then NoFog.stop(); NoFog.start(); BlackFog.lock()              end
             if ShiftLockMobile.enabled then ShiftLockMobile.stop(); ShiftLockMobile.start() end
             if SelfMuting.enabled      then SelfMuting.stop(); SelfMuting.start()    end
+            task.delay(2, function()
+                if MyHub.Config.DoorProgress then stopDoorProgress(); startDoorProgress() end
+                if MyHub.Config.PCProgress then stopPCProgress(); startPCProgress() end
+                reloadESP()
+            end)
+            
         end)
     end)
 end
+
 
 task.spawn(function()
     Replicated:WaitForChild("CurrentMap").Changed:Connect(function() task.wait(5); reloadESP() end)
@@ -2656,17 +2663,11 @@ KB.LayoutOrder = 2
 KB.Text = table.concat({
     "Upd 1.0.3.0",
     "+ Add Black Fog toggle + Fog Density slider (Misc tab)",
-    "+ Add No Fog warning (Black Fog is locked until rejoin)",
-    "+ Add Wallhop Range slider (5-80 studs, Max scans the full map once per round)",
+    "+ Add No Fog warning (Black fog is locked until rejoin",
+    "+ Add Wallhop Range slider ",
     "/ Misc, Main and Visuals tabs now use sub-sections",
     "/ Normal ESP options moved out of the dropdown, added Advanced ESP section",
-    "",
-    "Upd 1.0.2.9",
-    "+ Add Skill Sound + volume slider (Main tab)",
-    "- Removed some patched features",
-    "* Renamed ESP tab to Visuals",
-    "/ Beast banner + warning toast use frosted glass style",
-    "/ UI improvements",
+    "/ Fix Door ESP not work when exc fisrt time"
 }, "\n")
 
 HereBtn.MouseButton1Click:Connect(function()
