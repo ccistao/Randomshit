@@ -2729,13 +2729,13 @@ task.spawn(function()
     if m then
         local cr = m:FindFirstChild("Credits")
         local lv = m:FindFirstChild("Level")
-        if cr texen money = tostring(cr.Value) end
+        if cr then money = tostring(cr.Value) end
         if lv then level = tostring(lv.Value) end
     end
 
     TypeGlitch(Nm, "---- Name: " .. lp.Name, TEXT_SPEED)
     TypeGlitch(Mn, "---- Money: " .. money, TEXT_SPEED)
-    TypeGlitch(Lv, "---- Level: exce. level, TEXT_SPEED)
+    TypeGlitch(Lv, "---- Level: " .. level, TEXT_SPEED)
     local tStr = "---- Type: "
     TypeGlitch(Ty, tStr, TEXT_SPEED)
 
