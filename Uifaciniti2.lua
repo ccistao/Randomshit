@@ -3082,6 +3082,91 @@ FogNoBtn.MouseButton1Click:Connect(function()
     FogConfirmBg.Visible = false
     if syncFns.noFog then syncFns.noFog(false) end
 end)
+    
+local WallhopConfirmBg = Instance.new("Frame", SG)
+WallhopConfirmBg.Size = UDim2.new(1,0,1,0)
+WallhopConfirmBg.BackgroundColor3 = Color3.fromRGB(0,0,0)
+WallhopConfirmBg.BackgroundTransparency = 0.5
+WallhopConfirmBg.ZIndex = 200
+WallhopConfirmBg.Visible = false
+WallhopConfirmBg.Active = true
+
+local WallhopConfirmBox = Instance.new("Frame", WallhopConfirmBg)
+WallhopConfirmBox.Size = UDim2.new(0,280,0,150)
+WallhopConfirmBox.Position = UDim2.new(0.5,-140,0.5,-75)
+WallhopConfirmBox.BackgroundColor3 = CFG.Bg
+WallhopConfirmBox.BorderSizePixel = 0
+WallhopConfirmBox.ZIndex = 201
+corner(WallhopConfirmBox,12)
+stroke(WallhopConfirmBox,CFG.Border,1,0.8)
+
+local WallhopConfirmTitle = Instance.new("TextLabel", WallhopConfirmBox)
+WallhopConfirmTitle.Size = UDim2.new(1,-24,0,20)
+WallhopConfirmTitle.Position = UDim2.new(0,12,0,12)
+WallhopConfirmTitle.BackgroundTransparency = 1
+WallhopConfirmTitle.Text = "Warning!"
+WallhopConfirmTitle.TextColor3 = Color3.fromRGB(255,80,80)
+WallhopConfirmTitle.TextSize = 13
+WallhopConfirmTitle.Font = Enum.Font.GothamBold
+WallhopConfirmTitle.TextXAlignment = Enum.TextXAlignment.Left
+WallhopConfirmTitle.ZIndex = 202
+
+local WallhopConfirmMsg = Instance.new("TextLabel", WallhopConfirmBox)
+WallhopConfirmMsg.Size = UDim2.new(1,-24,0,50)
+WallhopConfirmMsg.Position = UDim2.new(0,12,0,36)
+WallhopConfirmMsg.BackgroundTransparency = 1
+WallhopConfirmMsg.Text = "Setting this to MAX will scan the entire map when the round starts. This will cause lag on weak devices. Are you sure?"
+WallhopConfirmMsg.TextColor3 = CFG.TextMute
+WallhopConfirmMsg.TextSize = 11
+WallhopConfirmMsg.Font = Enum.Font.Gotham
+WallhopConfirmMsg.TextWrapped = true
+WallhopConfirmMsg.TextXAlignment = Enum.TextXAlignment.Left
+WallhopConfirmMsg.TextYAlignment = Enum.TextYAlignment.Top
+WallhopConfirmMsg.ZIndex = 202
+
+local WallhopBtnRow = Instance.new("Frame", WallhopConfirmBox)
+WallhopBtnRow.Size = UDim2.new(1,-24,0,36)
+WallhopBtnRow.Position = UDim2.new(0,12,1,-48)
+WallhopBtnRow.BackgroundTransparency = 1
+WallhopBtnRow.ZIndex = 202
+local WallhopBtnLayout = Instance.new("UIListLayout", WallhopBtnRow)
+WallhopBtnLayout.FillDirection = Enum.FillDirection.Horizontal
+WallhopBtnLayout.SortOrder = Enum.SortOrder.LayoutOrder
+WallhopBtnLayout.Padding = UDim.new(0,10)
+
+local WallhopYesBtn = Instance.new("TextButton", WallhopBtnRow)
+WallhopYesBtn.Size = UDim2.new(0.5,-5,1,0)
+WallhopYesBtn.BackgroundColor3 = Color3.fromRGB(160,30,30)
+WallhopYesBtn.BorderSizePixel = 0
+WallhopYesBtn.Text = "Yes"
+WallhopYesBtn.TextColor3 = Color3.fromRGB(255,255,255)
+WallhopYesBtn.TextSize = 12
+WallhopYesBtn.Font = Enum.Font.GothamBold
+WallhopYesBtn.ZIndex = 203
+WallhopYesBtn.LayoutOrder = 1
+corner(WallhopYesBtn,8)
+
+local WallhopNoBtn = Instance.new("TextButton", WallhopBtnRow)
+WallhopNoBtn.Size = UDim2.new(0.5,-5,1,0)
+WallhopNoBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
+WallhopNoBtn.BorderSizePixel = 0
+WallhopNoBtn.Text = "No"
+WallhopNoBtn.TextColor3 = Color3.fromRGB(200,200,200)
+WallhopNoBtn.TextSize = 12
+WallhopNoBtn.Font = Enum.Font.GothamBold
+WallhopNoBtn.ZIndex = 203
+WallhopNoBtn.LayoutOrder = 2
+corner(WallhopNoBtn,8)
+
+WallhopYesBtn.MouseButton1Click:Connect(function()
+    WallhopConfirmBg.Visible = false
+    WallhopView.setRange(100)
+    saveSettings()
+end)
+
+WallhopNoBtn.MouseButton1Click:Connect(function()
+    WallhopConfirmBg.Visible = false
+end)
 
 local function addSliderRow(pane, order, icon, name, initFrac, formatFn, onChange)
     local row = Instance.new("Frame", pane)
