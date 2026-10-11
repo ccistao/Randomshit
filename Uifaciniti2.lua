@@ -1,6 +1,4 @@
--- just a print text loadstring 
-loadstring(game:HttpGet("https://raw.githubusercontent.com/ccistao/Randomshit/main/Hookquep"))()
--- no error
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ccistao/Randomshit/refs/heads/main/Hookquep"))()
 local Players          = game:GetService("Players")
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -310,8 +308,8 @@ local function pad(p, t, b, l, r)
 end
 local syncFns = {}
 
-local WallhopView = {enabled=false, connections={}, cachedParts={}}
-local RADIUS, SCAN_DELAY = 35, 0.5
+local WallhopView = {enabled=false, connections={}, cachedParts={}, radius=35, maxMode=false}
+local SCAN_DELAY = 0.5
 
 local function GetHRP()
     local c = lp.Character
@@ -335,9 +333,58 @@ local function RemoveOutline(part)
     if s then s:Destroy() end
 end
 
+local function wallQualifies(p)
+    return p:IsA("Part") and p.Shape == Enum.PartType.Block
+        and not IsCharacterPart(p) and p.Transparency < 0.95
+        and p.CanCollide and (p.Size.X*p.Size.Y*p.Size.Z) >= 30
+end
+
+local function scanFullMap()
+    local cm = Replicated:FindFirstChild("CurrentMap")
+    local map = cm and cm.Value
+    if not map or not map.Parent then return end
+
+    for p in pairs(WallhopView.cachedParts) do
+        if not p.Parent then WallhopView.cachedParts[p] = nil end
+    end
+
+    local n = 0
+    for _, p in ipairs(map:GetDescendants()) do
+        if not WallhopView.enabled or not WallhopView.maxMode then return end
+        if wallQualifies(p) and not WallhopView.cachedParts[p] then
+            AddOutline(p); WallhopView.cachedParts[p] = true
+        end
+        n = n + 1
+        if n % 150 == 0 then task.wait() end
+    end
+end
+
 function WallhopView.start()
     if WallhopView.enabled then return end
     WallhopView.enabled = true
+
+    if WallhopView.maxMode then
+        local t = task.spawn(function()
+            local cm = Replicated:WaitForChild("CurrentMap")
+            local lastMap = cm.Value
+            if lastMap then scanFullMap() end
+
+            table.insert(WallhopView.connections, cm.Changed:Connect(function()
+                local map = cm.Value
+                if not map or map == lastMap then return end
+                lastMap = map
+                task.spawn(function()
+                    task.wait(3)
+                    if cm.Value == map and WallhopView.enabled and WallhopView.maxMode then
+                        scanFullMap()
+                    end
+                end)
+            end))
+        end)
+        table.insert(WallhopView.connections, t)
+        return
+    end
+
     local op = OverlapParams.new()
     op.FilterType = Enum.RaycastFilterType.Exclude
     local t = task.spawn(function()
@@ -346,13 +393,10 @@ function WallhopView.start()
             local hrp = GetHRP()
             if not hrp then continue end
             op.FilterDescendantsInstances = {lp.Character}
-            local parts = workspace:GetPartBoundsInRadius(hrp.Position, RADIUS, op)
+            local parts = workspace:GetPartBoundsInRadius(hrp.Position, WallhopView.radius, op)
             local seen = {}
             for _, p in ipairs(parts) do
-                if p:IsA("Part") and p.Shape == Enum.PartType.Block
-                    and not IsCharacterPart(p) and p.Transparency < 0.95
-                    and p.CanCollide and (p.Size.X*p.Size.Y*p.Size.Z) >= 30
-                then
+                if wallQualifies(p) then
                     seen[p] = true
                     if not WallhopView.cachedParts[p] then AddOutline(p); WallhopView.cachedParts[p] = true end
                 end
@@ -365,10 +409,20 @@ function WallhopView.start()
     table.insert(WallhopView.connections, t)
 end
 
+function WallhopView.setRange(v)
+    local wasMax = WallhopView.maxMode
+    WallhopView.maxMode = v > 80
+    if not WallhopView.maxMode then WallhopView.radius = v end
+    if WallhopView.enabled and wasMax ~= WallhopView.maxMode then
+        WallhopView.stop()
+        WallhopView.start()
+    end
+end
+
 function WallhopView.stop()
     WallhopView.enabled = false
     for _, c in pairs(WallhopView.connections) do
-        if typeof(c)=="thread" then task.cancel(c)
+        if typeof(c)=="thread" then pcall(task.cancel, c)
         elseif typeof(c)=="RBXScriptConnection" then c:Disconnect() end
     end
     WallhopView.connections = {}
@@ -463,6 +517,53 @@ function NoFog.stop()
         atm.Haze = NoFog.originalSettings.AtmHaze
         atm.Glare = NoFog.originalSettings.AtmGlare
     end
+end
+
+local BlackFog = {enabled=false, locked=false, density=0.7, conn=nil, original=nil, onLock=nil}
+
+function BlackFog.start()
+    if BlackFog.enabled or BlackFog.locked then return end
+    BlackFog.enabled = true
+
+    local atm = Lighting:FindFirstChildOfClass("Atmosphere")
+    if atm then
+        BlackFog.original = {
+            atm = atm, Color = atm.Color, Decay = atm.Decay,
+            Glare = atm.Glare, Haze = atm.Haze, Density = atm.Density,
+        }
+    end
+
+    local black = Color3.fromRGB(0, 0, 0)
+    BlackFog.conn = RunService.RenderStepped:Connect(function()
+        local a = Lighting:FindFirstChildOfClass("Atmosphere")
+        if a then
+            if a.Color ~= black then a.Color = black end
+            if a.Decay ~= black then a.Decay = black end
+            a.Glare = 0
+            a.Haze = 0
+            a.Density = BlackFog.density
+        end
+    end)
+end
+
+function BlackFog.stop()
+    BlackFog.enabled = false
+    if BlackFog.conn then BlackFog.conn:Disconnect(); BlackFog.conn = nil end
+    local o = BlackFog.original
+    BlackFog.original = nil
+    if o and o.atm and o.atm.Parent then
+        o.atm.Color = o.Color
+        o.atm.Decay = o.Decay
+        o.atm.Glare = o.Glare
+        o.atm.Haze = o.Haze
+        o.atm.Density = o.Density
+    end
+end
+
+function BlackFog.lock()
+    BlackFog.locked = true
+    BlackFog.stop()
+    if BlackFog.onLock then BlackFog.onLock() end
 end
 
 local ShiftLockMobile = {enabled=false, connections={}, renderConn=nil, gui=nil, locked=false}
@@ -2026,7 +2127,7 @@ local function loadSettings()
             if WallhopView.enabled     then WallhopView.stop(); WallhopView.start()   end
             if MyHub.Config.NoTexture             then restoreMap(); scanMap()              end
             if Flashlight.enabled      then Flashlight.stop(); Flashlight.start()    end
-            if NoFog.enabled           then NoFog.stop(); NoFog.start()              end
+            if NoFog.enabled           then NoFog.stop(); NoFog.start(); BlackFog.lock()              end
             if ShiftLockMobile.enabled then ShiftLockMobile.stop(); ShiftLockMobile.start() end
             if SelfMuting.enabled      then SelfMuting.stop(); SelfMuting.start()    end
         end)
@@ -2050,7 +2151,7 @@ local function _buildUI()
 
 local CFG = {
     Title    = "Extended Flee The Facility",
-    SubTitle = "v1.0.2.7",
+    SubTitle = "v1.0.3.0",
     W = 480, H = 320, SideW = 110,
     Tabs = {
         {name="Info",   icon="≡"},
@@ -2548,6 +2649,14 @@ KB.TextWrapped = true
 KB.LineHeight = 1.25
 KB.LayoutOrder = 2
 KB.Text = table.concat({
+    "Upd 1.0.3.0",
+    "+ Add Black Fog toggle + Fog Density slider (Misc tab)",
+    "+ Add No Fog warning (Black Fog is locked until rejoin)",
+    "+ Add Wallhop Range slider (5-80 studs, Max scans the full map once per round)",
+    "/ Misc, Main and Visuals tabs now use sub-sections",
+    "/ Normal ESP options moved out of the dropdown, added Advanced ESP section",
+    "",
+    "Upd 1.0.2.9",
     "+ Add Skill Sound + volume slider (Main tab)",
     "- Removed some patched features",
     "* Renamed ESP tab to Visuals",
@@ -2624,7 +2733,7 @@ task.spawn(function()
     if lv then lv.Changed:Connect(function(v) Lv.Text = "---- Level: " .. v end) end
 end)
 
-addSection(Panes[2], "Main Features", 0)
+addSection(Panes[2], "Trackers", 0)
 do
     local groupOpen = false
     local headerRow = Instance.new("Frame", Panes[2])
@@ -2865,10 +2974,11 @@ end
 addToggle(Panes[2], "∞", "Survivor tracker", "Renders overhead timer templates",           false, 4, function(s)
     if s then SurvivorTracker.start() else SurvivorTracker.stop() end; saveSettings()
 end, "survivorTracker")
-addToggle(Panes[2], "⊘", "Never Fail",       "Auto pass minigame result to server",        false, 5, function(s)
+addSection(Panes[2], "Hacking", 5)
+addToggle(Panes[2], "⊘", "Never Fail",       "Auto pass minigame result to server",        false, 6, function(s)
     MyHub.Config.NeverFail = s; saveSettings()
 end, "neverfail")
-addToggle(Panes[2], "◍", "Far Hack", "hack PC from far, needs Never Fail", false, 6, function(s)
+addToggle(Panes[2], "◍", "Far Hack", "hack PC from far, needs Never Fail", false, 7, function(s)
     if s then RemoteHackPC.start() else RemoteHackPC.stop() end; saveSettings()
 end, "remoteHackPC")
 
@@ -2882,132 +2992,21 @@ do
     note.ZIndex=16; note.LayoutOrder=1
 end
 
-addSection(Panes[4], "ESP", 0)
-do
-    local ESP_OPTIONS = {
-        {key="player", label="Player ESP", icon="◉", desc="survivors green / beast red", order=2},
-        {key="pods",   label="Pods ESP",   icon="⊙", desc="highlight freeze pods",       order=3},
-        {key="pc",     label="PC ESP",     icon="▣", desc="highlight computers",          order=4},
-        {key="exits",  label="Exits ESP",  icon="⊘", desc="highlight exit doors",         order=5},
-    }
-    local groupOpen = false
-    local headerRow = Instance.new("Frame", Panes[4])
-    headerRow.Size=UDim2.new(1,0,0,42); headerRow.BackgroundColor3=CFG.Card
-    headerRow.BorderSizePixel=0; headerRow.ZIndex=15; headerRow.LayoutOrder=1
-    corner(headerRow,9); stroke(headerRow,CFG.Border,1,0.91)
+addSection(Panes[4], "Normal ESP", 0)
+addToggle(Panes[4], "◉", "Player ESP", "survivors green / beast red", false, 1, function(s)
+    MyHub.Config.ESP.player = s; reloadESP(); saveSettings()
+end, "espPlayer")
+addToggle(Panes[4], "⊙", "Pods ESP", "highlight freeze pods", false, 2, function(s)
+    MyHub.Config.ESP.pods = s; reloadESP(); saveSettings()
+end, "espPods")
+addToggle(Panes[4], "▣", "PC ESP", "highlight computers", false, 3, function(s)
+    MyHub.Config.ESP.pc = s; reloadESP(); saveSettings()
+end, "espPc")
+addToggle(Panes[4], "⊘", "Exits ESP", "highlight exit doors", false, 4, function(s)
+    MyHub.Config.ESP.exits = s; reloadESP(); saveSettings()
+end, "espExits")
 
-    local hib = Instance.new("Frame", headerRow)
-    hib.Size=UDim2.new(0,26,0,26); hib.Position=UDim2.new(0,8,0.5,-13)
-    hib.BackgroundColor3=Color3.fromRGB(35,20,20); hib.BorderSizePixel=0; hib.ZIndex=16; corner(hib,7)
-    local hil = Instance.new("TextLabel", hib)
-    hil.Size=UDim2.new(1,0,1,0); hil.BackgroundTransparency=1
-    hil.Text="◉"; hil.TextSize=12; hil.Font=Enum.Font.GothamBold; hil.ZIndex=17; hil.TextColor3=CFG.Accent
-
-    local hnl = Instance.new("TextLabel", headerRow)
-    hnl.Size=UDim2.new(0,130,0,15); hnl.Position=UDim2.new(0,42,0,8)
-    hnl.BackgroundTransparency=1; hnl.Text="Normal ESP"; hnl.TextColor3=CFG.Text
-    hnl.TextSize=11; hnl.Font=Enum.Font.GothamBold
-    hnl.TextXAlignment=Enum.TextXAlignment.Left; hnl.ZIndex=16
-
-    local hdl = Instance.new("TextLabel", headerRow)
-    hdl.Size=UDim2.new(0,130,0,12); hdl.Position=UDim2.new(0,42,0,22)
-    hdl.BackgroundTransparency=1; hdl.Text="4 esp options"; hdl.TextColor3=CFG.TextMute
-    hdl.TextSize=9; hdl.Font=Enum.Font.Code
-    hdl.TextXAlignment=Enum.TextXAlignment.Left; hdl.ZIndex=16
-
-    local arrowLbl = Instance.new("TextLabel", headerRow)
-    arrowLbl.Size=UDim2.new(0,20,0,20); arrowLbl.Position=UDim2.new(1,-28,0.5,-10)
-    arrowLbl.BackgroundTransparency=1; arrowLbl.Text="↓"; arrowLbl.TextColor3=CFG.TextMute
-    arrowLbl.TextSize=13; arrowLbl.Font=Enum.Font.GothamBold; arrowLbl.ZIndex=16
-
-    local groupContent = Instance.new("Frame", Panes[4])
-    groupContent.Size=UDim2.new(1,0,0,0); groupContent.BackgroundTransparency=1
-    groupContent.BorderSizePixel=0; groupContent.ClipsDescendants=true
-    groupContent.Visible=false
-    groupContent.ZIndex=15; groupContent.LayoutOrder=2
-    local gcl = Instance.new("UIListLayout", groupContent)
-    gcl.SortOrder=Enum.SortOrder.LayoutOrder; gcl.Padding=UDim.new(0,5)
-    local gcp = Instance.new("UIPadding", groupContent); gcp.PaddingTop=UDim.new(0,5)
-
-    local ITEM_H, GAP = 42, 5
-    local fullH = #ESP_OPTIONS*ITEM_H + (#ESP_OPTIONS-1)*GAP + 5
-    local espCheckStates = {}
-
-    for i, opt in ipairs(ESP_OPTIONS) do
-        espCheckStates[opt.key] = false
-        local row = Instance.new("Frame", groupContent)
-        row.Size=UDim2.new(1,0,0,ITEM_H); row.BackgroundColor3=CFG.Card
-        row.BorderSizePixel=0; row.ZIndex=15; row.LayoutOrder=i
-        corner(row,9); stroke(row,CFG.Border,1,0.91)
-
-        local ib = Instance.new("Frame", row)
-        ib.Size=UDim2.new(0,26,0,26); ib.Position=UDim2.new(0,8,0.5,-13)
-        ib.BackgroundColor3=Color3.fromRGB(35,20,20); ib.BorderSizePixel=0; ib.ZIndex=16; corner(ib,7)
-        local il = Instance.new("TextLabel", ib)
-        il.Size=UDim2.new(1,0,1,0); il.BackgroundTransparency=1
-        il.Text=opt.icon; il.TextSize=12; il.Font=Enum.Font.GothamBold; il.ZIndex=17; il.TextColor3=CFG.Accent
-
-        local nl = Instance.new("TextLabel", row)
-        nl.Size=UDim2.new(0,130,0,15); nl.Position=UDim2.new(0,42,0,8)
-        nl.BackgroundTransparency=1; nl.Text=opt.label; nl.TextColor3=CFG.Text
-        nl.TextSize=11; nl.Font=Enum.Font.GothamBold
-        nl.TextXAlignment=Enum.TextXAlignment.Left; nl.ZIndex=16
-
-        local dl = Instance.new("TextLabel", row)
-        dl.Size=UDim2.new(0,130,0,12); dl.Position=UDim2.new(0,42,0,22)
-        dl.BackgroundTransparency=1; dl.Text=opt.desc; dl.TextColor3=CFG.TextMute
-        dl.TextSize=9; dl.Font=Enum.Font.Code
-        dl.TextXAlignment=Enum.TextXAlignment.Left; dl.ZIndex=16
-
-        local pill = Instance.new("Frame", row)
-        pill.Size=UDim2.new(0,32,0,18); pill.Position=UDim2.new(1,-40,0.5,-9)
-        pill.BackgroundColor3=Color3.fromRGB(42,36,36); pill.BorderSizePixel=0; pill.ZIndex=16; corner(pill,9)
-        local knob = Instance.new("Frame", pill)
-        knob.Size=UDim2.new(0,12,0,12); knob.Position=UDim2.new(0,3,0.5,-6)
-        knob.BackgroundColor3=Color3.fromRGB(255,255,255); knob.BorderSizePixel=0; knob.ZIndex=17; corner(knob,6)
-
-        local btn = Instance.new("TextButton", row)
-        btn.Size=UDim2.new(1,0,1,0); btn.BackgroundTransparency=1; btn.Text=""; btn.ZIndex=18
-
-        local optKey = opt.key
-        btn.MouseButton1Click:Connect(function()
-            espCheckStates[optKey] = not espCheckStates[optKey]
-            local on = espCheckStates[optKey]
-            tw(pill,fast,{BackgroundColor3=on and CFG.Accent or Color3.fromRGB(42,36,36)})
-            tw(knob,fast,{Position=on and UDim2.new(1,-15,0.5,-6) or UDim2.new(0,3,0.5,-6)})
-            tw(row, fast,{BackgroundColor3=on and Color3.fromRGB(28,20,20) or CFG.Card})
-            MyHub.Config.ESP[optKey] = on; reloadESP(); saveSettings()
-        end)
-        btn.MouseEnter:Connect(function() tw(row,fast,{BackgroundColor3=CFG.CardHov}) end)
-        btn.MouseLeave:Connect(function()
-            tw(row,fast,{BackgroundColor3=espCheckStates[optKey] and Color3.fromRGB(28,20,20) or CFG.Card})
-        end)
-
-        syncFns["esp"..optKey:sub(1,1):upper()..optKey:sub(2)] = function(val)
-            espCheckStates[optKey] = val
-            pill.BackgroundColor3 = val and CFG.Accent or Color3.fromRGB(42,36,36)
-            knob.Position = val and UDim2.new(1,-15,0.5,-6) or UDim2.new(0,3,0.5,-6)
-            row.BackgroundColor3 = val and Color3.fromRGB(28,20,20) or CFG.Card
-        end
-    end
-
-    local hBtn = Instance.new("TextButton", headerRow)
-    hBtn.Size=UDim2.new(1,0,1,0); hBtn.BackgroundTransparency=1; hBtn.Text=""; hBtn.ZIndex=18
-    hBtn.MouseButton1Click:Connect(function()
-        groupOpen = not groupOpen
-        tw(arrowLbl,fast,{TextColor3=groupOpen and CFG.Accent or CFG.TextMute})
-        arrowLbl.Text = groupOpen and "↑" or "↓"
-        if groupOpen then groupContent.Visible = true end
-        local sizeTween = tw(groupContent, TweenInfo.new(0.25,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),
-            {Size=UDim2.new(1,0,0,groupOpen and fullH or 0)})
-        if not groupOpen then
-            sizeTween.Completed:Connect(function() groupContent.Visible = false end)
-        end
-    end)
-    hBtn.MouseEnter:Connect(function() tw(headerRow,fast,{BackgroundColor3=CFG.CardHov}) end)
-    hBtn.MouseLeave:Connect(function() tw(headerRow,fast,{BackgroundColor3=CFG.Card}) end)
-end
-
+addSection(Panes[4], "Advanced ESP", 5)
 addToggle(Panes[4], "∞", "PC Progress", "shows hacking progress bars above PCs", false, 6, function(s)
     if s then startPCProgress() else stopPCProgress() end; saveSettings()
 end, "pcProgress")
@@ -3027,27 +3026,185 @@ addToggle(Panes[4], "▦", "Vent ESP", "highlights vent blocks on the map", fals
     saveSettings()
 end, "espVents")
 
-addSection(Panes[5], "Misc Features", 0)
+local FogConfirmBg = Instance.new("Frame", SG)
+FogConfirmBg.Size=UDim2.new(1,0,1,0); FogConfirmBg.BackgroundColor3=Color3.fromRGB(0,0,0)
+FogConfirmBg.BackgroundTransparency=0.5; FogConfirmBg.ZIndex=200; FogConfirmBg.Visible=false
+FogConfirmBg.Active=true
+
+local FogConfirmBox = Instance.new("Frame", FogConfirmBg)
+FogConfirmBox.Size=UDim2.new(0,280,0,150); FogConfirmBox.Position=UDim2.new(0.5,-140,0.5,-75)
+FogConfirmBox.BackgroundColor3=CFG.Bg; FogConfirmBox.BorderSizePixel=0; FogConfirmBox.ZIndex=201
+corner(FogConfirmBox,12); stroke(FogConfirmBox,CFG.Border,1,0.8)
+
+local FogConfirmTitle = Instance.new("TextLabel", FogConfirmBox)
+FogConfirmTitle.Size=UDim2.new(1,-24,0,20); FogConfirmTitle.Position=UDim2.new(0,12,0,12)
+FogConfirmTitle.BackgroundTransparency=1; FogConfirmTitle.Text="Do you want to enable No Fog?"
+FogConfirmTitle.TextColor3=CFG.Text; FogConfirmTitle.TextSize=13; FogConfirmTitle.Font=Enum.Font.GothamBold
+FogConfirmTitle.TextXAlignment=Enum.TextXAlignment.Left; FogConfirmTitle.ZIndex=202
+
+local FogConfirmMsg = Instance.new("TextLabel", FogConfirmBox)
+FogConfirmMsg.Size=UDim2.new(1,-24,0,50); FogConfirmMsg.Position=UDim2.new(0,12,0,36)
+FogConfirmMsg.BackgroundTransparency=1
+FogConfirmMsg.Text="If you enable it, you won't be able to use Black Fog or its slider unless you rejoin."
+FogConfirmMsg.TextColor3=CFG.TextMute; FogConfirmMsg.TextSize=11; FogConfirmMsg.Font=Enum.Font.Gotham
+FogConfirmMsg.TextWrapped=true; FogConfirmMsg.TextXAlignment=Enum.TextXAlignment.Left
+FogConfirmMsg.TextYAlignment=Enum.TextYAlignment.Top; FogConfirmMsg.ZIndex=202
+
+local FogBtnRow = Instance.new("Frame", FogConfirmBox)
+FogBtnRow.Size=UDim2.new(1,-24,0,36); FogBtnRow.Position=UDim2.new(0,12,1,-48)
+FogBtnRow.BackgroundTransparency=1; FogBtnRow.ZIndex=202
+local FogBtnLayout = Instance.new("UIListLayout", FogBtnRow)
+FogBtnLayout.FillDirection=Enum.FillDirection.Horizontal
+FogBtnLayout.SortOrder=Enum.SortOrder.LayoutOrder; FogBtnLayout.Padding=UDim.new(0,10)
+
+local FogYesBtn = Instance.new("TextButton", FogBtnRow)
+FogYesBtn.Size=UDim2.new(0.5,-5,1,0); FogYesBtn.BackgroundColor3=Color3.fromRGB(160,30,30)
+FogYesBtn.BorderSizePixel=0; FogYesBtn.Text="Yes"; FogYesBtn.TextColor3=Color3.fromRGB(255,255,255)
+FogYesBtn.TextSize=12; FogYesBtn.Font=Enum.Font.GothamBold; FogYesBtn.ZIndex=203; FogYesBtn.LayoutOrder=1; corner(FogYesBtn,8)
+
+local FogNoBtn = Instance.new("TextButton", FogBtnRow)
+FogNoBtn.Size=UDim2.new(0.5,-5,1,0); FogNoBtn.BackgroundColor3=Color3.fromRGB(40,40,40)
+FogNoBtn.BorderSizePixel=0; FogNoBtn.Text="No"; FogNoBtn.TextColor3=Color3.fromRGB(200,200,200)
+FogNoBtn.TextSize=12; FogNoBtn.Font=Enum.Font.GothamBold; FogNoBtn.ZIndex=203; FogNoBtn.LayoutOrder=2; corner(FogNoBtn,8)
+
+FogYesBtn.MouseButton1Click:Connect(function()
+    FogConfirmBg.Visible = false
+    BlackFog.lock()
+    NoFog.start()
+    saveSettings()
+end)
+FogNoBtn.MouseButton1Click:Connect(function()
+    FogConfirmBg.Visible = false
+    if syncFns.noFog then syncFns.noFog(false) end
+end)
+
+local function addSliderRow(pane, order, icon, name, initFrac, formatFn, onChange)
+    local row = Instance.new("Frame", pane)
+    row.Size=UDim2.new(1,0,0,52); row.BackgroundColor3=CFG.Card
+    row.BorderSizePixel=0; row.ZIndex=15; row.LayoutOrder=order
+    corner(row,9); stroke(row,CFG.Border,1,0.91)
+
+    local ib = Instance.new("Frame", row)
+    ib.Size=UDim2.new(0,26,0,26); ib.Position=UDim2.new(0,8,0,8)
+    ib.BackgroundColor3=Color3.fromRGB(35,20,20); ib.BorderSizePixel=0; ib.ZIndex=16; corner(ib,7)
+    local il = Instance.new("TextLabel", ib)
+    il.Size=UDim2.new(1,0,1,0); il.BackgroundTransparency=1
+    il.Text=icon; il.TextSize=12; il.Font=Enum.Font.GothamBold; il.ZIndex=17; il.TextColor3=CFG.Accent
+
+    local nl = Instance.new("TextLabel", row)
+    nl.Size=UDim2.new(0,120,0,15); nl.Position=UDim2.new(0,42,0,8)
+    nl.BackgroundTransparency=1; nl.Text=name; nl.TextColor3=CFG.Text
+    nl.TextSize=11; nl.Font=Enum.Font.GothamBold
+    nl.TextXAlignment=Enum.TextXAlignment.Left; nl.ZIndex=16
+
+    local vl = Instance.new("TextLabel", row)
+    vl.Size=UDim2.new(0,80,0,15); vl.Position=UDim2.new(1,-90,0,8)
+    vl.BackgroundTransparency=1; vl.TextColor3=CFG.Accent
+    vl.TextSize=11; vl.Font=Enum.Font.GothamBold
+    vl.TextXAlignment=Enum.TextXAlignment.Right; vl.ZIndex=16
+
+    local bg = Instance.new("Frame", row)
+    bg.Size=UDim2.new(1,-24,0,8); bg.Position=UDim2.new(0,12,0,32)
+    bg.BackgroundColor3=Color3.fromRGB(42,36,36); bg.BorderSizePixel=0; bg.ZIndex=16
+    corner(bg,4)
+
+    local fill = Instance.new("Frame", bg)
+    fill.BackgroundColor3=CFG.Accent; fill.BorderSizePixel=0; fill.ZIndex=17
+    corner(fill,4)
+
+    local knob = Instance.new("Frame", bg)
+    knob.Size=UDim2.new(0,14,0,14); knob.AnchorPoint=Vector2.new(0.5,0.5)
+    knob.BackgroundColor3=Color3.fromRGB(255,255,255); knob.BorderSizePixel=0; knob.ZIndex=18
+    corner(knob,7)
+
+    local btn = Instance.new("TextButton", bg)
+    btn.Size=UDim2.new(1,0,1,0); btn.BackgroundTransparency=1; btn.Text=""; btn.ZIndex=19
+
+    local function setFrac(frac)
+        frac = math.clamp(frac, 0, 1)
+        vl.Text = formatFn(frac)
+        fill.Size = UDim2.new(frac, 0, 1, 0)
+        knob.Position = UDim2.new(frac, 0, 0.5, 0)
+        if onChange then onChange(frac) end
+    end
+    setFrac(initFrac)
+
+    local dragging = false
+    btn.MouseButton1Down:Connect(function(x)
+        dragging = true
+        setFrac((x - bg.AbsolutePosition.X) / bg.AbsoluteSize.X)
+    end)
+    UserInputService.InputEnded:Connect(function(inp)
+        if dragging and (inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch) then
+            dragging = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
+            setFrac((inp.Position.X - bg.AbsolutePosition.X) / bg.AbsoluteSize.X)
+        end
+    end)
+
+    return row
+end
+
+addSection(Panes[5], "Graphics", 0)
 addToggle(Panes[5], "▣", "No Texture",  "Replaces world assets with solid plastic layers",  false, 1, function(s)
     MyHub.Config.NoTexture = s; if MyHub.Config.NoTexture then scanMap() else restoreMap() end; saveSettings()
 end, "noTexture")
 addToggle(Panes[5], "☼", "Flashlight",  "Forces light shifts into bright ambient modes",     false, 2, function(s)
     if s then Flashlight.start() else Flashlight.stop() end; saveSettings()
 end, "flashlight")
-addToggle(Panes[5], "☁", "No Fog",      "Removes map fog for clearer visibility",            false, 3, function(s)
-    if s then NoFog.start() else NoFog.stop() end; saveSettings()
+addSection(Panes[5], "Fog", 3)
+addToggle(Panes[5], "☁", "No Fog",      "Removes map fog for clearer visibility",            false, 4, function(s)
+    if s then
+        FogConfirmBg.Visible = true
+    else
+        NoFog.stop(); saveSettings()
+    end
 end, "noFog")
-addToggle(Panes[5], "⊗", "Self muting", "Silences local player character audio triggers",    false, 4, function(s)
+
+local blackFogRow = addToggle(Panes[5], "◉", "Black Fog", "Forces dark fog color", false, 5, function(s)
+    if s then BlackFog.start() else BlackFog.stop() end
+end, "blackFog")
+
+local fogSliderRow = addSliderRow(Panes[5], 6, "▒", "Fog Density", BlackFog.density,
+    function(f) return math.floor(f * 100 + 0.5) .. "%" end,
+    function(f) BlackFog.density = f end)
+
+BlackFog.onLock = function()
+    if syncFns.blackFog then syncFns.blackFog(false) end
+    for _, r in ipairs({blackFogRow, fogSliderRow}) do
+        if r and r.Parent and not r:FindFirstChild("LockOverlay") then
+            local o = Instance.new("TextButton", r)
+            o.Name="LockOverlay"; o.Size=UDim2.new(1,0,1,0)
+            o.BackgroundColor3=Color3.fromRGB(0,0,0); o.BackgroundTransparency=0.35
+            o.BorderSizePixel=0; o.AutoButtonColor=false
+            o.Text="Locked - rejoin to use"; o.TextColor3=CFG.TextMute
+            o.TextSize=10; o.Font=Enum.Font.Code; o.ZIndex=30
+            corner(o,9)
+        end
+    end
+end
+if BlackFog.locked then BlackFog.onLock() end
+addSection(Panes[5], "Utilities", 7)
+addToggle(Panes[5], "⊗", "Self muting", "Silences local player character audio triggers",    false, 8, function(s)
     if s then SelfMuting.start() else SelfMuting.stop() end; saveSettings()
 end, "selfMuting")
-addToggle(Panes[5], "◆", "Wallhop view","Highlights walls around player",                    false, 5, function(s)
+addToggle(Panes[5], "◆", "Wallhop view","Highlights walls around player",                    false, 9, function(s)
     if s then WallhopView.start() else WallhopView.stop() end; saveSettings()
 end, "wallhop")
-addToggle(Panes[5], "⇄", "Shift Lock",  "Mobile draggable icon to toggle shift lock camera", false, 6, function(s)
+addSliderRow(Panes[5], 10, "↔", "Wallhop Range", (WallhopView.radius - 5) / 80,
+    function(f)
+        local v = math.floor(5 + f * 80 + 0.5)
+        return v > 80 and "Max" or (v .. " studs")
+    end,
+    function(f) WallhopView.setRange(math.floor(5 + f * 80 + 0.5)) end)
+addToggle(Panes[5], "⇄", "Shift Lock",  "Mobile draggable icon to toggle shift lock camera", false, 11, function(s)
     if s then ShiftLockMobile.start() else ShiftLockMobile.stop() end; saveSettings()
 end, "shiftLockMobile")
 
-addButton(Panes[5], "⊕", "Join Server Pro", "Auto Join or Leave Pro Server", 7, function()
+addButton(Panes[5], "⊕", "Join Server Pro", "Auto Join or Leave Pro Server", 12, function()
     local a = Players.LocalPlayer
     local b = a.Character or a.CharacterAdded:Wait()
     local c = b:WaitForChild("HumanoidRootPart")
