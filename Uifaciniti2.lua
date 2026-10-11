@@ -19,7 +19,8 @@ local MyHub = {
         DoorProgress    = false,
         BeastTracker    = false,
         SkillSound      = false,
-        SkillSoundVolume = 100,
+        SkillSoundVolume = 10,
+        SkillSoundID    = "223148658",
         SurvivorTracker = false,
         Wallhop         = false,
         NoTexture       = false,
@@ -1871,6 +1872,7 @@ local function saveSettings()
             beastTracker    = MyHub.Config.BeastTracker,
             skillSound      = MyHub.Config.SkillSound,
             skillSoundVolume = MyHub.Config.SkillSoundVolume,
+            skillSoundID    = MyHub.Config.SkillSoundID,
             survivorTracker = SurvivorTracker.enabled,
             wallhop         = WallhopView.enabled,
             noTexture       = MyHub.Config.NoTexture,
@@ -2083,6 +2085,7 @@ local function loadSettings()
         if data.beastTracker    ~= nil then MyHub.Config.BeastTracker    = data.beastTracker    end
         if data.skillSound      ~= nil then MyHub.Config.SkillSound      = data.skillSound      end
         if data.skillSoundVolume ~= nil then MyHub.Config.SkillSoundVolume = data.skillSoundVolume end
+        if data.skillSoundID ~= nil then MyHub.Config.SkillSoundID = data.skillSoundID end
         if data.survivorTracker ~= nil then SurvivorTracker.enabled= data.survivorTracker end
         if data.wallhop         ~= nil then WallhopView.enabled    = data.wallhop         end
         if data.noTexture       ~= nil then MyHub.Config.NoTexture            = data.noTexture       end
