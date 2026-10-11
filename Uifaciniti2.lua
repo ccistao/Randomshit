@@ -2205,7 +2205,7 @@ local function _buildUI()
 
 local CFG = {
     Title    = "Extended Flee The Facility",
-    SubTitle = "v1.0.3.0",
+    SubTitle = "v1.0.3.2",
     W = 480, H = 320, SideW = 110,
     Tabs = {
         {name="Info",   icon="≡"},
@@ -2703,7 +2703,7 @@ KB.TextWrapped = true
 KB.LineHeight = 1.25
 KB.LayoutOrder = 2
 KB.Text = table.concat({
-    "Upd 1.0.3.0",
+    "Upd 1.0.3.2",
     "+ Add Black Fog toggle + Fog Density slider (Misc tab)",
     "+ Add No Fog warning (Black fog is locked until rejoin",
     "+ Add Wallhop Range slider ",
