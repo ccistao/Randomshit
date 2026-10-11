@@ -415,13 +415,8 @@ function WallhopView.start()
 end
 
 function WallhopView.setRange(v)
-    local wasMax = WallhopView.maxMode
-    WallhopView.maxMode = v > 100
-    if not WallhopView.maxMode then WallhopView.radius = v end
-    if WallhopView.enabled and wasMax ~= WallhopView.maxMode then
-        WallhopView.stop()
-        WallhopView.start()
-    end
+    WallhopView.maxMode = false 
+    WallhopView.radius = v     
 end
 
 function WallhopView.stop()
