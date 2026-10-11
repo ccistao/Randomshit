@@ -323,20 +323,15 @@ local function IsCharacterPart(part)
 end
 
 local function AddOutline(part)
-    local m = part:FindFirstAncestorOfClass("Model") or part
-    if m:FindFirstChildOfClass("Highlight") then return end
-    local h = Instance.new("Highlight")
-    h.Adornee = m
-    h.FillTransparency = 1
-    h.OutlineColor = Color3.new(1,1,1)
-    h.OutlineTransparency = 0
-    h.Parent = m
+    if part:FindFirstChildOfClass("SelectionBox") then return end
+    local s = Instance.new("SelectionBox")
+    s.Adornee = part; s.LineThickness = 0.025
+    s.Color3 = Color3.new(1,1,1); s.SurfaceTransparency = 1; s.Parent = part
 end
 
 local function RemoveOutline(part)
-    local m = part:FindFirstAncestorOfClass("Model") or part
-    local h = m:FindFirstChildOfClass("Highlight")
-    if h then h:Destroy() end
+    local s = part:FindFirstChildOfClass("SelectionBox")
+    if s then s:Destroy() end
 end
 
 local function wallQualifies(p)
@@ -521,7 +516,8 @@ function NoFog.stop()
     end
 end
 
-local BlackFog = {enabled=false, locked=false, density=0.7, conn=nil, original=nil, onLock=nil}
+local FogDensity = {active=false, ready=false, value=0.7, conn=nil, original=nil}
+local BlackFog = {enabled=false, locked=false, conn=nil, original=nil, onLock=nil}
 
 function BlackFog.start()
     if BlackFog.enabled or BlackFog.locked then return end
@@ -531,7 +527,7 @@ function BlackFog.start()
     if atm then
         BlackFog.original = {
             atm = atm, Color = atm.Color, Decay = atm.Decay,
-            Glare = atm.Glare, Haze = atm.Haze, Density = atm.Density,
+            Glare = atm.Glare, Haze = atm.Haze,
         }
     end
 
@@ -543,7 +539,6 @@ function BlackFog.start()
             if a.Decay ~= black then a.Decay = black end
             a.Glare = 0
             a.Haze = 0
-            a.Density = BlackFog.density
         end
     end)
 end
@@ -558,13 +553,35 @@ function BlackFog.stop()
         o.atm.Decay = o.Decay
         o.atm.Glare = o.Glare
         o.atm.Haze = o.Haze
-        o.atm.Density = o.Density
     end
+end
+
+function FogDensity.set(v)
+    FogDensity.value = v
+    if FogDensity.active or BlackFog.locked then return end
+    FogDensity.active = true
+
+    local atm = Lighting:FindFirstChildOfClass("Atmosphere")
+    if atm then FogDensity.original = {atm = atm, Density = atm.Density} end
+
+    FogDensity.conn = RunService.RenderStepped:Connect(function()
+        local a = Lighting:FindFirstChildOfClass("Atmosphere")
+        if a then a.Density = FogDensity.value end
+    end)
+end
+
+function FogDensity.stop()
+    FogDensity.active = false
+    if FogDensity.conn then FogDensity.conn:Disconnect(); FogDensity.conn = nil end
+    local o = FogDensity.original
+    FogDensity.original = nil
+    if o and o.atm and o.atm.Parent then o.atm.Density = o.Density end
 end
 
 function BlackFog.lock()
     BlackFog.locked = true
     BlackFog.stop()
+    FogDensity.stop()
     if BlackFog.onLock then BlackFog.onLock() end
 end
 
@@ -2705,12 +2722,11 @@ KB.LayoutOrder = 2
 KB.Text = table.concat({
     "Upd 1.0.3.2",
     "+ Add Black Fog toggle + Fog Density slider (Misc tab)",
-    "+ Add No Fog warning (Black fog is locked until rejoin",
+    "+ Add No Fog warning (Black fog is locked until rejoin)",
     "+ Add Wallhop Range slider ",
     "/ Misc, Main and Visuals tabs now use sub-sections",
     "/ Normal ESP options moved out of the dropdown, added Advanced ESP section",
-    "/ Fix Door ESP not work when execute fisrt time",
-    "/ Remake Wallhop"
+    "/ Fix Door ESP not work when execute fisrt time"
 }, "\n")
 
 HereBtn.MouseButton1Click:Connect(function()
@@ -3165,6 +3181,7 @@ FogNoBtn.MouseButton1Click:Connect(function()
     if syncFns.noFog then syncFns.noFog(false) end
 end)
     
+local wallhopSliderRow, wallhopSliderSet, wallhopSliderStop
 local WallhopConfirmBg = Instance.new("Frame", SG)
 WallhopConfirmBg.Size = UDim2.new(1,0,1,0)
 WallhopConfirmBg.BackgroundColor3 = Color3.fromRGB(0,0,0)
@@ -3248,30 +3265,8 @@ end)
 
 WallhopNoBtn.MouseButton1Click:Connect(function()
     WallhopConfirmBg.Visible = false
-    for _, row in ipairs(Panes[5]:GetChildren()) do
-        if row:IsA("Frame") then
-            local nl, vl, bg
-            for _, child in ipairs(row:GetChildren()) do
-                if child:IsA("TextLabel") and child.Text == "Wallhop Range" then nl = child
-                elseif child:IsA("TextLabel") and child.TextXAlignment == Enum.TextXAlignment.Right then vl = child
-                elseif child:IsA("Frame") and child.BackgroundTransparency == 0 then bg = child end
-            end
-            if nl and vl and bg then
-                local fill, knob
-                for _, c in ipairs(bg:GetChildren()) do
-                    if c.BackgroundColor3 == CFG.Accent then fill = c
-                    elseif c.Size.X.Offset == 14 then knob = c end
-                end
-                if fill and knob then
-                    local frac = 95 / 96
-                    vl.Text = "100 studs"
-                    fill.Size = UDim2.new(frac, 0, 1, 0)
-                    knob.Position = UDim2.new(frac, 0, 0.5, 0)
-                end
-                break
-            end
-        end
-    end
+    if wallhopSliderStop then wallhopSliderStop() end
+    if wallhopSliderSet then wallhopSliderSet(95 / 96) end
 end)
 
 local function addSliderRow(pane, order, icon, name, initFrac, formatFn, onChange)
@@ -3341,7 +3336,7 @@ local function addSliderRow(pane, order, icon, name, initFrac, formatFn, onChang
         end
     end)
 
-    return row
+    return row, setFrac, function() dragging = false end
 end
 
 addSection(Panes[5], "Graphics", 0)
@@ -3364,9 +3359,12 @@ local blackFogRow = addToggle(Panes[5], "◉", "Black Fog", "Forces dark fog col
     if s then BlackFog.start() else BlackFog.stop() end
 end, "blackFog")
 
-local fogSliderRow = addSliderRow(Panes[5], 6, "▒", "Fog Density", BlackFog.density,
+local fogSliderRow = addSliderRow(Panes[5], 6, "▒", "Fog Density", FogDensity.value,
     function(f) return math.floor(f * 100 + 0.5) .. "%" end,
-    function(f) BlackFog.density = f end)
+    function(f)
+        if FogDensity.ready then FogDensity.set(f) else FogDensity.value = f end
+    end)
+FogDensity.ready = true
 
 BlackFog.onLock = function()
     if syncFns.blackFog then syncFns.blackFog(false) end
@@ -3390,7 +3388,7 @@ end, "selfMuting")
 addToggle(Panes[5], "◆", "Wallhop view","Highlights walls around player",                    false, 9, function(s)
     if s then WallhopView.start() else WallhopView.stop() end; saveSettings()
 end, "wallhop")
-addSliderRow(Panes[5], 10, "↔", "Wallhop Range", (WallhopView.radius > 100 and 1 or (WallhopView.radius - 5) / 96),
+wallhopSliderRow, wallhopSliderSet, wallhopSliderStop = addSliderRow(Panes[5], 10, "↔", "Wallhop Range", (WallhopView.radius > 100 and 1 or (WallhopView.radius - 5) / 96),
     function(f)
         local v = math.floor(5 + f * 96 + 0.5)
         return v > 100 and "Max" or (v .. " studs")
