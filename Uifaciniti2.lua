@@ -323,25 +323,26 @@ local function IsCharacterPart(part)
 end
 
 local function AddOutline(part)
-    if part:FindFirstChildOfClass("SelectionBox") then return end
-    local s = Instance.new("SelectionBox")
-    s.Adornee = part; s.LineThickness = 0.025
-    s.Color3 = Color3.new(1,1,1); s.SurfaceTransparency = 1; s.Parent = part
+    local m = part:FindFirstAncestorOfClass("Model") or part
+    if m:FindFirstChildOfClass("Highlight") then return end
+    local h = Instance.new("Highlight")
+    h.Adornee = m
+    h.FillTransparency = 1
+    h.OutlineColor = Color3.new(1,1,1)
+    h.OutlineTransparency = 0
+    h.Parent = m
 end
 
 local function RemoveOutline(part)
-    local s = part:FindFirstChildOfClass("SelectionBox")
-    if s then s:Destroy() end
+    local m = part:FindFirstAncestorOfClass("Model") or part
+    local h = m:FindFirstChildOfClass("Highlight")
+    if h then h:Destroy() end
 end
 
 local function wallQualifies(p)
     if not p:IsA("BasePart") then return false end
     if IsCharacterPart(p) then return false end
     if not p.CanCollide or p.Transparency >= 0.95 then return false end
-    if p:IsA("Part") and p.Shape ~= Enum.PartType.Block then return false end
-    local size = p.Size
-    local volume = size.X * size.Y * size.Z
-    if volume < 5 then return false end
     return true
 end
 
@@ -2708,7 +2709,8 @@ KB.Text = table.concat({
     "+ Add Wallhop Range slider ",
     "/ Misc, Main and Visuals tabs now use sub-sections",
     "/ Normal ESP options moved out of the dropdown, added Advanced ESP section",
-    "/ Fix Door ESP not work when exc fisrt time"
+    "/ Fix Door ESP not work when execute fisrt time",
+    "/ Remake Wallhop"
 }, "\n")
 
 HereBtn.MouseButton1Click:Connect(function()
@@ -2727,13 +2729,13 @@ task.spawn(function()
     if m then
         local cr = m:FindFirstChild("Credits")
         local lv = m:FindFirstChild("Level")
-        if cr then money = tostring(cr.Value) end
+        if cr texen money = tostring(cr.Value) end
         if lv then level = tostring(lv.Value) end
     end
 
     TypeGlitch(Nm, "---- Name: " .. lp.Name, TEXT_SPEED)
     TypeGlitch(Mn, "---- Money: " .. money, TEXT_SPEED)
-    TypeGlitch(Lv, "---- Level: " .. level, TEXT_SPEED)
+    TypeGlitch(Lv, "---- Level: exce. level, TEXT_SPEED)
     local tStr = "---- Type: "
     TypeGlitch(Ty, tStr, TEXT_SPEED)
 
@@ -3195,7 +3197,7 @@ local WallhopConfirmMsg = Instance.new("TextLabel", WallhopConfirmBox)
 WallhopConfirmMsg.Size = UDim2.new(1,-24,0,50)
 WallhopConfirmMsg.Position = UDim2.new(0,12,0,36)
 WallhopConfirmMsg.BackgroundTransparency = 1
-WallhopConfirmMsg.Text = "Setting this to MAX will scan the entire map when the round starts. This will cause lag on weak devices. Are you sure?"
+WallhopConfirmMsg.Text = "Setting this to MAX will scan the entire map. This will cause lag on weak devices. Are you sure?"
 WallhopConfirmMsg.TextColor3 = CFG.TextMute
 WallhopConfirmMsg.TextSize = 11
 WallhopConfirmMsg.Font = Enum.Font.Gotham
