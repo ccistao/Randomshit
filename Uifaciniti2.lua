@@ -871,19 +871,42 @@ end
 
 local _lastNotifySoundTime = 0
 local function playNotifySound()
-
     local now = os.clock()
     if now - _lastNotifySoundTime < 0.3 then return end
     _lastNotifySoundTime = now
 
     pcall(function()
         local snd = Instance.new("Sound")
-        snd.SoundId = "rbxassetid://4590662766"
-        snd.Volume = math.clamp(MyHub.Config.SkillSoundVolume, 30, 500) / 100
-        snd.Parent = workspace
-        snd:Play()
-        snd.Ended:Connect(function() snd:Destroy() end)
-        task.delay(2, function() if snd and snd.Parent then snd:Destroy() end end)
+        
+        local currentID = MyHub.Config.SkillSoundID
+        if not currentID or currentID == "" then
+            currentID = "223148658"
+        end
+        
+        snd.SoundId = "rbxassetid://" .. currentID
+        snd.Volume = math.clamp(MyHub.Config.SkillSoundVolume, 1, 10)
+        snd.Parent = workspace.CurrentCamera 
+        
+        if not snd.IsLoaded then
+            snd.Loaded:Wait()
+        end
+
+        if currentID == "114903799132334" then
+            snd.TimePosition = 0.57
+            snd:Play()
+            task.delay(1.85, function()
+                if snd and snd.Parent then
+                    snd:Stop()
+                    snd:Destroy()
+                end
+            end)
+        else
+            snd:Play()
+            snd.Ended:Connect(function() snd:Destroy() end)
+            task.delay(5, function() 
+                if snd and snd.Parent then snd:Destroy() end 
+            end)
+        end
     end)
 end
 
