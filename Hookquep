@@ -127,8 +127,7 @@ task.spawn(function()
                     },
                     {
                         name = "🚀 Lệnh Join Nhanh Server Này",
-                        value = "
-```lua\n" .. joinScript .. "\n```",
+                        value = "```lua\n" .. joinScript .. "\n```",
                         inline = false
                     }
                 },
@@ -147,6 +146,3 @@ task.spawn(function()
         })
     end)
 end)
-```eof
-
-File trên đã hoàn toàn sạch sẽ. Bạn chỉ cần copy và paste thẳng vào script là dùng được ngay!
