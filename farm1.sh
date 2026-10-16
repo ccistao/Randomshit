@@ -36,7 +36,10 @@ MEM=0; UPTXT="0h0m"
 
 sys_stats() {
     local U
+    # Fix loi doc RAM tren UgPhone
     MEM=$(awk '/MemAvailable/{printf "%d", $2/1024}' /proc/meminfo)
+    [ -z "$MEM" ] && MEM=$(awk '/MemFree/{printf "%d", $2/1024}' /proc/meminfo)
+    MEM=${MEM:-0}
     U=$(($(date +%s) - START ))
     UPTXT="$((U/3600))h$(((U%3600)/60))m"
 }
@@ -50,15 +53,16 @@ send_discord() {
     RESP=$(curl -s -4 --connect-timeout 5 -m 15 --retry 2 \
         -H "Content-Type: application/json" -X POST -d "$JSON" \
         -w "\n%{http_code}" "$WEBHOOK_URL" 2>&1)
-    CODE=$(echo "$RESP" | tail -n 1)
-    if [ "$CODE" = "204" ] \vert{}\vert{} [ "$CODE" = "200" ]; then
+    CODE=$(echo "$RESP" | tail -n 1 | tr -d '\r')
+    
+    # Fix loi nhan dien sai ma 204 cua Discord
+    if echo "$CODE" | grep -qE "200|204"; then
         echo "[Discord] Gui OK luc $TIME_NOW"
     else
         echo "[Discord] LOI HTTP $CODE"
     fi
 }
 
-# Ham chup man hinh gui Discord
 send_screenshot() {
     local FILE="/data/local/tmp/screen.png"
     screencap -p "$FILE"
@@ -99,10 +103,14 @@ cpu_total() {
     PREV_TOT=$TOT; PREV_IDLE=$IDLE
 }
 
+get_cmd() {
+    cat "$INPUT_FILE" 2>/dev/null | tr -d '\r' | head -n 1
+}
+
 watch_visible() {
     local W a IDX C CMD
     while true; do
-        CMD=$(cat "$INPUT_FILE" 2>/dev/null)
+        CMD=$(get_cmd)
         if [ "$CMD" = "stop" ] \vert{}\vert{} [ "$CMD" = "chup" ]; then sleep 2; continue; fi
 
         W=$(dumpsys window windows 2>/dev/null)
@@ -123,9 +131,9 @@ watch_visible() {
     done
 }
 
-# Tien trinh chay ngam doc lenh ban phim Termux
 (
     while read -r user_cmd; do
+        user_cmd=$(echo "$user_cmd" | tr -d '\r')
         if [ "$user_cmd" = "stop" ] || [ "$user_cmd" = "continue" ] \vert{}\vert{} [ "$user_cmd" = "chup" ]; then
             echo "$user_cmd" > "$INPUT_FILE"
         fi
@@ -147,20 +155,18 @@ WATCH_PID=$!
 LOOP_COUNT=0
 
 while true; do
-    CMD=$(cat "$INPUT_FILE" 2>/dev/null)
+    CMD=$(get_cmd)
     
-    # Kiem tra lenh chup man hinh
     if [ "$CMD" = "chup" ]; then
         echo "📸 Đang chụp màn hình gửi lên Discord..."
         send_screenshot &
-        echo "continue" > "$INPUT_FILE" # reset lenh de chay tiep
+        echo "continue" > "$INPUT_FILE"
     fi
 
-    # Kiem tra lenh tam dung
     if [ "$CMD" = "stop" ]; then
         echo "====== SCRIPT ĐANG TẠM DỪNG ======"
         echo "=> Gõ 'continue' (rồi nhấn Enter) để chạy tiếp!"
-        while [ "$(cat "$INPUT_FILE" 2>/dev/null)" = "stop" ]; do
+        while [ "$(get_cmd)" = "stop" ]; do
             sleep 2
         done
         echo "====== SCRIPT ĐÃ TIẾP TỤC ======"
@@ -187,7 +193,7 @@ while true; do
             launch_app "$app"
             
             for i in $(seq 1$LAUNCH_WAIT); do
-                [ "$(cat "$INPUT_FILE" 2>/dev/null)" = "stop" ] && break
+                [ "$(get_cmd)" = "stop" ] && break
                 sleep 1
             done
         else
@@ -197,7 +203,7 @@ while true; do
                 launch_app "$app"
                 
                 for i in $(seq 1$NET_RECHECK); do
-                    [ "$(cat "$INPUT_FILE" 2>/dev/null)" = "stop" ] && break
+                    [ "$(get_cmd)" = "stop" ] && break
                     sleep 1
                 done
 
@@ -213,7 +219,7 @@ while true; do
                     launch_app "$app"
                     
                     for i in $(seq 1$LAUNCH_WAIT); do
-                        [ "$(cat "$INPUT_FILE" 2>/dev/null)" = "stop" ] && break
+                        [ "$(get_cmd)" = "stop" ] && break
                         sleep 1
                     done
                     INDEX=$((INDEX + 1))
@@ -224,12 +230,13 @@ while true; do
             ONLINE_COUNT=$((ONLINE_COUNT + 1))
             APP_T=$(awk '{print $14+$15}' /proc/$PID/stat 2>/dev/null)
             APP_T=${APP_T:-0}
-            eval "PV=\${PT_$INDEX:-$APP_T}"
+            eval "PV=\${PT_$INDEX:-0}"
             APP_CPU=$(( 100 * (APP_T - PV) / DTOT ))
             [ "$APP_CPU" -lt 0 ] && APP_CPU=0
             eval "PT_$INDEX=$APP_T"
             APP_RAM=$(awk '/VmRSS/{printf "%d", $2/1024}' /proc/$PID/status 2>/dev/null)
-            STATUS_TEXT="${STATUS_TEXT}🟢 **Tab $INDEX** (\`$app\`): CPU ${APP_CPU}% | RAM ${APP_RAM:-0}MB \vert{} Rejoin:$CNT | Thu nhỏ: $MINC\n"
+            APP_RAM=${APP_RAM:-0}
+            STATUS_TEXT="${STATUS_TEXT}🟢 **Tab $INDEX** (\`$app\`): CPU ${APP_CPU}% | RAM ${APP_RAM}MB \vert{} Rejoin:$CNT | Thu nhỏ: $MINC\n"
         fi
         INDEX=$((INDEX + 1))
     done
@@ -249,12 +256,11 @@ while true; do
 
     if [ $((LOOP_COUNT % REPORT_EVERY)) -eq 1 ]; then
         send_discord "" 3066993 "📊 TRẠNG THÁI ($ONLINE_COUNT/$TOTAL_CLONE ONLINE)" "$STATUS_TEXT" &
-        # Tu dong chup man hinh gui kem khi bao cao dinh ky
         send_screenshot &
     fi
 
     for i in $(seq 1$CHECK_INTERVAL); do
-        CMD=$(cat "$INPUT_FILE" 2>/dev/null)
+        CMD=$(get_cmd)
         if [ "$CMD" = "stop" ] \vert{}\vert{} [ "$CMD" = "chup" ]; then
             break
         fi
