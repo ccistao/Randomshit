@@ -4,12 +4,11 @@ DISCORD_USER_ID="982107241371013132"
 WEBHOOK_URL="https://discord.com/api/webhooks/1560579280906489906/jK4Gj1NoNmqY-3x_7nOUHg0UQEXPgIgNqnN_8xG4u8LNqniyztRDE1DVXjl2a5k5EKSs"
 FILTER="roblox|delta|aya"
 
-CHECK_INTERVAL=15
-LAUNCH_WAIT=12
-NET_RECHECK=10
-REPORT_INTERVAL=3600 # Gửi báo cáo định kỳ sau mỗi 3600 giây (1 giờ)
+CHECK_INTERVAL=20
+LAUNCH_WAIT=18
+NET_RECHECK=15
+REPORT_INTERVAL=3600
 MIN_RAM=300
-ENABLE_WATCH=1
 STATE="/data/local/tmp/farmstate"
 INPUT_FILE="/data/local/tmp/farm_input"
 
@@ -37,15 +36,14 @@ LAST_ALERT=-100
 MEM=0; UPTXT="0h0m"
 
 get_cmd() {
-    cat "$INPUT_FILE" 2>/dev/null | tr -d '\r\n ' | head -n 1
+    cat "$INPUT_FILE" 2>/dev/null | tr -cd 'a-z'
 }
 
 wait_delay() {
-    local t=$1
+    local t=${1:-10}
     local c=0
     while [ "$c" -lt "$t" ]; do
-        local current_cmd=$(get_cmd)
-        if [ "x$current_cmd" = "xstop" ]; then
+        if [ "$(get_cmd)" = "stop" ]; then
             break
         fi
         sleep 1
@@ -55,8 +53,9 @@ wait_delay() {
 
 sys_stats() {
     local U
-    MEM=$(awk '/MemAvailable/{printf "%d", $2/1024}' /proc/meminfo)
-    [ -z "$MEM" ] && MEM=$(awk '/MemFree/{printf "%d", $2/1024}' /proc/meminfo)
+    MEM=$(awk '/MemAvailable/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null)
+    [ -z "$MEM" ] && MEM=$(awk '/MemFree/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null)
+    MEM=$(echo "$MEM" | tr -cd '0-9')
     MEM=${MEM:-0}
     U=$(($(date +%s) - START ))
     UPTXT="$((U/3600))h$(((U%3600)/60))m"
@@ -71,13 +70,12 @@ send_discord() {
     RESP=$(curl -s -4 --connect-timeout 5 -m 15 --retry 2 \
         -H "Content-Type: application/json" -X POST -d "$JSON" \
         -w "\n%{http_code}" "$WEBHOOK_URL" 2>&1)
-    CODE=$(echo "$RESP" | tail -n 1 | tr -d '\r\n ')
+    CODE=$(echo "$RESP" | tail -n 1 | tr -cd '0-9')
     
-    if [ "x$CODE" = "x204" ] \vert{}\vert{} [ "x$CODE" = "x200" ]; then
-        echo "[Discord] Gửi OK lúc $TIME_NOW"
-    else
-        echo "[Discord] LỖI HTTP $CODE"
-    fi
+    case "$CODE" in
+        *200*|*204*) echo "[Discord] Gửi OK lúc $TIME_NOW" ;;
+        *) echo "[Discord] LỖI HTTP $CODE" ;;
+    esac
 }
 
 send_screenshot() {
@@ -106,12 +104,14 @@ get_pid() {
     if [ -z "$P" ]; then
         P=$(pgrep -f "^$1" 2>/dev/null | head -n 1)
     fi
-    echo "$P"
+    echo "$P" | tr -cd '0-9'
 }
 
-# ĐÃ FIX: Phân biệt chính xác đang ở ngoài Menu Sảnh hay đang ở trong Server Game
+# Đếm số cổng UDP: Ngoài sảnh Menu chỉ có 0-1 cổng, vào trong Blox Fruits sẽ có >= 2 cổng
 has_net() {
-    awk -v u="$1" 'NR>1 && $8==u && $3!="00000000:0000" && $3!="00000000000000000000000000000000:0000" {f=1} END{exit !f}' /proc/net/udp /proc/net/udp6 2>/dev/null
+    local cnt
+    cnt=$(awk -v u="$1" 'NR>1 && $8==u {c++} END{print c+0}' /proc/net/udp /proc/net/udp6 2>/dev/null | tr -cd '0-9')
+    [ "${cnt:-0}" -ge 2 ]
 }
 
 cpu_total() {
@@ -127,36 +127,35 @@ cpu_total() {
     PREV_TOT=$TOT; PREV_IDLE=$IDLE
 }
 
-# ĐÃ FIX: Không dùng monkey tránh đẩy app ra Menu, dùng trực tiếp launch_app
+# Đã trả lại nguyên vẹn hàm monkey bung bong bóng chuẩn của bạn
 watch_visible() {
-    local W a IDX C CMD
+    local W a IDX C
     while true; do
-        CMD=$(get_cmd)
-        if [ "x$CMD" = "xstop" ]; then sleep 2; continue; fi
+        if [ "$(get_cmd)" = "stop" ]; then sleep 2; continue; fi
 
         W=$(dumpsys window windows 2>/dev/null)
         IDX=1
         for a in $LIST_CLONE; do
             if [ -n "$(get_pid "$a")" ]; then
-                if ! echo "$W" \vert{} grep -A35 "$a/" | grep -q "mHasSurface=true"; then
-                    echo "$(date +%T) [THU NHO] Tab $IDX ($a) -> bung cửa sổ & đẩy vào game"
-                    C=$(cat "$STATE/min_$IDX" 2>/dev/null)
+                if ! echo "$W" \vert{} grep -A40 "u0 $a/com.roblox.client.ActivityNativeMain" | grep -q "mHasSurface=true"; then
+                    echo "$(date +%T) [THU NHO] Tab $IDX ($a) -> mo lai"
+                    C=$(cat "$STATE/min_$IDX" 2>/dev/null | tr -cd '0-9')
                     C=${C:-0}
                     echo $(( C + 1 )) > "$STATE/min_$IDX"
-                    launch_app "$a"
-                    sleep 5
+                    monkey -p "$a" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
+                    sleep 2
                 fi
             fi
             IDX=$((IDX + 1))
         done
-        sleep 10
+        sleep 3
     done
 }
 
 (
     while read -r user_cmd 2>/dev/null; do
-        user_cmd=$(echo "$user_cmd" | tr -d '\r\n ')
-        if [ "x$user_cmd" = "xstop" ] \vert{}\vert{} [ "x$user_cmd" = "xcontinue" ]; then
+        user_cmd=$(echo "$user_cmd" | tr -cd 'a-z')
+        if [ "$user_cmd" = "stop" ] \vert{}\vert{} [ "$user_cmd" = "continue" ]; then
             echo "$user_cmd" > "$INPUT_FILE"
         fi
     done
@@ -170,21 +169,17 @@ echo "--- BẮT ĐẦU CANH TAB ---"
 echo "=> Gõ 'stop' và nhấn Enter để TẠM DỪNG."
 echo "=> Gõ 'continue' và nhấn Enter để CHẠY TIẾP."
 
-if [ "$ENABLE_WATCH" -eq 1 ]; then
-    watch_visible &
-    WATCH_PID=$!
-fi
+watch_visible &
+WATCH_PID=$!
 
 LOOP_COUNT=0
 LAST_REPORT=0
 
 while true; do
-    CMD=$(get_cmd)
-    
-    if [ "x$CMD" = "xstop" ]; then
+    if [ "$(get_cmd)" = "stop" ]; then
         echo "====== SCRIPT ĐANG TẠM DỪNG ======"
         echo "=> Gõ 'continue' (rồi nhấn Enter) để chạy tiếp!"
-        while [ "x$(get_cmd)" = "xstop" ]; do
+        while [ "$(get_cmd)" = "stop" ]; do
             sleep 2
         done
         echo "====== SCRIPT ĐÃ TIẾP TỤC ======"
@@ -198,7 +193,7 @@ while true; do
 
     for app in $LIST_CLONE; do
         eval "CNT=\${CNT_$INDEX:-0}"
-        MINC=$(cat "$STATE/min_$INDEX" 2>/dev/null); MINC=${MINC:-0}
+        MINC=$(cat "$STATE/min_$INDEX" 2>/dev/null \vert{} tr -cd '0-9'); MINC=${MINC:-0}
         PID=$(get_pid "$app")
 
         if [ -z "$PID" ]; then
@@ -210,24 +205,23 @@ while true; do
             STATUS_TEXT="${STATUS_TEXT}🔴 **Tab $INDEX** (\`$app\`): Vừa mở lại (Lần $CNT)\n"
             launch_app "$app"
             
+            # Đợi 18s để tab kịp load vào game, tránh mở 5 tab dồn dập gây tràn RAM văng dây chuyền
             wait_delay $LAUNCH_WAIT
         else
-            UID_APP=$(awk '/^Uid:/{print $2}' /proc/$PID/status 2>/dev/null)
-            # Nếu không có kết nối tới IP Server (tức là đang ở Menu Sảnh hoặc kẹt lỗi 279)
+            UID_APP=$(awk '/^Uid:/{print $2}' /proc/$PID/status 2>/dev/null | tr -cd '0-9')
             if [ -n "$UID_APP" ] && ! has_net "$UID_APP"; then
-                echo "[?] Phát hiện Tab $INDEX ($app) đang ở ngoài Menu Sảnh hoặc mất kết nối! Đang đẩy vào Blox Fruits..."
+                echo "[?] Tab $INDEX ($app) đang ở ngoài Menu Sảnh hoặc mất kết nối! Đang đẩy vào Blox Fruits..."
                 launch_app "$app"
                 
                 wait_delay $NET_RECHECK
 
-                # Sau khi đẩy vào mà vẫn nằm ở sảnh hoặc kẹt cứng thì đóng hẳn mở lại
                 if ! has_net "$UID_APP"; then
-                    echo "[!] Tab $INDEX vẫn kẹt ở Menu/Lỗi. Tiến hành Force-Stop và vào lại..."
+                    echo "[!] Tab $INDEX vẫn kẹt cứng. Tiến hành Force-Stop và mở lại..."
                     CNT=$((CNT + 1)); eval "CNT_$INDEX=$CNT"
                     TOTAL_REJOIN=$((TOTAL_REJOIN + 1))
                     
-                    send_discord "" 16776960 "THÔNG BÁO: TAB KẸT MENU/LỖI" "🟡 **Tab $INDEX** (\`$app\`): Kẹt ở Menu/Lỗi 279 -> Đã restart vào lại game (Lần $CNT)" &
-                    STATUS_TEXT="${STATUS_TEXT}🟡 **Tab $INDEX** (\`$app\`): Vừa restart từ Menu (Lần $CNT)\n"
+                    send_discord "" 16776960 "THÔNG BÁO: TAB KẸT MENU/LỖI" "🟡 **Tab $INDEX** (\`$app\`): Kẹt ở Menu/Lỗi 279 -> Đã restart (Lần $CNT)" &
+                    STATUS_TEXT="${STATUS_TEXT}🟡 **Tab $INDEX** (\`$app\`): Vừa restart (Lần $CNT)\n"
                     am force-stop "$app"
                     sleep 2
                     launch_app "$app"
@@ -236,18 +230,18 @@ while true; do
                     INDEX=$((INDEX + 1))
                     continue
                 else
-                    echo "[OK] Đã đẩy Tab $INDEX từ Menu vào lại Blox Fruits thành công!"
+                    echo "[OK] Đã đẩy Tab $INDEX từ Menu vào Blox Fruits thành công!"
                 fi
             fi
             
             ONLINE_COUNT=$((ONLINE_COUNT + 1))
-            APP_T=$(awk '{print $14+$15}' /proc/$PID/stat 2>/dev/null)
+            APP_T=$(awk '{print $14+$15}' /proc/$PID/stat 2>/dev/null | tr -cd '0-9')
             APP_T=${APP_T:-0}
             eval "PV=\${PT_$INDEX:-0}"
             APP_CPU=$(( 100 * (APP_T - PV) / DTOT ))
             [ "$APP_CPU" -lt 0 ] && APP_CPU=0
             eval "PT_$INDEX=$APP_T"
-            APP_RAM=$(awk '/VmRSS/{printf "%d", $2/1024}' /proc/$PID/status 2>/dev/null)
+            APP_RAM=$(awk '/VmRSS/{printf "%d", $2/1024}' /proc/$PID/status 2>/dev/null | tr -cd '0-9')
             APP_RAM=${APP_RAM:-0}
             STATUS_TEXT="${STATUS_TEXT}🟢 **Tab $INDEX** (\`$app\`): CPU ${APP_CPU}% | RAM ${APP_RAM}MB \vert{} Rejoin:$CNT | Thu nhỏ: $MINC\n"
         fi
@@ -267,8 +261,8 @@ while true; do
         send_discord "<@$DISCORD_USER_ID>" 15158332 "🚨 TẤT CẢ TAB ĐỀU OFFLINE" "Không còn tab nào đang farm, hệ thống đang cố kéo lại." &
     fi
 
-    CURRENT_TIME=$(date +%s)
-    if [ $((CURRENT_TIME - LAST_REPORT)) -ge$REPORT_INTERVAL ]; then
+    CURRENT_TIME=$(date +%s | tr -cd '0-9')
+    if [ $((CURRENT_TIME - LAST_REPORT)) -ge "$REPORT_INTERVAL" ]; then
         send_discord "" 3066993 "📊 TRẠNG THÁI ($ONLINE_COUNT/$TOTAL_CLONE ONLINE)" "$STATUS_TEXT" &
         send_screenshot &
         LAST_REPORT=$CURRENT_TIME
