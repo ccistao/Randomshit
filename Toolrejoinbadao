@@ -1,4 +1,3 @@
-cat > ~/farm.sh << 'EOF'
 #!/system/bin/sh
 PLACE_ID="2753915549"
 DISCORD_USER_ID="982107241371013132"
@@ -7,9 +6,9 @@ CHECK_INTERVAL=30
 REPORT_EVERY=10
 LAUNCH_WAIT=25
 NET_RECHECK=15
-MIN_RAM=300          # MB, duoi muc nay se canh bao
-MAX_TEMP=45          # do C, tren muc nay se canh bao
-BAT_LOW=20           # % pin, duoi muc nay (va khong sac) se canh bao
+MIN_RAM=300
+MAX_TEMP=45
+BAT_LOW=20
 WH_FILE="/data/local/tmp/.wh"
 STATE="/data/local/tmp/farmstate"
 
@@ -51,7 +50,7 @@ sys_stats() {
     UPTXT="$((U/3600))h$(((U%3600)/60))m"
 }
 
-send_discord() { # $1=ping $2=mau $3=tieu de $4=mo ta
+send_discord() {
     local TIME_NOW JSON FIELDS RESP CODE
     sys_stats
     TIME_NOW=$(date +"%H:%M:%S")
@@ -97,54 +96,3 @@ cpu_total() {
     fi
     PREV_TOT=$TOT; PREV_IDLE=$IDLE
 }
-
-# Chay nen: tab nao bi thu nho (mat surface) thi mo lai, dem so lan vao file
-watch_visible() {
-    local W a IDX C
-    while true; do
-        W=$(dumpsys window windows 2>/dev/null)
-        IDX=1
-        for a in $LIST_CLONE; do
-            if [ -n "$(get_pid "$a")" ]; then
-                if ! echo "$W" | grep -A40 "u0 $a/com.roblox.client.ActivityNativeMain" | grep -q "mHasSurface=true"; then
-                    echo "$(date +%T) [THU NHO] Tab $IDX ($a) -> mo lai"
-                    C=$(cat "$STATE/min_$IDX" 2>/dev/null)
-                    echo $(( ${C:-0} + 1 )) > "$STATE/min_$IDX"
-                    monkey -p "$a" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
-                    sleep 3
-                fi
-            fi
-            IDX=$((IDX + 1))
-        done
-        sleep 3
-    done
-}
-
-trap 'kill $WATCH_PID 2>/dev/null; send_discord "<@$DISCORD_USER_ID>" 9807270 "SCRIPT DA DUNG" "Script bi dung."; exit 0' INT TERM
-
-send_discord "" 3447003 "SCRIPT KHOI DONG" "Dang canh $TOTAL_CLONE tab." &
-echo "--- BAT DAU CANH TAB ---"
-
-watch_visible &
-WATCH_PID=$!
-
-LOOP_COUNT=0
-
-while true; do
-    ONLINE_COUNT=0
-    STATUS_TEXT=""
-    INDEX=1
-    cpu_total
-    sys_stats
-
-    for app in $LIST_CLONE; do
-        eval "CNT=\${CNT_$INDEX:-0}"
-        MINC=$(cat "$STATE/min_$INDEX" 2>/dev/null); MINC=${MINC:-0}
-        PID=$(get_pid "$app")
-
-        if [ -z "$PID" ]; then
-            echo "[!] Tab $INDEX ($app) bi vang. Mo lai..."
-            CNT=$((CNT + 1)); eval "CNT_$INDEX=$CNT"
-            TOTAL_REJOIN=$((TOTAL_REJOIN + 1))
-            eval "PT_$INDEX="
-            send_discord "<@$DISCORD_USER_ID>" 1515833
