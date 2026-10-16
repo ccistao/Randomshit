@@ -58,6 +58,17 @@ send_discord() {
     fi
 }
 
+# Ham chup man hinh gui Discord
+send_screenshot() {
+    local FILE="/data/local/tmp/screen.png"
+    screencap -p "$FILE"
+    curl -s -X POST "$WEBHOOK_URL" \
+        -F "payload_json={\"embeds\":[{\"title\":\"📸 ẢNH CHỤP MÀN HÌNH\",\"color\":3066993,\"image\":{\"url\":\"attachment://screen.png\"}}]}" \
+        -F "file=@$FILE" > /dev/null 2>&1
+    rm -f "$FILE"
+    echo "[Discord] Đã gửi ảnh chụp màn hình."
+}
+
 launch_app() {
     am start -a android.intent.action.VIEW -p "$1" -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
 }
@@ -92,7 +103,7 @@ watch_visible() {
     local W a IDX C CMD
     while true; do
         CMD=$(cat "$INPUT_FILE" 2>/dev/null)
-        if [ "$CMD" = "stop" ]; then sleep 2; continue; fi
+        if [ "$CMD" = "stop" ] \vert{}\vert{} [ "$CMD" = "chup" ]; then sleep 2; continue; fi
 
         W=$(dumpsys window windows 2>/dev/null)
         IDX=1
@@ -115,7 +126,7 @@ watch_visible() {
 # Tien trinh chay ngam doc lenh ban phim Termux
 (
     while read -r user_cmd; do
-        if [ "$user_cmd" = "stop" ] \vert{}\vert{} [ "$user_cmd" = "continue" ]; then
+        if [ "$user_cmd" = "stop" ] || [ "$user_cmd" = "continue" ] \vert{}\vert{} [ "$user_cmd" = "chup" ]; then
             echo "$user_cmd" > "$INPUT_FILE"
         fi
     done
@@ -128,6 +139,7 @@ send_discord "" 3447003 "🚀 BẮT ĐẦU CHẠY SCRIPT" "Đang canh gác $TOTA
 echo "--- BẮT ĐẦU CANH TAB ---"
 echo "=> Gõ 'stop' và nhấn Enter để TẠM DỪNG."
 echo "=> Gõ 'continue' và nhấn Enter để CHẠY TIẾP."
+echo "=> Gõ 'chup' và nhấn Enter để CHỤP MÀN HÌNH GỬI DISCORD."
 
 watch_visible &
 WATCH_PID=$!
@@ -136,6 +148,15 @@ LOOP_COUNT=0
 
 while true; do
     CMD=$(cat "$INPUT_FILE" 2>/dev/null)
+    
+    # Kiem tra lenh chup man hinh
+    if [ "$CMD" = "chup" ]; then
+        echo "📸 Đang chụp màn hình gửi lên Discord..."
+        send_screenshot &
+        echo "continue" > "$INPUT_FILE" # reset lenh de chay tiep
+    fi
+
+    # Kiem tra lenh tam dung
     if [ "$CMD" = "stop" ]; then
         echo "====== SCRIPT ĐANG TẠM DỪNG ======"
         echo "=> Gõ 'continue' (rồi nhấn Enter) để chạy tiếp!"
@@ -228,10 +249,15 @@ while true; do
 
     if [ $((LOOP_COUNT % REPORT_EVERY)) -eq 1 ]; then
         send_discord "" 3066993 "📊 TRẠNG THÁI ($ONLINE_COUNT/$TOTAL_CLONE ONLINE)" "$STATUS_TEXT" &
+        # Tu dong chup man hinh gui kem khi bao cao dinh ky
+        send_screenshot &
     fi
 
     for i in $(seq 1$CHECK_INTERVAL); do
-        [ "$(cat "$INPUT_FILE" 2>/dev/null)" = "stop" ] && break
+        CMD=$(cat "$INPUT_FILE" 2>/dev/null)
+        if [ "$CMD" = "stop" ] \vert{}\vert{} [ "$CMD" = "chup" ]; then
+            break
+        fi
         sleep 1
     done
 done
