@@ -9,6 +9,8 @@ LAUNCH_WAIT=10
 NET_RECHECK=30
 REPORT_INTERVAL=3600 # Gửi báo cáo định kỳ sau mỗi 3600 giây (1 giờ)
 MIN_RAM=300
+ENABLE_WATCH=1   # 1 = tu mo lai tab bi thu nho/dong; 0 = tat
+DEBUG=1          # 1 = in danh sach socket UDP cua tung tab de soi
 STATE="/data/local/tmp/farmstate"
 INPUT_FILE="/data/local/tmp/farm_input"
 
@@ -112,6 +114,10 @@ has_net() {
     awk -v u="$1" 'NR>1 && $8==u {f=1} END{exit !f}' /proc/net/udp /proc/net/udp6 2>/dev/null
 }
 
+udp_info() {
+    awk -v u="$1" 'NR>1 && $8==u {printf "%s>%s ", $2, $3}' /proc/net/udp /proc/net/udp6 2>/dev/null | cut -c1-150
+}
+
 cpu_total() {
     read -r _ u n s i io irq sirq st _ < /proc/stat
     TOT=$((u+n+s+i+io+irq+sirq+st)); IDLE=$((i+io))
@@ -167,8 +173,10 @@ echo "--- BẮT ĐẦU CANH TAB ---"
 echo "=> Gõ 'stop' và nhấn Enter để TẠM DỪNG."
 echo "=> Gõ 'continue' và nhấn Enter để CHẠY TIẾP."
 
-watch_visible &
-WATCH_PID=$!
+if [ "$ENABLE_WATCH" = "1" ]; then
+    watch_visible &
+    WATCH_PID=$!
+fi
 
 LOOP_COUNT=0
 LAST_REPORT=0 # Gán = 0 để nó gửi ngay 1 báo cáo khi vừa khởi động
@@ -208,6 +216,7 @@ while true; do
             wait_delay $LAUNCH_WAIT
         else
             UID_APP=$(awk '/^Uid:/{print $2}' /proc/$PID/status 2>/dev/null)
+            [ "$DEBUG" = "1" ] && echo "[i] Tab $INDEX uid=$UID_APP udp: $(udp_info "$UID_APP")"
             if [ -n "$UID_APP" ] && ! has_net "$UID_APP"; then
                 echo "[?] Tab $INDEX ($app) o ngoai sanh hoac mat mang. Dang day vao game..."
                 launch_app "$app"
