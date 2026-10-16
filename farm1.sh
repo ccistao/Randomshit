@@ -3,10 +3,11 @@ PLACE_ID="2753915549"
 DISCORD_USER_ID="982107241371013132"
 WEBHOOK_URL="https://discord.com/api/webhooks/1560579280906489906/jK4Gj1NoNmqY-3x_7nOUHg0UQEXPgIgNqnN_8xG4u8LNqniyztRDE1DVXjl2a5k5EKSs"
 FILTER="roblox|delta|aya"
-CHECK_INTERVAL=30
-REPORT_EVERY=10
-LAUNCH_WAIT=25
-NET_RECHECK=15
+
+CHECK_INTERVAL=15
+LAUNCH_WAIT=10
+NET_RECHECK=8
+REPORT_INTERVAL=3600 # Gửi báo cáo định kỳ sau mỗi 3600 giây (1 giờ)
 MIN_RAM=300
 STATE="/data/local/tmp/farmstate"
 INPUT_FILE="/data/local/tmp/farm_input"
@@ -34,9 +35,25 @@ TOTAL_REJOIN=0
 LAST_ALERT=-100
 MEM=0; UPTXT="0h0m"
 
+get_cmd() {
+    cat "$INPUT_FILE" 2>/dev/null | tr -d '\r\n ' | head -n 1
+}
+
+wait_delay() {
+    local t=$1
+    local c=0
+    while [ "$c" -lt "$t" ]; do
+        local current_cmd=$(get_cmd)
+        if [ "x$current_cmd" = "xstop" ]; then
+            break
+        fi
+        sleep 1
+        c=$((c + 1))
+    done
+}
+
 sys_stats() {
     local U
-    # Fix loi doc RAM tren UgPhone
     MEM=$(awk '/MemAvailable/{printf "%d", $2/1024}' /proc/meminfo)
     [ -z "$MEM" ] && MEM=$(awk '/MemFree/{printf "%d", $2/1024}' /proc/meminfo)
     MEM=${MEM:-0}
@@ -53,13 +70,12 @@ send_discord() {
     RESP=$(curl -s -4 --connect-timeout 5 -m 15 --retry 2 \
         -H "Content-Type: application/json" -X POST -d "$JSON" \
         -w "\n%{http_code}" "$WEBHOOK_URL" 2>&1)
-    CODE=$(echo "$RESP" | tail -n 1 | tr -d '\r')
+    CODE=$(echo "$RESP" | tail -n 1 | tr -d '\r\n ')
     
-    # Fix loi nhan dien sai ma 204 cua Discord
-    if echo "$CODE" | grep -qE "200|204"; then
-        echo "[Discord] Gui OK luc $TIME_NOW"
+    if [ "x$CODE" = "x204" ] \vert{}\vert{} [ "x$CODE" = "x200" ]; then
+        echo "[Discord] Gửi OK lúc $TIME_NOW"
     else
-        echo "[Discord] LOI HTTP $CODE"
+        echo "[Discord] LỖI HTTP $CODE"
     fi
 }
 
@@ -67,10 +83,10 @@ send_screenshot() {
     local FILE="/data/local/tmp/screen.png"
     screencap -p "$FILE"
     curl -s -X POST "$WEBHOOK_URL" \
-        -F "payload_json={\"embeds\":[{\"title\":\"📸 ẢNH CHỤP MÀN HÌNH\",\"color\":3066993,\"image\":{\"url\":\"attachment://screen.png\"}}]}" \
+        -F "payload_json={\"embeds\":[{\"title\":\"📸 ẢNH CHỤP MÀN HÌNH 1 GIỜ/LẦN\",\"color\":3066993,\"image\":{\"url\":\"attachment://screen.png\"}}]}" \
         -F "file=@$FILE" > /dev/null 2>&1
     rm -f "$FILE"
-    echo "[Discord] Đã gửi ảnh chụp màn hình."
+    echo "[Discord] Đã tự động gửi ảnh chụp màn hình."
 }
 
 launch_app() {
@@ -103,15 +119,11 @@ cpu_total() {
     PREV_TOT=$TOT; PREV_IDLE=$IDLE
 }
 
-get_cmd() {
-    cat "$INPUT_FILE" 2>/dev/null | tr -d '\r' | head -n 1
-}
-
 watch_visible() {
     local W a IDX C CMD
     while true; do
         CMD=$(get_cmd)
-        if [ "$CMD" = "stop" ] \vert{}\vert{} [ "$CMD" = "chup" ]; then sleep 2; continue; fi
+        if [ "x$CMD" = "xstop" ]; then sleep 2; continue; fi
 
         W=$(dumpsys window windows 2>/dev/null)
         IDX=1
@@ -120,21 +132,22 @@ watch_visible() {
                 if ! echo "$W" \vert{} grep -A40 "u0 $a/com.roblox.client.ActivityNativeMain" | grep -q "mHasSurface=true"; then
                     echo "$(date +%T) [THU NHO] Tab $IDX ($a) -> mo lai"
                     C=$(cat "$STATE/min_$IDX" 2>/dev/null)
-                    echo $((${C:-0} + 1 )) > "$STATE/min_$IDX"
+                    C=${C:-0}
+                    echo $(( C + 1 )) > "$STATE/min_$IDX"
                     monkey -p "$a" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
-                    sleep 3
+                    sleep 2
                 fi
             fi
             IDX=$((IDX + 1))
         done
-        sleep 3
+        sleep 2
     done
 }
 
 (
     while read -r user_cmd; do
-        user_cmd=$(echo "$user_cmd" | tr -d '\r')
-        if [ "$user_cmd" = "stop" ] || [ "$user_cmd" = "continue" ] \vert{}\vert{} [ "$user_cmd" = "chup" ]; then
+        user_cmd=$(echo "$user_cmd" | tr -d '\r\n ')
+        if [ "x$user_cmd" = "xstop" ] \vert{}\vert{} [ "x$user_cmd" = "xcontinue" ]; then
             echo "$user_cmd" > "$INPUT_FILE"
         fi
     done
@@ -147,26 +160,20 @@ send_discord "" 3447003 "🚀 BẮT ĐẦU CHẠY SCRIPT" "Đang canh gác $TOTA
 echo "--- BẮT ĐẦU CANH TAB ---"
 echo "=> Gõ 'stop' và nhấn Enter để TẠM DỪNG."
 echo "=> Gõ 'continue' và nhấn Enter để CHẠY TIẾP."
-echo "=> Gõ 'chup' và nhấn Enter để CHỤP MÀN HÌNH GỬI DISCORD."
 
 watch_visible &
 WATCH_PID=$!
 
 LOOP_COUNT=0
+LAST_REPORT=0 # Gán = 0 để nó gửi ngay 1 báo cáo khi vừa khởi động
 
 while true; do
     CMD=$(get_cmd)
     
-    if [ "$CMD" = "chup" ]; then
-        echo "📸 Đang chụp màn hình gửi lên Discord..."
-        send_screenshot &
-        echo "continue" > "$INPUT_FILE"
-    fi
-
-    if [ "$CMD" = "stop" ]; then
+    if [ "x$CMD" = "xstop" ]; then
         echo "====== SCRIPT ĐANG TẠM DỪNG ======"
         echo "=> Gõ 'continue' (rồi nhấn Enter) để chạy tiếp!"
-        while [ "$(get_cmd)" = "stop" ]; do
+        while [ "x$(get_cmd)" = "xstop" ]; do
             sleep 2
         done
         echo "====== SCRIPT ĐÃ TIẾP TỤC ======"
@@ -192,20 +199,14 @@ while true; do
             STATUS_TEXT="${STATUS_TEXT}🔴 **Tab $INDEX** (\`$app\`): Vừa mở lại (Lần $CNT)\n"
             launch_app "$app"
             
-            for i in $(seq 1$LAUNCH_WAIT); do
-                [ "$(get_cmd)" = "stop" ] && break
-                sleep 1
-            done
+            wait_delay $LAUNCH_WAIT
         else
             UID_APP=$(awk '/^Uid:/{print $2}' /proc/$PID/status 2>/dev/null)
             if [ -n "$UID_APP" ] && ! has_net "$UID_APP"; then
                 echo "[?] Tab $INDEX ($app) o ngoai sanh hoac mat mang. Dang day vao game..."
                 launch_app "$app"
                 
-                for i in $(seq 1$NET_RECHECK); do
-                    [ "$(get_cmd)" = "stop" ] && break
-                    sleep 1
-                done
+                wait_delay $NET_RECHECK
 
                 if ! has_net "$UID_APP"; then
                     echo "[!] Xac nhan Tab $INDEX ket cung. Restart..."
@@ -215,13 +216,10 @@ while true; do
                     send_discord "" 16776960 "THÔNG BÁO: TAB KẸT SẢNH/LỖI" "[KET] **Tab $INDEX** (\`$app\`): Kẹt 279/Sảnh -> Đã restart (Lần $CNT)" &
                     STATUS_TEXT="${STATUS_TEXT}🟡 **Tab $INDEX** (\`$app\`): Vừa restart (Lần $CNT)\n"
                     am force-stop "$app"
-                    sleep 3
+                    sleep 1
                     launch_app "$app"
                     
-                    for i in $(seq 1$LAUNCH_WAIT); do
-                        [ "$(get_cmd)" = "stop" ] && break
-                        sleep 1
-                    done
+                    wait_delay $LAUNCH_WAIT
                     INDEX=$((INDEX + 1))
                     continue
                 fi
@@ -254,16 +252,12 @@ while true; do
         send_discord "<@$DISCORD_USER_ID>" 15158332 "🚨 TẤT CẢ TAB ĐỀU OFFLINE" "Không còn tab nào đang farm, hệ thống đang cố kéo lại." &
     fi
 
-    if [ $((LOOP_COUNT % REPORT_EVERY)) -eq 1 ]; then
+    CURRENT_TIME=$(date +%s)
+    if [ $((CURRENT_TIME - LAST_REPORT)) -ge$REPORT_INTERVAL ]; then
         send_discord "" 3066993 "📊 TRẠNG THÁI ($ONLINE_COUNT/$TOTAL_CLONE ONLINE)" "$STATUS_TEXT" &
         send_screenshot &
+        LAST_REPORT=$CURRENT_TIME
     fi
 
-    for i in $(seq 1$CHECK_INTERVAL); do
-        CMD=$(get_cmd)
-        if [ "$CMD" = "stop" ] \vert{}\vert{} [ "$CMD" = "chup" ]; then
-            break
-        fi
-        sleep 1
-    done
+    wait_delay $CHECK_INTERVAL
 done
