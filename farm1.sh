@@ -6,7 +6,7 @@ FILTER="roblox|delta|aya"
 
 CHECK_INTERVAL=15
 LAUNCH_WAIT=10
-NET_RECHECK=8
+NET_RECHECK=30
 REPORT_INTERVAL=3600 # Gửi báo cáo định kỳ sau mỗi 3600 giây (1 giờ)
 MIN_RAM=300
 STATE="/data/local/tmp/farmstate"
@@ -72,7 +72,7 @@ send_discord() {
         -w "\n%{http_code}" "$WEBHOOK_URL" 2>&1)
     CODE=$(echo "$RESP" | tail -n 1 | tr -d '\r\n ')
     
-    if [ "x$CODE" = "x204" ] \vert{}\vert{} [ "x$CODE" = "x200" ]; then
+    if [ "x$CODE" = "x204" ] || [ "x$CODE" = "x200" ]; then
         echo "[Discord] Gửi OK lúc $TIME_NOW"
     else
         echo "[Discord] LỖI HTTP $CODE"
@@ -90,7 +90,13 @@ send_screenshot() {
 }
 
 launch_app() {
-    am start -a android.intent.action.VIEW -p "$1" -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
+    local OUT
+    OUT=$(am start -n "$1/com.roblox.client.ActivityProtocolLaunch" -a android.intent.action.VIEW -d "roblox://experiences/start?placeId=$PLACE_ID" 2>&1)
+    case "$OUT" in
+        *Error*|*Exception*|*unable*)
+            am start -a android.intent.action.VIEW -p "$1" -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
+            ;;
+    esac
 }
 
 get_pid() {
@@ -129,7 +135,7 @@ watch_visible() {
         IDX=1
         for a in $LIST_CLONE; do
             if [ -n "$(get_pid "$a")" ]; then
-                if ! echo "$W" \vert{} grep -A40 "u0 $a/com.roblox.client.ActivityNativeMain" | grep -q "mHasSurface=true"; then
+                if ! echo "$W" | grep -A40 "u0 $a/com.roblox.client.ActivityNativeMain" | grep -q "mHasSurface=true"; then
                     echo "$(date +%T) [THU NHO] Tab $IDX ($a) -> mo lai"
                     C=$(cat "$STATE/min_$IDX" 2>/dev/null)
                     C=${C:-0}
@@ -145,16 +151,16 @@ watch_visible() {
 }
 
 (
-    while read -r user_cmd; do
+    while read -r user_cmd 2>/dev/null < /dev/tty; do
         user_cmd=$(echo "$user_cmd" | tr -d '\r\n ')
-        if [ "x$user_cmd" = "xstop" ] \vert{}\vert{} [ "x$user_cmd" = "xcontinue" ]; then
+        if [ "x$user_cmd" = "xstop" ] || [ "x$user_cmd" = "xcontinue" ]; then
             echo "$user_cmd" > "$INPUT_FILE"
         fi
     done
 ) &
 INPUT_PID=$!
 
-trap 'kill $WATCH_PID$INPUT_PID 2>/dev/null; send_discord "" 9807270 "SCRIPT ĐÃ DỪNG" "Người dùng hoặc hệ thống đã tắt script."; exit 0' INT TERM
+trap 'kill $WATCH_PID $INPUT_PID 2>/dev/null; send_discord "" 9807270 "SCRIPT ĐÃ DỪNG" "Người dùng hoặc hệ thống đã tắt script."; exit 0' INT TERM
 
 send_discord "" 3447003 "🚀 BẮT ĐẦU CHẠY SCRIPT" "Đang canh gác $TOTAL_CLONE tab." &
 echo "--- BẮT ĐẦU CANH TAB ---"
@@ -234,7 +240,7 @@ while true; do
             eval "PT_$INDEX=$APP_T"
             APP_RAM=$(awk '/VmRSS/{printf "%d", $2/1024}' /proc/$PID/status 2>/dev/null)
             APP_RAM=${APP_RAM:-0}
-            STATUS_TEXT="${STATUS_TEXT}🟢 **Tab $INDEX** (\`$app\`): CPU ${APP_CPU}% | RAM ${APP_RAM}MB \vert{} Rejoin:$CNT | Thu nhỏ: $MINC\n"
+            STATUS_TEXT="${STATUS_TEXT}🟢 **Tab $INDEX** (\`$app\`): CPU ${APP_CPU}% | RAM ${APP_RAM}MB | Rejoin:$CNT | Thu nhỏ: $MINC\n"
         fi
         INDEX=$((INDEX + 1))
     done
@@ -253,7 +259,7 @@ while true; do
     fi
 
     CURRENT_TIME=$(date +%s)
-    if [ $((CURRENT_TIME - LAST_REPORT)) -ge$REPORT_INTERVAL ]; then
+    if [ $((CURRENT_TIME - LAST_REPORT)) -ge "$REPORT_INTERVAL" ]; then
         send_discord "" 3066993 "📊 TRẠNG THÁI ($ONLINE_COUNT/$TOTAL_CLONE ONLINE)" "$STATUS_TEXT" &
         send_screenshot &
         LAST_REPORT=$CURRENT_TIME
