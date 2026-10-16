@@ -1,4 +1,5 @@
 #!/system/bin/sh
+echo "== farm1_fixed v3 (DEBUG) =="
 PLACE_ID="2753915549"
 DISCORD_USER_ID="982107241371013132"
 WEBHOOK_URL="https://discord.com/api/webhooks/1560579280906489906/jK4Gj1NoNmqY-3x_7nOUHg0UQEXPgIgNqnN_8xG4u8LNqniyztRDE1DVXjl2a5k5EKSs"
