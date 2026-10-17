@@ -1,7 +1,35 @@
-trap 'send_discord "" 9807270 "SCRIPT DA DUNG" "Script da dung."; exit 0' INT TERM
+# Tab bi thu nho (mat bong bong) -> bat len lai. Bo qua tab vua moi mo < 20s de khong lam hong luc dang vao game.
+watch_visible() {
+    local W a L N
+    while true; do
+        if [ ! -f "$PAUSE_FILE" ]; then
+            W=$(dumpsys window windows 2>/dev/null)
+            for a in $LIST_CLONE; do
+                if [ -n "$(get_pid "$a")" ]; then
+                    L=$(rv "launch_$a" 0); N=$(date +%s)
+                    [ $((N - L)) -lt 20 ] && continue
+                    if ! echo "$W" | grep -A40 "u0 $a/com.roblox.client.ActivityNativeMain" | grep -q "mHasSurface=true"; then
+                        echo "$(date +%T) [THU NHO] $a -> mo lai"
+                        monkey -p "$a" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
+                        sleep 3
+                    fi
+                fi
+            done
+        fi
+        sleep 3
+    done
+}
+
+trap 'kill $WATCH_PID 2>/dev/null; send_discord "" 9807270 "SCRIPT DA DUNG" "Script da dung."; exit 0' INT TERM
 
 send_discord "" 3447003 "SCRIPT KHOI DONG" "Dang canh $TOTAL_CLONE tab bang heartbeat." &
 echo "--- BAT DAU CANH TAB (tam dung: touch $PAUSE_FILE) ---"
+
+WATCH_PID=""
+if [ "$ENABLE_WATCH" = "1" ]; then
+    watch_visible &
+    WATCH_PID=$!
+fi
 
 while true; do
     NOW=$(date +%s)
