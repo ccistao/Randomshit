@@ -5,10 +5,11 @@ WEBHOOK_URL="https://discord.com/api/webhooks/1560579280906489906/jK4Gj1NoNmqY-3
 FILTER="roblox|delta|aya"
 
 CHECK_INTERVAL=15
-LAUNCH_WAIT=12
+LAUNCH_WAIT=12        # Thoi gian cho nhe (Day tu Menu vao game)
+COLD_BOOT_WAIT=35     # Thoi gian cho nang (Khoi dong app tu dau) de chong tran RAM
 NET_RECHECK=10
-REPORT_INTERVAL=3600  
-MAX_UPTIME=7200       
+REPORT_INTERVAL=3600
+MAX_UPTIME=7200
 MIN_RAM=300
 STATE="/data/local/tmp/farmstate"
 INPUT_FILE="/data/local/tmp/farm_input"
@@ -39,7 +40,6 @@ LAST_ALERT=-100
 MEM=0
 UPTXT="0h0m"
 
-# Khoi tao moc dem cho tung tab
 IDX_INIT=1
 for app in $LIST_CLONE; do
     echo "$START" > "$STATE/up_$IDX_INIT"
@@ -74,7 +74,6 @@ sys_stats() {
     UPTXT="$((U/3600))h$(((U%3600)/60))m"
 }
 
-# FIX: Xu ly loi 400 Bad Request cua Discord khi content bi trong
 send_discord() {
     local TIME_NOW JSON FIELDS RESP CODE CONTENT_JSON
     sys_stats
@@ -95,7 +94,7 @@ send_discord() {
     CODE=$(echo "$RESP" | tail -n 1 | tr -cd '0-9')
     case "$CODE" in
         *200*|*204*) echo "[Discord] Gui OK luc $TIME_NOW" ;;
-        *) echo "[Discord] LOI HTTP $CODE (Kiem tra lai Payload JSON)" ;;
+        *) echo "[Discord] LOI HTTP $CODE" ;;
     esac
 }
 
@@ -103,7 +102,7 @@ send_screenshot() {
     local FILE="/data/local/tmp/screen.png"
     screencap -p "$FILE"
     curl -s -X POST "$WEBHOOK_URL" \
-        -F "payload_json={\"embeds\":[{\"title\":\"📸 ANH CHUP MAN HINH DINH KY (1 GIO)\",\"color\":3066993,\"image\":{\"url\":\"attachment://screen.png\"}}]}" \
+        -F "payload_json={\"embeds\":[{\"title\":\"📸 ANH CHUP MAN HINH DINH KY\",\"color\":3066993,\"image\":{\"url\":\"attachment://screen.png\"}}]}" \
         -F "file=@$FILE" > /dev/null 2>&1
     rm -f "$FILE"
     echo "[Discord] Da gui anh chup man hinh."
@@ -192,7 +191,7 @@ INPUT_PID=$!
 
 trap 'kill $WATCH_PID$INPUT_PID 2>/dev/null; send_discord "" 9807270 "SCRIPT DA DUNG" "Nguoi dung hoac he thong da tat script."; exit 0' INT TERM
 
-send_discord "" 3447003 "🚀 BAT DAU CHAY SCRIPT" "Dang canh gac $TOTAL_CLONE tab (Da ban chong Crash Tab & Fix 400)." &
+send_discord "" 3447003 "🚀 BAT DAU CHAY SCRIPT" "Dang canh gac $TOTAL_CLONE tab. Chuyen che do khoi dong cham (Cold Boot) de chong tran RAM." &
 echo "--- BAT DAU CANH TAB ---"
 echo "=> Go 'stop' va nhan Enter de TAM DUNG."
 echo "=> Go 'continue' va nhan Enter de CHAY TIEP."
@@ -234,25 +233,26 @@ while true; do
 
         PID=$(get_pid "$app")
 
-        # 1. Kiem tra tab bi vang
+        # 1. Kiem tra tab bi vang hoac chua bat -> DUNG COLD BOOT WAIT (35s)
         if [ -z "$PID" ]; then
-            echo "[!] Tab $INDEX ($app) bi vang. Dang mo lai..."
+            echo "[!] Tab $INDEX ($app) chua bat/bi vang. Dang mo lai tu dau..."
             CNT=$((CNT + 1))
             eval "CNT_$INDEX=$CNT"
             TOTAL_REJOIN=$((TOTAL_REJOIN + 1))
             echo "$(date +%s | tr -cd '0-9')" > "$STATE/up_$INDEX"
 
             send_discord "" 15158332 "THONG BAO: TAB BI VANG" "🔴 **Tab $INDEX** (\`$app\`): Bi vang -> Da mo lai (Lan $CNT)" &
-            STATUS_TEXT="${STATUS_TEXT}🔴 **Tab $INDEX** (\`$app\`): Vua mo lai (Lan $CNT)\n"
+            STATUS_TEXT="${STATUS_TEXT}🔴 **Tab $INDEX** (\`$app\`): Vua mo lai tu dau\n"
             LINE="$LINE T$INDEX:vang"
             launch_app "$app"
 
-            wait_delay $LAUNCH_WAIT
+            # Doi han 35 giay cho load game xong moi chay tab tiep theo
+            wait_delay $COLD_BOOT_WAIT
             INDEX=$((INDEX + 1))
             continue
         fi
 
-        # 2. FIX CHONG CRASH ALL TABS: Dat do lech thoi gian so le 5 phut (300s) giua cac tab
+        # 2. Tu reset xoa lag 2 tieng (So le 5 phut) -> DUNG COLD BOOT WAIT (35s)
         TAB_MAX_UPTIME=$(( MAX_UPTIME + (INDEX * 300) ))
         if [ "${RUN_TIME:-0}" -ge "$TAB_MAX_UPTIME" ]; then
             echo "[🔄] Tab $INDEX ($app) da den gio reset. Tu dong restart xoa lag..."
@@ -261,7 +261,7 @@ while true; do
             TOTAL_REJOIN=$((TOTAL_REJOIN + 1))
 
             send_discord "" 3447003 "🔄 AUTO RESET XOA LAG" "🔵 **Tab $INDEX** (\`$app\`): Da treo $RUN_TIME giay -> Tu dong tat bat lai de xoa lag." &
-            STATUS_TEXT="${STATUS_TEXT}🔵 **Tab $INDEX** (\`$app\`): Vua reset dinh ky\n"
+            STATUS_TEXT="${STATUS_TEXT}🔵 **Tab $INDEX** (\`$app\`): Vua reset xoa lag\n"
             LINE="$LINE T$INDEX:reset2h"
 
             am force-stop "$app"
@@ -269,7 +269,7 @@ while true; do
             launch_app "$app"
             echo "$(date +%s | tr -cd '0-9')" > "$STATE/up_$INDEX"
 
-            wait_delay $LAUNCH_WAIT
+            wait_delay $COLD_BOOT_WAIT
             INDEX=$((INDEX + 1))
             continue
         fi
@@ -280,16 +280,17 @@ while true; do
             echo "[?] Tab $INDEX ($app) o ngoai Menu Sanh hoac mat ket noi! Dang day vao Blox Fruits..."
             launch_app "$app"
 
+            # Day tu menu vao game chi can doi nhanh 10s
             wait_delay $NET_RECHECK
 
             if ! has_net "$UID_APP"; then
-                echo "[!] Tab $INDEX van ket cung. Tien hanh Force-Stop va mo lai..."
+                echo "[!] Tab $INDEX van ket cung. Tien hanh Force-Stop va mo lai tu dau..."
                 CNT=$((CNT + 1))
                 eval "CNT_$INDEX=$CNT"
                 TOTAL_REJOIN=$((TOTAL_REJOIN + 1))
 
-                send_discord "" 16776960 "THONG BAO: TAB KET MENU/LOI" "🟡 **Tab $INDEX** (\`$app\`): Ket o Menu/Loi 279 -> Da restart (Lan $CNT)" &
-                STATUS_TEXT="${STATUS_TEXT}🟡 **Tab $INDEX** (\`$app\`): Vua restart (Lan $CNT)\n"
+                send_discord "" 16776960 "THONG BAO: TAB KET MENU/LOI" "🟡 **Tab $INDEX** (\`$app\`): Ket o Menu/Loi 279 -> Da force-stop mo lai (Lan $CNT)" &
+                STATUS_TEXT="${STATUS_TEXT}🟡 **Tab $INDEX** (\`$app\`): Vua restart do ket\n"
                 LINE="$LINE T$INDEX:restart"
 
                 am force-stop "$app"
@@ -297,7 +298,8 @@ while true; do
                 launch_app "$app"
                 echo "$(date +%s | tr -cd '0-9')" > "$STATE/up_$INDEX"
 
-                wait_delay $LAUNCH_WAIT
+                # Bi Force Stop mo lai tu dau nen phai doi 35 giay
+                wait_delay $COLD_BOOT_WAIT
                 INDEX=$((INDEX + 1))
                 continue
             else
