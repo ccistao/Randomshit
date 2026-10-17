@@ -1,4 +1,4 @@
-# Luong bung bong bong da sua regex dung voi dumpsys thuc te
+# Bung bong bong: Dung dung chuoi $a/ de khong bi danh lua boi lop bong bong
 watch_visible() {
     local W a IDX C
     while true; do
@@ -6,8 +6,7 @@ watch_visible() {
         IDX=1
         for a in $LIST_CLONE; do
             if pidof "$a" >/dev/null 2>&1; then
-                # Khong co dau / nua ma bat thang vao ten package
-                if ! echo "$W" \vert{} grep -A35 "package=$a" | grep -q "mHasSurface=true"; then
+                if ! echo "$W" \vert{} grep -A35 "$a/" | grep -q "mHasSurface=true"; then
                     echo "$(date +%T) [THU NHO] Tab $IDX ($a) -> bung lai bong bong"
                     C=$(cat "$STATE/min_$IDX" 2>/dev/null)
                     echo $((${C:-0} + 1 )) > "$STATE/min_$IDX"
@@ -80,7 +79,7 @@ while true; do
         AGE=$(find_hb_age "$app")
 
         if [ "$AGE" -le "$STALE" ]; then
-            # Lua gui Heartbeat deu dan duoi 45s -> Dang farm binh thuong
+            # Lua ghi Heartbeat deu dan duoi 45s -> Dang farm binh thuong
             ONLINE_COUNT=$((ONLINE_COUNT + 1))
             APP_T=$(awk '{print $14+$15}' "/proc/$PID/stat" 2>/dev/null); APP_T=${APP_T:-0}
             eval "PV=\${PT_$INDEX:-$APP_T}"
@@ -89,29 +88,23 @@ while true; do
             APP_RAM=$(awk '/VmRSS/{printf "%d", $2/1024}' "/proc/$PID/status" 2>/dev/null)
             STATUS_TEXT="${STATUS_TEXT}[OK] **Tab $INDEX** (\`$app\`): hb ${AGE}s \vert{} CPU${APP_CPU}% | RAM ${APP_RAM:-0}MB \vert{} treo$((RUN_TIME/60))p\n"
         elif [ "$LAUNCHED" -gt 0 ] && [ "$SINCE" -lt "$JOIN_GRACE" ]; then
-            # App vua moi mo duoi 45s -> Cho vao game
-            echo "[CHO] Tab $INDEX ($app): dang load vao game (${SINCE}s)..."
+            # App vua mo hoac vua day vao game (duoi 55s) -> Cho game tai map, KHONG DUOC KILL
+            echo "[CHO] Tab $INDEX ($app): dang load vao game (${SINCE}s/${JOIN_GRACE}s)..."
         else
-            # Qua 45s khong co Heartbeat -> Ket ngoai Menu sanh hoac ket loi 279
-            echo "[KET SANH] Tab $INDEX ($app) khong co Heartbeat (${AGE}s). Dang day lai vao Blox Fruits..."
-            launch_app "$app"
-            sleep 10
+            # Da cho du 55s ma van khong co Heartbeat -> Ket Menu sanh hoac ket man hinh loi 279
+            echo "[KET SANH] Tab $INDEX ($app) khong co Heartbeat (${AGE}s, da cho${SINCE}s). Kill -9 va vao lai..."
+            CNT=$((CNT + 1)); eval "CNT_$INDEX=$CNT"
+            TOTAL_REJOIN=$((TOTAL_REJOIN + 1))
+            send_discord "<@$DISCORD_USER_ID>" 16776960 "CANH BAO: KET SANH" "[KET] **Tab $INDEX** (\`$app\`): kẹt sảnh/mất heartbeat -> restart (lan $CNT)" &
+            STATUS_TEXT="${STATUS_TEXT}[KET] **Tab $INDEX** (\`$app\`): ket sanh -> restart\n"
             
-            AGE_CHECK=$(find_hb_age "$app")
-            if [ "$AGE_CHECK" -gt "$STALE" ]; then
-                echo "[!] Tab $INDEX van khong nhan game. Kill -9 va mo lai..."
-                CNT=$((CNT + 1)); eval "CNT_$INDEX=$CNT"
-                TOTAL_REJOIN=$((TOTAL_REJOIN + 1))
-                send_discord "<@$DISCORD_USER_ID>" 16776960 "CANH BAO: KET SANH" "[KET] **Tab $INDEX** (\`$app\`): kẹt sảnh/mất heartbeat -> restart (lan $CNT)" &
-                STATUS_TEXT="${STATUS_TEXT}[KET] **Tab $INDEX** (\`$app\`): ket sanh -> restart\n"
-                kill_tab "$app"
-                echo "$NOW" > "$STATE/up_$INDEX"
-                sleep 2
-                launch_app "$app"
-                sleep $LAUNCH_WAIT
-                INDEX=$((INDEX + 1))
-                continue
-            fi
+            kill_tab "$app"
+            echo "$NOW" > "$STATE/up_$INDEX"
+            sleep 2
+            launch_app "$app"
+            sleep $LAUNCH_WAIT
+            INDEX=$((INDEX + 1))
+            continue
         fi
 
         INDEX=$((INDEX + 1))
