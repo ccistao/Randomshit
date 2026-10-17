@@ -1,12 +1,14 @@
 #!/system/bin/sh
+export PATH="/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin:$PATH"
+
 PLACE_ID="2753915549"
 DISCORD_USER_ID="982107241371013132"
 FILTER="roblox|delta|aya"
 CHECK_INTERVAL=10
-STALE=45                # Lua ghi moi 30s -> qua 45s khong co file la ket Menu/Loi
-JOIN_GRACE=45           # Cho 45s de load vao game
+STALE=45                # Lua ghi moi 30s -> qua 45s khong cap nhat la ket Menu/Loi
+JOIN_GRACE=45           # Cho 45s de tab load vao game
 LAUNCH_WAIT=5
-REPORT_EVERY=3600       # 1 tieng bao cao + chup anh 1 lan
+REPORT_EVERY=3600       # 1 tieng gui bao cao + anh chup man hinh
 MAX_UPTIME=7200         # 2 tieng tu restart bang kill -9 xoa lag
 WH_FILE="/data/local/tmp/.wh"
 STATE="/data/local/tmp/farmstate"
@@ -62,7 +64,7 @@ send_discord() {
     local TIME_NOW JSON FIELDS RESP CODE CONTENT_JSON
     sys_stats
     TIME_NOW=$(date +"%H:%M:%S")
-    FIELDS="[{\"name\":\"CPU\",\"value\":\"${CPU:-0}%\",\"inline\":true},{\"name\":\"RAM trong\",\"value\":\"${MEM}MB\",\"inline\":true},{\"name\":\"Uptime\",\"value\":\"$UPTXT\",\"inline\":true},{\"name\":\"Tong rejoin\",\"value\":\"$TOTAL_REJOIN\",\"inline\":true}]"
+    FIELDS="[{\"name\":\"CPU\",\"value\":\"${CPU:-0}%\",\"inline\":true},{\"name\":\"RAM trong\",\"value\":\"${MEM}MB\",\"inline\":true},{\"name\":\"Uptime\",\"value\":\"$UPTXT\",\"inline\":true},{\"name\":\"Tong rejoin\",\"value\":\"${TOTAL_REJOIN:-0}\",\"inline\":true}]"
     
     if [ -n "$1" ]; then CONTENT_JSON="\"content\":\"$1\","; else CONTENT_JSON=""; fi
     JSON="{${CONTENT_JSON}\"embeds\":[{\"title\":\"$3\",\"description\":\"$4\",\"color\":${2:-3066993},\"fields\":$FIELDS,\"footer\":{\"text\":\"$TIME_NOW\"}}]}"
@@ -87,12 +89,8 @@ send_screenshot() {
     echo "[Discord] Da gui anh chup man hinh."
 }
 
-# Dung pidof chuan chay trong 1 mili-giay, khong bao gio bi treo
 get_pid() {
-    local P
-    P=$(pidof "$1" 2>/dev/null | awk '{print $1}')
-    [ -z "$P" ] && P=$(pgrep -f "$1" 2>/dev/null | head -n 1)
-    echo "$P" | tr -cd '0-9'
+    pidof "$1" 2>/dev/null | cut -d' ' -f1 | tr -cd '0-9'
 }
 
 kill_tab() {
@@ -106,44 +104,50 @@ kill_tab() {
 }
 
 launch_app() {
-    am start -n "$1/com.roblox.client.ActivityProtocolLaunch" -a android.intent.action.VIEW -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        am start -a android.intent.action.VIEW -p "$1" -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
-    fi
+    am start -a android.intent.action.VIEW -p "$1" -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
     wv "launch_$1" "$(date +%s)"
 }
 
-hb_age() {
-    local T N A
-    T=$(cut -d, -f1 "$1" 2>/dev/null | tr -cd '0-9')
-    if [ -z "$T" ]; then T=$(stat -c %Y "$1" 2>/dev/null | tr -cd '0-9'); fi
-    [ -z "$T" ] && return 999
-    N=$(date +%s); A=$((N - T)); [ "$A" -lt 0 ] && A=0
-    echo "$A"
+get_file_age() {
+    local f="$1"
+    if [ -f "$f" ]; then
+        local M=$(stat -c %Y "$f" 2>/dev/null | tr -cd '0-9')
+        if [ -n "$M" ]; then
+            local N=$(date +%s)
+            local A=$((N - M))
+            [ "$A" -lt 0 ] && A=0
+            echo "$A"
+            return 0
+        fi
+    fi
+    echo 999
 }
 
-# Quet Heartbeat truc tiep khong dung lenh find dao boi toan bo bo nho
-find_hb() {
-    local p="$1" f u
+# Quet chinh xac vao thu muc Workspace viet hoa
+find_hb_age() {
+    local p="$1" u f AGE
     if [ -f "$ACC_FILE" ]; then
         u=$(awk -v pkg="$p" '$2==pkg{print $1; exit}' "$ACC_FILE" 2>/dev/null)
         if [ -n "$u" ]; then
-            for f in /sdcard/Delta/farmhb_${u}.txt /sdcard/Delta/workspace/farmhb_${u}.txt /storage/emulated/0/Delta/farmhb_${u}.txt /storage/emulated/0/Delta/workspace/farmhb_${u}.txt /sdcard/farmhb_${u}.txt /storage/emulated/0/farmhb_${u}.txt; do
-                if [ -f "$f" ]; then echo "$f"; return 0; fi
+            for f in "/storage/emulated/0/Delta/Workspace/farmhb_${u}.txt" "/sdcard/Delta/Workspace/farmhb_${u}.txt"; do
+                AGE=$(get_file_age "$f")
+                if [ "$AGE" -ne 999 ]; then echo "$AGE"; return 0; fi
             done
         fi
     fi
 
-    for f in /sdcard/Delta/farmhb_*.txt /sdcard/Delta/workspace/farmhb_*.txt /storage/emulated/0/Delta/farmhb_*.txt /storage/emulated/0/Delta/workspace/farmhb_*.txt /sdcard/farmhb_*.txt /storage/emulated/0/farmhb_*.txt; do
+    for f in /storage/emulated/0/Delta/Workspace/farmhb_*.txt /sdcard/Delta/Workspace/farmhb_*.txt; do
         [ -f "$f" ] || continue
         u=$(basename "$f" .txt | sed 's/farmhb_//')
         if grep -qisF "$u" /data/data/$p/shared_prefs/*.xml 2>/dev/null; then
             echo "$u $p" >> "$ACC_FILE"
-            echo "$f"
+            AGE=$(get_file_age "$f")
+            echo "$AGE"
             return 0
         fi
     done
-    return 1
+
+    echo 999
 }
 
 cpu_total() {
