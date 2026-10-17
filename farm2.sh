@@ -1,12 +1,12 @@
-# Luong canh bong bong thu nho: chay lien tuc moi 3 giay
+# Bung bong bong sieu nhe, khong ton CPU
 watch_visible() {
-    local W a IDX C PID
+    local W a IDX C P
     while true; do
         W=$(dumpsys window windows 2>/dev/null)
         IDX=1
         for a in $LIST_CLONE; do
-            PID=$(get_pid "$a")
-            if [ -n "$PID" ]; then
+            P=$(pidof "$a" 2>/dev/null | awk '{print $1}')
+            if [ -n "$P" ]; then
                 if ! echo "$W" \vert{} grep -A35 "$a/" | grep -q "mHasSurface=true"; then
                     echo "$(date +%T) [THU NHO] Tab $IDX ($a) -> bung lai bong bong"
                     C=$(cat "$STATE/min_$IDX" 2>/dev/null)
@@ -48,9 +48,9 @@ while true; do
         LAUNCHED=$(rv "launch_$app" 0)
         SINCE=$((NOW - LAUNCHED))
 
-        # 1. Tab bi tat han -> Mo lai
+        # 1. Tab chua bat hoac bi tat -> Mo ngay lap tuc
         if [ -z "$PID" ]; then
-            echo "[!] Tab $INDEX ($app) bi tat. Mo lai..."
+            echo "[!] Tab $INDEX ($app) chua mo/bi tat. Dang mo..."
             CNT=$((CNT + 1)); eval "CNT_$INDEX=$CNT"
             TOTAL_REJOIN=$((TOTAL_REJOIN + 1))
             echo "$NOW" > "$STATE/up_$INDEX"
@@ -62,7 +62,7 @@ while true; do
             continue
         fi
 
-        # 2. Tu reset sau 2h xoa lag bang kill -9
+        # 2. Reset sau 2 tieng lien tuc bang kill -9 de giai phong RAM
         if [ "$RUN_TIME" -ge "$MAX_UPTIME" ]; then
             echo "[2H RESET] Tab $INDEX ($app) da treo$RUN_TIME giay -> kill restart xoa lag"
             send_discord "" 3447003 "🔄 AUTO RESET 2H" "🔵 **Tab $INDEX** (\`$app\`): Treo 2h lien tuc -> restart xoa lag" &
@@ -76,13 +76,13 @@ while true; do
             continue
         fi
 
-        # 3. CHECK HEARTBEAT TU LUA (Kiem tra co dang farm hay ket Menu sảnh)
+        # 3. Kiem tra Heartbeat tu Lua de biet co kẹt Menu sanh khong
         HBF=$(find_hb "$app")
         AGE=999
         if [ -n "$HBF" ] && [ -f "$HBF" ]; then AGE=$(hb_age "$HBF"); fi
 
         if [ "$AGE" -le "$STALE" ]; then
-            # Lua gui Heartbeat deu dan duoi 45s -> Dang farm ngon lanh
+            # Lua gui Heartbeat deu dan -> Dang farm binh thuong
             ONLINE_COUNT=$((ONLINE_COUNT + 1))
             APP_T=$(awk '{print $14+$15}' "/proc/$PID/stat" 2>/dev/null); APP_T=${APP_T:-0}
             eval "PV=\${PT_$INDEX:-$APP_T}"
@@ -91,33 +91,22 @@ while true; do
             APP_RAM=$(awk '/VmRSS/{printf "%d", $2/1024}' "/proc/$PID/status" 2>/dev/null)
             STATUS_TEXT="${STATUS_TEXT}[OK] **Tab $INDEX** (\`$app\`): hb ${AGE}s \vert{} CPU${APP_CPU}% | RAM ${APP_RAM:-0}MB \vert{} treo$((RUN_TIME/60))p\n"
         elif [ "$LAUNCHED" -gt 0 ] && [ "$SINCE" -lt "$JOIN_GRACE" ]; then
-            # Vua moi mo app duoi 45s -> Cho game load
+            # App vua moi duoc mo duoi 45s -> Dang load vao game
             echo "[CHO] Tab $INDEX ($app): dang load vao game (${SINCE}s)..."
         else
-            # QUA 45s KHONG CO HEARTBEAT -> KET MENU SANH HOAC KET LOI 279
-            echo "[KET SANH] Tab $INDEX ($app) khong co Heartbeat (${AGE}s). Dang day vao Blox Fruits..."
-            # Nhip 1: Ban lenh day tu Menu vao game
-            am start -a android.intent.action.VIEW -p "$app" -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
-            sleep 10
-            
-            # Kiem tra lai, neu van kẹt ngoai Menu thi kill -9 mo lai tu dau
-            HBF=$(find_hb "$app")
-            NEW_AGE=999
-            [ -n "$HBF" ] && NEW_AGE=$(hb_age "$HBF")
-            if [ "$NEW_AGE" -gt "$STALE" ]; then
-                echo "[!] Tab $INDEX kẹt cứng ngoài sảnh. Kill -9 và mở lại..."
-                CNT=$((CNT + 1)); eval "CNT_$INDEX=$CNT"
-                TOTAL_REJOIN=$((TOTAL_REJOIN + 1))
-                send_discord "<@$DISCORD_USER_ID>" 16776960 "CANH BAO: KET SANH" "[KET] **Tab $INDEX** (\`$app\`): kẹt sảnh/mất heartbeat -> restart (lan $CNT)" &
-                STATUS_TEXT="${STATUS_TEXT}[KET] **Tab $INDEX** (\`$app\`): ket sanh -> restart\n"
-                kill_tab "$app"
-                echo "$NOW" > "$STATE/up_$INDEX"
-                sleep 2
-                launch_app "$app"
-                sleep $LAUNCH_WAIT
-                INDEX=$((INDEX + 1))
-                continue
-            fi
+            # Qua 45s khong co Heartbeat -> Ket ngoai Menu sanh hoac kẹt loi 279
+            echo "[KET SANH] Tab $INDEX ($app) kẹt sảnh/mất Heartbeat (${AGE}s). Kill -9 và vào lại..."
+            CNT=$((CNT + 1)); eval "CNT_$INDEX=$CNT"
+            TOTAL_REJOIN=$((TOTAL_REJOIN + 1))
+            send_discord "<@$DISCORD_USER_ID>" 16776960 "CANH BAO: KET SANH" "[KET] **Tab $INDEX** (\`$app\`): kẹt sảnh/mất heartbeat -> restart (lan $CNT)" &
+            STATUS_TEXT="${STATUS_TEXT}[KET] **Tab $INDEX** (\`$app\`): ket sanh -> restart\n"
+            kill_tab "$app"
+            echo "$NOW" > "$STATE/up_$INDEX"
+            sleep 2
+            launch_app "$app"
+            sleep $LAUNCH_WAIT
+            INDEX=$((INDEX + 1))
+            continue
         fi
 
         INDEX=$((INDEX + 1))
