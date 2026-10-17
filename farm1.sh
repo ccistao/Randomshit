@@ -5,11 +5,11 @@ PLACE_ID="2753915549"
 DISCORD_USER_ID="982107241371013132"
 FILTER="roblox|delta|aya"
 CHECK_INTERVAL=10
-STALE=45                # Lua ghi moi 30s -> qua 45s khong co file la tinh la ket
-JOIN_GRACE=90           # Cho du 55s de tab load map va ket noi server (khong kill oan)
+STALE=120               # ĐÃ ĐỔI THÀNH 2 PHÚT (120s): Không có nhịp tim sau 2p mới tính là kẹt
+JOIN_GRACE=120          # ĐÃ ĐỔI THÀNH 2 PHÚT (120s): Cho đủ 2 phút để load map và kết nối server
 LAUNCH_WAIT=5
-REPORT_EVERY=3600       # 1 tieng bao cao dinh ky + anh chup man hinh
-MAX_UPTIME=7200         # 2 tieng tu restart bang kill -9 xoa lag
+REPORT_EVERY=3600       # 1 tiếng báo cáo định kỳ + ảnh chụp màn hình
+MAX_UPTIME=7200         # 2 tiếng tự restart bằng kill -9 xóa lag
 WH_FILE="/data/local/tmp/.wh"
 STATE="/data/local/tmp/farmstate"
 ACC_FILE="/data/local/tmp/accounts.txt"
@@ -93,7 +93,6 @@ get_pid() {
     pidof "$1" 2>/dev/null | cut -d' ' -f1 | tr -cd '0-9'
 }
 
-# Tuyet doi chi ban tia bang kill -9, khong dung force-stop de khong bi chet chum
 kill_tab() {
     local P
     P=$(pidof "$1" 2>/dev/null)
@@ -103,7 +102,6 @@ kill_tab() {
 }
 
 launch_app() {
-    # Bung bong bong len truoc roi moi day link game
     monkey -p "$1" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
     sleep 2
     am start -a android.intent.action.VIEW -p "$1" -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
@@ -125,7 +123,6 @@ get_file_age() {
     echo 999
 }
 
-# Quet file Heartbeat trong Delta/Workspace
 find_hb_age() {
     local p="$1" u f AGE
     if [ -f "$ACC_FILE" ]; then
