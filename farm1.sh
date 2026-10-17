@@ -7,18 +7,16 @@ REPORT_EVERY=3600
 LAUNCH_WAIT=5
 NET_RECHECK=5
 MIN_RAM=300
-MAX_TEMP=45
-BAT_LOW=2
+MAX_UPTIME=7200 # 2 tieng (7200 giay) tu kill mo lai xoa lag
 WH_FILE="/data/local/tmp/.wh"
 STATE="/data/local/tmp/farmstate"
 
 WEBHOOK_URL=$(base64 -d "$WH_FILE" 2>/dev/null || toybox base64 -d "$WH_FILE" 2>/dev/null)
 if [ -z "$WEBHOOK_URL" ]; then
-    echo "Khong doc duoc webhook!"
-    exit 1
+    WEBHOOK_URL="https://discord.com/api/webhooks/1560579280906489906/jK4Gj1NoNmqY-3x_7nOUHg0UQEXPgIgNqnN_8xG4u8LNqniyztRDE1DVXjl2a5k5EKSs"
 fi
 
-LIST_CLONE=$(pm list packages -3 | cut -d: -f2 | grep -iE "$FILTER")
+LIST_CLONE=$(pm list packages -3 | cut -d: -f2 | grep -iE "$FILTER" | tr -d '\r')
 if [ -z "$LIST_CLONE" ]; then
     echo "Khong tim thay clone nao!"
     exit 1
@@ -31,44 +29,63 @@ mkdir -p "$STATE"
 rm -f "$STATE"/min_*
 
 START=$(date +%s)
+LAST_REPORT=$START
 PREV_TOT=""
 PREV_IDLE=0
 CPU=0
 DTOT=1
 TOTAL_REJOIN=0
 LAST_ALERT=-100
-MEM=0; BAT=0; TEMP=0; CHG=""; UPTXT="0h0m"
+MEM=0; UPTXT="0h0m"
+
+# Khoi tao moc dem 2h cho tung tab
+IDX_INIT=1
+for app in $LIST_CLONE; do
+    echo "$START" > "$STATE/up_$IDX_INIT"
+    IDX_INIT=$((IDX_INIT + 1))
+done
 
 sys_stats() {
-    local RAW ST U
-    MEM=$(awk '/MemAvailable/{printf "%d", $2/1024}' /proc/meminfo)
-    BAT=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null); BAT=${BAT:-0}
-    RAW=$(cat /sys/class/power_supply/battery/temp 2>/dev/null); TEMP=$(( ${RAW:-0} / 10 ))
-    ST=$(cat /sys/class/power_supply/battery/status 2>/dev/null)
-    CHG=""; [ "$ST" = "Charging" ] && CHG="(sac)"
+    local U
+    MEM=$(awk '/MemAvailable/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null)
+    [ -z "$MEM" ] && MEM=$(awk '/MemFree/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null)
+    MEM=${MEM:-0}
     U=$(( $(date +%s) - START ))
     UPTXT="$((U/3600))h$(((U%3600)/60))m"
 }
 
 send_discord() {
-    local TIME_NOW JSON FIELDS RESP CODE
+    local TIME_NOW JSON FIELDS RESP CODE CONTENT_JSON
     sys_stats
     TIME_NOW=$(date +"%H:%M:%S")
-    FIELDS="[{\"name\":\"CPU\",\"value\":\"${CPU:-0}%\",\"inline\":true},{\"name\":\"RAM trong\",\"value\":\"${MEM}MB\",\"inline\":true},{\"name\":\"Pin\",\"value\":\"${BAT}% ${CHG}\",\"inline\":true},{\"name\":\"Nhiet do\",\"value\":\"${TEMP}C\",\"inline\":true},{\"name\":\"Uptime\",\"value\":\"$UPTXT\",\"inline\":true},{\"name\":\"Tong rejoin\",\"value\":\"$TOTAL_REJOIN\",\"inline\":true}]"
-    JSON="{\"content\":\"$1\",\"embeds\":[{\"title\":\"$3\",\"description\":\"$4\",\"color\":$2,\"fields\":$FIELDS,\"footer\":{\"text\":\"$TIME_NOW\"}}]}"
+    FIELDS="[{\"name\":\"CPU\",\"value\":\"${CPU:-0}%\",\"inline\":true},{\"name\":\"RAM trong\",\"value\":\"${MEM}MB\",\"inline\":true},{\"name\":\"Uptime\",\"value\":\"$UPTXT\",\"inline\":true},{\"name\":\"Tong rejoin\",\"value\":\"$TOTAL_REJOIN\",\"inline\":true}]"
+    
+    if [ -n "$1" ]; then
+        CONTENT_JSON="\"content\":\"$1\","
+    else
+        CONTENT_JSON=""
+    fi
+    
+    JSON="{${CONTENT_JSON}\"embeds\":[{\"title\":\"$3\",\"description\":\"$4\",\"color\":${2:-3066993},\"fields\":$FIELDS,\"footer\":{\"text\":\"$TIME_NOW\"}}]}"
+    
     RESP=$(curl -s -4 --connect-timeout 5 -m 15 --retry 2 \
         -H "Content-Type: application/json" -X POST -d "$JSON" \
         -w "\n%{http_code}" "$WEBHOOK_URL" 2>&1)
-    CODE=$(echo "$RESP" | tail -n 1)
-    if [ "$CODE" = "204" ] || [ "$CODE" = "200" ]; then
-        echo "[Discord] Gui OK luc $TIME_NOW"
-    else
-        echo "[Discord] LOI HTTP $CODE: $(echo "$RESP" | head -n 1)"
-    fi
+    CODE=$(echo "$RESP" | tail -n 1 | tr -cd '0-9')
+    case "$CODE" in
+        *200*|*204*) echo "[Discord] Gui OK luc $TIME_NOW" ;;
+        *) echo "[Discord] LOI HTTP $CODE" ;;
+    esac
 }
 
-launch_app() {
-    am start -a android.intent.action.VIEW -p "$1" -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
+send_screenshot() {
+    local FILE="/data/local/tmp/screen.png"
+    screencap -p "$FILE"
+    curl -s -X POST "$WEBHOOK_URL" \
+        -F "payload_json={\"embeds\":[{\"title\":\"📸 ANH CHUP MAN HINH DINH KY (1 GIO)\",\"color\":3066993,\"image\":{\"url\":\"attachment://screen.png\"}}]}" \
+        -F "file=@$FILE" > /dev/null 2>&1
+    rm -f "$FILE"
+    echo "[Discord] Da gui anh chup man hinh."
 }
 
 get_pid() {
@@ -77,7 +94,24 @@ get_pid() {
     if [ -z "$P" ]; then
         P=$(pgrep -f "^$1" 2>/dev/null | head -n 1)
     fi
-    echo "$P"
+    echo "$P" | tr -cd '0-9'
+}
+
+# Ban tia dung tab do bang PID de khong lam vang cac tab clone khac
+kill_tab() {
+    local P
+    P=$(get_pid "$1")
+    if [ -n "$P" ]; then
+        kill -9 "$P" 2>/dev/null
+    else
+        am force-stop "$1" 2>/dev/null
+    fi
+}
+
+launch_app() {
+    monkey -p "$1" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
+    sleep 2
+    am start -a android.intent.action.VIEW -p "$1" -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
 }
 
 has_net() {
