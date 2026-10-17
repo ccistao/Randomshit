@@ -5,11 +5,11 @@ PLACE_ID="2753915549"
 DISCORD_USER_ID="982107241371013132"
 FILTER="roblox|delta|aya"
 CHECK_INTERVAL=10
-STALE=210               # ĐÃ ĐỔI THÀNH 2 PHÚT (120s): Không có nhịp tim sau 2p mới tính là kẹt
-JOIN_GRACE=210          # ĐÃ ĐỔI THÀNH 2 PHÚT (120s): Cho đủ 2 phút để load map và kết nối server
+STALE=45                # 45s khong co Heartbeat la xu ly
+JOIN_GRACE=45           # 45s de load vao game
 LAUNCH_WAIT=5
-REPORT_EVERY=3600       # 1 tiếng báo cáo định kỳ + ảnh chụp màn hình
-MAX_UPTIME=7200         # 2 tiếng tự restart bằng kill -9 xóa lag
+REPORT_EVERY=3600
+MAX_UPTIME=7200         # 2 tieng tu kill xoa lag
 WH_FILE="/data/local/tmp/.wh"
 STATE="/data/local/tmp/farmstate"
 ACC_FILE="/data/local/tmp/accounts.txt"
@@ -69,9 +69,7 @@ send_discord() {
     if [ -n "$1" ]; then CONTENT_JSON="\"content\":\"$1\","; else CONTENT_JSON=""; fi
     JSON="{${CONTENT_JSON}\"embeds\":[{\"title\":\"$3\",\"description\":\"$4\",\"color\":${2:-3066993},\"fields\":$FIELDS,\"footer\":{\"text\":\"$TIME_NOW\"}}]}"
     
-    RESP=$(curl -s -4 --connect-timeout 5 -m 15 --retry 2 \
-        -H "Content-Type: application/json" -X POST -d "$JSON" \
-        -w "\n%{http_code}" "$WEBHOOK_URL" 2>&1)
+    RESP=$(curl -s -4 --connect-timeout 5 -m 15 --retry 2 -H "Content-Type: application/json" -X POST -d "$JSON" -w "\n%{http_code}" "$WEBHOOK_URL" 2>&1)
     CODE=$(echo "$RESP" | tail -n 1 | tr -cd '0-9')
     case "$CODE" in
         *200*|*204*) echo "[Discord] Gui OK luc $TIME_NOW" ;;
@@ -82,29 +80,31 @@ send_discord() {
 send_screenshot() {
     local FILE="/data/local/tmp/screen.png"
     screencap -p "$FILE"
-    curl -s -X POST "$WEBHOOK_URL" \
-        -F "payload_json={\"embeds\":[{\"title\":\"📸 ANH CHUP MAN HINH DINH KY (1 GIO)\",\"color\":3066993,\"image\":{\"url\":\"attachment://screen.png\"}}]}" \
-        -F "file=@$FILE" > /dev/null 2>&1
+    curl -s -X POST "$WEBHOOK_URL" -F "payload_json={\"embeds\":[{\"title\":\"📸 ANH CHUP MAN HINH DINH KY (1 GIO)\",\"color\":3066993,\"image\":{\"url\":\"attachment://screen.png\"}}]}" -F "file=@$FILE" > /dev/null 2>&1
     rm -f "$FILE"
     echo "[Discord] Da gui anh chup man hinh."
 }
 
 get_pid() {
-    pidof "$1" 2>/dev/null | cut -d' ' -f1 | tr -cd '0-9'
+    local P
+    P=$(pidof "$1" 2>/dev/null | cut -d' ' -f1 | tr -cd '0-9')
+    [ -z "$P" ] && P=$(pgrep -f "^$1" 2>/dev/null | head -n 1 | tr -cd '0-9')
+    echo "$P"
 }
 
 kill_tab() {
     local P
-    P=$(pidof "$1" 2>/dev/null)
-    if [ -n "$P" ]; then
-        kill -9 $P 2>/dev/null
-    fi
+    P=$(get_pid "$1")
+    if [ -n "$P" ]; then kill -9 "$P" 2>/dev/null; fi
 }
 
 launch_app() {
     monkey -p "$1" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
     sleep 2
-    am start -a android.intent.action.VIEW -p "$1" -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
+    am start -n "$1/com.roblox.client.ActivityProtocolLaunch" -a android.intent.action.VIEW -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        am start -a android.intent.action.VIEW -p "$1" -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
+    fi
     wv "launch_$1" "$(date +%s)"
 }
 
@@ -134,7 +134,6 @@ find_hb_age() {
             done
         fi
     fi
-
     for f in /storage/emulated/0/Delta/Workspace/farmhb_*.txt /sdcard/Delta/Workspace/farmhb_*.txt; do
         [ -f "$f" ] || continue
         u=$(basename "$f" .txt | sed 's/farmhb_//')
@@ -145,7 +144,6 @@ find_hb_age() {
             return 0
         fi
     done
-
     echo 999
 }
 
