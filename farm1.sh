@@ -3,15 +3,14 @@ PLACE_ID="2753915549"
 DISCORD_USER_ID="982107241371013132"
 FILTER="roblox|delta|aya"
 CHECK_INTERVAL=10
-STALE=45                # Lua ghi moi 30s -> neu qua 45s khong co tin hieu la ket Menu/Loi
-JOIN_GRACE=45           # Cho toi da 45s de load vao game
+STALE=45                # Lua ghi moi 30s -> qua 45s khong co file la ket Menu/Loi
+JOIN_GRACE=45           # Cho 45s de load vao game
 LAUNCH_WAIT=5
-REPORT_EVERY=3600       # 1 gio bao cao dinh ky + chup man hinh
+REPORT_EVERY=3600       # 1 tieng bao cao + chup anh 1 lan
 MAX_UPTIME=7200         # 2 tieng tu restart bang kill -9 xoa lag
 WH_FILE="/data/local/tmp/.wh"
 STATE="/data/local/tmp/farmstate"
 ACC_FILE="/data/local/tmp/accounts.txt"
-DATA_DIR="/data/data"
 
 WEBHOOK_URL=$(base64 -d "$WH_FILE" 2>/dev/null || toybox base64 -d "$WH_FILE" 2>/dev/null)
 if [ -z "$WEBHOOK_URL" ]; then
@@ -88,21 +87,25 @@ send_screenshot() {
     echo "[Discord] Da gui anh chup man hinh."
 }
 
-# Tim PID chuan xac 100% qua cmdline, khong bao gio bi cat cut ten app
+# Dung pidof chuan chay trong 1 mili-giay, khong bao gio bi treo
 get_pid() {
-    local p="$1"
-    grep -sl "$p" /proc/[0-9]*/cmdline 2>/dev/null | head -n 1 | cut -d/ -f3 | tr -cd '0-9'
+    local P
+    P=$(pidof "$1" 2>/dev/null | awk '{print $1}')
+    [ -z "$P" ] && P=$(pgrep -f "$1" 2>/dev/null | head -n 1)
+    echo "$P" | tr -cd '0-9'
 }
 
 kill_tab() {
     local P
     P=$(get_pid "$1")
-    if [ -n "$P" ]; then kill -9 "$P" 2>/dev/null; fi
+    if [ -n "$P" ]; then
+        kill -9 "$P" 2>/dev/null
+    else
+        am force-stop "$1" 2>/dev/null
+    fi
 }
 
 launch_app() {
-    monkey -p "$1" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
-    sleep 2
     am start -n "$1/com.roblox.client.ActivityProtocolLaunch" -a android.intent.action.VIEW -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
     if [ $? -ne 0 ]; then
         am start -a android.intent.action.VIEW -p "$1" -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
@@ -110,7 +113,6 @@ launch_app() {
     wv "launch_$1" "$(date +%s)"
 }
 
-# Doc thoi gian troi qua tu file Heartbeat cua Lua
 hb_age() {
     local T N A
     T=$(cut -d, -f1 "$1" 2>/dev/null | tr -cd '0-9')
@@ -120,29 +122,23 @@ hb_age() {
     echo "$A"
 }
 
-# Tu dong map file farmhb_<TenAcc>.txt voi dung package
-map_file() {
-    local f="$1" n p d
-    n=$(basename "$f" .txt | sed 's/farmhb_//g')
-    if [ -f "$ACC_FILE" ]; then
-        p=$(awk -v n="$n" 'tolower($1)==tolower(n){print $2; exit}' "$ACC_FILE" 2>/dev/null | tr -d '\r')
-        if [ -n "$p" ]; then echo "$p"; return 0; fi
-    fi
-    for p in $LIST_CLONE; do
-        if grep -rlsF -i "$n" "$DATA_DIR/$p/shared_prefs" "$DATA_DIR/$p/files" > /dev/null 2>&1; then
-            echo "$n $p" >> "$ACC_FILE"
-            echo "$p"
-            return 0
-        fi
-    done
-    return 1
-}
-
+# Quet Heartbeat truc tiep khong dung lenh find dao boi toan bo bo nho
 find_hb() {
-    local p="$1" f mp
-    for f in $(find /sdcard/Delta /storage/emulated/0/Delta /sdcard /storage/emulated/0 -maxdepth 4 -name 'farmhb_*.txt' 2>/dev/null); do
-        mp=$(map_file "$f")
-        if [ "$mp" = "$p" ]; then
+    local p="$1" f u
+    if [ -f "$ACC_FILE" ]; then
+        u=$(awk -v pkg="$p" '$2==pkg{print $1; exit}' "$ACC_FILE" 2>/dev/null)
+        if [ -n "$u" ]; then
+            for f in /sdcard/Delta/farmhb_${u}.txt /sdcard/Delta/workspace/farmhb_${u}.txt /storage/emulated/0/Delta/farmhb_${u}.txt /storage/emulated/0/Delta/workspace/farmhb_${u}.txt /sdcard/farmhb_${u}.txt /storage/emulated/0/farmhb_${u}.txt; do
+                if [ -f "$f" ]; then echo "$f"; return 0; fi
+            done
+        fi
+    fi
+
+    for f in /sdcard/Delta/farmhb_*.txt /sdcard/Delta/workspace/farmhb_*.txt /storage/emulated/0/Delta/farmhb_*.txt /storage/emulated/0/Delta/workspace/farmhb_*.txt /sdcard/farmhb_*.txt /storage/emulated/0/farmhb_*.txt; do
+        [ -f "$f" ] || continue
+        u=$(basename "$f" .txt | sed 's/farmhb_//')
+        if grep -qisF "$u" /data/data/$p/shared_prefs/*.xml 2>/dev/null; then
+            echo "$u $p" >> "$ACC_FILE"
             echo "$f"
             return 0
         fi
