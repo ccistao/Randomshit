@@ -1,0 +1,234 @@
+#!/system/bin/sh
+# DEBUG rieng: chi thu thap thong tin de gui cho Claude. Khong chay farm, khong kill app.
+export PATH="$PATH:/data/data/com.termux/files/usr/bin"
+echo "== debug v1 =="
+
+PLACE_ID="2753915549"
+FILTER="roblox|delta|aya"
+OUT=${OUT:-/data/local/tmp/debug_report.txt}
+COPY_TO=${COPY_TO:-/sdcard/Download/debug_report.txt}
+TMP=${TMP:-/data/local/tmp/dbgtmp}
+TIMELINE=${TIMELINE:-45}          # giay de ban thu nho 1 tab
+SAMPLE_GAP=${SAMPLE_GAP:-2}
+METHOD_WAIT=${METHOD_WAIT:-8}     # giay cho sau moi cach bat tab
+HIDE_WAIT=${HIDE_WAIT:-25}        # giay cho ban thu nho lai tab giua cac cach
+RECOVER_WAIT=${RECOVER_WAIT:-120} # giay theo doi game vao lai
+STALL_AGE=${STALL_AGE:-35}        # heartbeat cu hon X giay = game da dung
+
+if pgrep -f "farm.sh" > /dev/null 2>&1 && [ "$FORCE" != "1" ]; then
+    echo "[!] Script farm dang chay. Bam Ctrl+C o cua so Termux dang chay farm de tat, roi chay lai debug."
+    exit 1
+fi
+
+rm -rf "$TMP"; mkdir -p "$TMP"; : > "$OUT"
+say() { echo "$*"; echo "$*" >> "$OUT"; }
+rep() { echo "$*" >> "$OUT"; }
+
+LIST=$(pm list packages -3 | cut -d: -f2 | grep -iE "$FILTER" | tr -d '\r')
+if [ -z "$LIST" ]; then say "Khong tim thay clone nao!"; exit 1; fi
+
+grab() { W=$(dumpsys window windows 2>/dev/null); A=$(dumpsys activity activities 2>/dev/null); }
+
+# trang thai cua 1 tab theo dumpsys (can goi grab truoc)
+pkg_state() {
+    local S V ST BLK O
+    S=false
+    if [ "$(echo "$W" | awk -v pat="u0 $1/" '/^ *Window #/{b=(index($0,pat)>0)} b && /mHasSurface=true/{print "true"; exit}')" = "true" ]; then S=true; fi
+    BLK=$(echo "$A" | grep -A16 "ActivityRecord{[^}]* u0 $1/" | head -n 17)
+    V=$(echo "$BLK" | grep -oE "visible=(true|false)" | head -n 1 | cut -d= -f2)
+    ST=$(echo "$BLK" | grep -oE "state=[A-Z_]+" | head -n 1 | cut -d= -f2)
+    O=$(echo "$W" | grep -c "u0 $1}")
+    echo "surface=$S visible=${V:-?} state=${ST:-?} overlay=$O"
+}
+
+# du lieu tho cua 1 tab (can goi grab truoc)
+raw() {
+    rep ""; rep "---- RAW [$1] $2 luc $(date +%T) ----"
+    rep "[cac dong window co ten package]"; echo "$W" | grep -n "$2" | head -n 15 >> "$OUT"
+    rep "[khoi window cua activity]"; echo "$W" | awk -v pat="u0 $2/" '/^ *Window #/{b=(index($0,pat)>0)} b{print; if(++n>=45) exit}' >> "$OUT"
+    rep "[activity record]"; echo "$A" | grep -A16 "ActivityRecord{[^}]* u0 $2/" | head -n 40 >> "$OUT"
+    rep "[task]"; echo "$A" | grep -B1 -A8 "A=$2" | head -n 30 >> "$OUT"
+}
+
+# thu muc heartbeat
+HB_ROOT=""
+for r in ${HB_ROOT_CANDIDATES:-/storage/emulated/0/Delta /sdcard/Delta}; do
+    if [ -n "$(find "$r" -maxdepth 4 -name 'farmhb_*.txt' 2>/dev/null | head -n 1)" ]; then HB_ROOT="$r"; break; fi
+done
+hb_snap() {   # in "ten_acc tuoi_giay" moi dong
+    local f n t N
+    [ -n "$HB_ROOT" ] || return 0
+    N=$(date +%s)
+    for f in $(find "$HB_ROOT" -maxdepth 4 -name 'farmhb_*.txt' 2>/dev/null | sort -u); do
+        n=$(basename "$f" .txt); n=${n#farmhb_}
+        t=$(cut -d, -f1 "$f" 2>/dev/null | tr -d '\r\n ')
+        case "$t" in ''|*[!0-9]*) t=$(stat -c %Y "$f" 2>/dev/null) ;; esac
+        [ -n "$t" ] && echo "$n $((N - t))"
+    done
+}
+age_of() { grep "^$1 " "$2" 2>/dev/null | head -n 1 | cut -d' ' -f2; }
+
+############ 0. THONG TIN TINH ############
+say "[BUOC 0] Thu thap thong tin may..."
+rep "===== 0. THONG TIN MAY ====="
+for k in ro.product.manufacturer ro.product.model ro.build.version.release ro.build.version.sdk; do rep "$k=$(getprop $k)"; done
+rep "wm size: $(wm size 2>/dev/null | tr '\n' ' ')"
+rep "--- lenh co san:"
+for c in awk grep sed cut tr stat find pidof pgrep curl base64 dumpsys monkey am pm screencap wm cmd; do rep "$c -> $(command -v $c 2>/dev/null || echo THIEU)"; done
+rep ""; rep "--- danh sach tab:"
+RUNNING=""
+for p in $LIST; do
+    pid=$(pidof "$p" 2>/dev/null | cut -d' ' -f1)
+    [ -n "$pid" ] && RUNNING="$RUNNING $p"
+    rep "pkg=$p pid=${pid:-KHONG-CHAY} uid=$(stat -c %u "/data/data/$p" 2>/dev/null)"
+    rep "   activity launcher : $(cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$p" 2>/dev/null | tail -n 1)"
+    rep "   activity deeplink : $(cmd package resolve-activity --brief -a android.intent.action.VIEW -d 'roblox://experiences/start?placeId=1' "$p" 2>/dev/null | tail -n 1)"
+done
+rep ""; rep "--- file heartbeat (thu muc: ${HB_ROOT:-KHONG-THAY}):"
+if [ -n "$HB_ROOT" ]; then
+    for f in $(find "$HB_ROOT" -maxdepth 4 -name 'farmhb_*.txt' 2>/dev/null | sort -u); do
+        rep "$f | chu(uid,quyen,mtime)=$(stat -c '%u %a %Y' "$f" 2>/dev/null) | noi dung=$(cat "$f" 2>/dev/null | head -c 80)"
+    done
+fi
+[ -f /data/local/tmp/accounts.txt ] && { rep "--- accounts.txt:"; cat /data/local/tmp/accounts.txt >> "$OUT"; }
+
+if [ -z "$RUNNING" ]; then
+    say "[!] Khong co tab nao dang chay. Hay mo cac tab vao game roi chay lai debug."
+    exit 1
+fi
+
+############ 1. CHUP LUC TAT CA TAB DANG HIEN ############
+say ""
+say "[BUOC 1] Giu nguyen, KHONG dung gi. Dang chup luc tat ca tab dang hien..."
+grab
+rep ""; rep "===== 1. TRANG THAI LUC DANG HIEN ====="
+for p in $RUNNING; do
+    K=$(pkg_state "$p"); echo "$K" > "$TMP/k0_$p"; echo "$K" > "$TMP/kl_$p"
+    rep "$p: $K"
+    raw "DANG-HIEN" "$p"
+done
+hb_snap > "$TMP/hb0"
+rep ""; rep "heartbeat luc dau: $(cat "$TMP/hb0" | tr '\n' ' ')"
+
+############ 2. BAN THU NHO 1 TAB ############
+say ""
+say "[BUOC 2] >>> BAY GIO: THU NHO DUNG 1 TAB thanh bong bong <<<"
+say "         (bam nut thu nho tren thanh tieu de cua tab). Ban co ${TIMELINE} giay. Cac tab khac giu nguyen."
+rep ""; rep "===== 2. DONG THOI GIAN KHI BAN THU NHO ====="
+T0=$(date +%s)
+while true; do
+    EL=$(( $(date +%s) - T0 ))
+    [ "$EL" -ge "$TIMELINE" ] && break
+    sleep "$SAMPLE_GAP"
+    grab
+    EL=$(( $(date +%s) - T0 ))
+    for p in $RUNNING; do
+        K=$(pkg_state "$p")
+        if [ "$K" != "$(cat "$TMP/kl_$p")" ]; then
+            say "   +${EL}s $p doi trang thai: $K"
+            echo "$K" > "$TMP/kl_$p"
+        fi
+    done
+    rep "t=+${EL}s heartbeat: $(hb_snap | tr '\n' ' ')"
+done
+say "[BUOC 2] Xong phan thu nho."
+grab
+hb_snap > "$TMP/hb1"
+
+CHANGED=""
+for p in $RUNNING; do
+    K=$(pkg_state "$p"); echo "$K" > "$TMP/ke_$p"
+    if [ "$K" != "$(cat "$TMP/k0_$p")" ]; then CHANGED="$CHANGED $p"; fi
+    raw "SAU-THU-NHO" "$p"
+done
+STALLED=""
+while read -r n a1; do
+    [ -n "$n" ] || continue
+    a0=$(age_of "$n" "$TMP/hb0"); a0=${a0:-0}
+    if [ "$a1" -ge "$STALL_AGE" ] && [ "$a1" -gt "$a0" ]; then STALLED="$STALLED $n"; fi
+done < "$TMP/hb1"
+rep ""; rep "tab doi trang thai:${CHANGED:- (khong co)}"
+rep "acc heartbeat dung:${STALLED:- (khong co)}"
+say "   => Tab thay doi trang thai theo dumpsys:${CHANGED:- KHONG THAY}"
+say "   => Acc co heartbeat dung (game dung):${STALLED:- KHONG THAY}"
+
+if [ -z "$CHANGED" ]; then
+    say ""
+    say "[!] Khong thay tab nao doi trang thai. Co the ban chua kip thu nho, hoac may bao khac."
+    say "    Cu gui file bao cao ($COPY_TO) cho Claude, hoac chay lai debug va thu nho som hon."
+    cp "$OUT" "$COPY_TO" 2>/dev/null
+    exit 0
+fi
+P=$(echo $CHANGED | cut -d' ' -f1)
+HIDDEN_KEY=$(cat "$TMP/ke_$P")
+
+############ 3. THU CAC CACH BAT TAB LAI ############
+say ""
+say "[BUOC 3] Thu cac cach bat tab $P hien lai. >>> NHIN MAN HINH va ghi nho cach nao lam tab hien len <<<"
+rep ""; rep "===== 3. THU CAC CACH BAT LAI (tab $P) ====="
+wait_hidden() {
+    local i=0
+    while [ "$i" -lt "$HIDE_WAIT" ]; do
+        grab
+        [ "$(pkg_state "$P")" = "$HIDDEN_KEY" ] && return 0
+        sleep "$SAMPLE_GAP"; i=$((i + SAMPLE_GAP))
+    done
+    return 1
+}
+for m in 1 2 3; do
+    if [ "$m" -gt 1 ]; then
+        say ""
+        say "   Neu cach truoc da lam tab hien: hay THU NHO LAI tab do (toi da ${HIDE_WAIT}s)..."
+        if wait_hidden; then say "   (da thay tab bi an lai)"; else say "   (khong thay tab bi an lai, van thu tiep)"; fi
+    fi
+    case "$m" in
+        1) say "   >>> CACH 1: monkey (mo icon app)"
+           R=$(monkey -p "$P" -c android.intent.category.LAUNCHER 1 2>&1 | tail -n 2) ;;
+        2) say "   >>> CACH 2: am start MAIN/LAUNCHER"
+           R=$(am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p "$P" 2>&1 | tail -n 3) ;;
+        3) say "   >>> CACH 3: deeplink vao game (se vao game lai luon)"
+           R=$(am start -a android.intent.action.VIEW -p "$P" -d "roblox://experiences/start?placeId=$PLACE_ID" 2>&1 | tail -n 3) ;;
+    esac
+    rep "ket qua lenh cach $m: $R"
+    i=0
+    while [ "$i" -lt "$METHOD_WAIT" ]; do
+        sleep "$SAMPLE_GAP"; i=$((i + SAMPLE_GAP))
+        grab
+        K=$(pkg_state "$P")
+        rep "cach $m +${i}s: $K"
+    done
+    grab; say "      dumpsys sau cach $m: $(pkg_state "$P")"
+    raw "SAU-CACH-$m" "$P"
+done
+
+############ 4. THEO DOI GAME VAO LAI ############
+say ""
+say "[BUOC 4] Theo doi game co chay lai khong (toi da ${RECOVER_WAIT}s). Co the bam Ctrl+C neu muon dung som."
+rep ""; rep "===== 4. THEO DOI HEARTBEAT SAU KHI BAT LAI ====="
+T1=$(date +%s); RECOVERED=""
+while true; do
+    EL=$(( $(date +%s) - T1 ))
+    hb_snap > "$TMP/hb2"
+    rep "t=+${EL}s heartbeat: $(cat "$TMP/hb2" | tr '\n' ' ')"
+    OKALL=1
+    for n in $STALLED; do
+        a=$(age_of "$n" "$TMP/hb2")
+        [ -n "$a" ] && [ "$a" -le 12 ] || OKALL=0
+    done
+    if [ -n "$STALLED" ] && [ "$OKALL" = "1" ]; then RECOVERED="$EL"; break; fi
+    [ "$EL" -ge "$RECOVER_WAIT" ] && break
+    sleep 5
+done
+if [ -n "$RECOVERED" ]; then say "   => Game da chay lai (heartbeat tuoi) sau ${RECOVERED}s ke tu luc bat dau buoc 4."
+else say "   => Sau ${RECOVER_WAIT}s heartbeat cua acc dung chua tuoi lai."; fi
+
+############ KET THUC ############
+cp "$OUT" "$COPY_TO" 2>/dev/null
+say ""
+say "===== XONG ====="
+say "File bao cao: $OUT"
+say "Ban sao de gui: $COPY_TO"
+say "Hay cho Claude biet 3 dieu:"
+say "  1) Cach nao (1, 2 hay 3) lam tab hien len?"
+say "  2) Tab hien ra thi dang o SANH hay dang trong GAME?"
+say "  3) Luc ban thu nho, tab do mat bong bong hay con thay gi khac?"
