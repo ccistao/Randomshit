@@ -5,11 +5,11 @@ PLACE_ID="2753915549"
 DISCORD_USER_ID="982107241371013132"
 FILTER="roblox|delta|aya"
 CHECK_INTERVAL=10
-STALE=210                # 45s khong co Heartbeat la xu ly
-JOIN_GRACE=210         # 45s de load vao game
+STALE=210               # ĐÃ ĐỔI: Qua 210s khong co Heartbeat la ket Menu/Loi
+JOIN_GRACE=210          # ĐÃ ĐỔI: Cho 210s de tab load vao game
 LAUNCH_WAIT=5
-REPORT_EVERY=3600
-MAX_UPTIME=7200         # 2 tieng tu kill xoa lag
+REPORT_EVERY=3600       # 1 tieng tu dong bao cao kem anh chup
+MAX_UPTIME=7200         # 2 tieng tu dong reset xoa lag
 WH_FILE="/data/local/tmp/.wh"
 STATE="/data/local/tmp/farmstate"
 ACC_FILE="/data/local/tmp/accounts.txt"
@@ -48,7 +48,7 @@ for app in $LIST_CLONE; do
     IDX_INIT=$((IDX_INIT + 1))
 done
 
-rv() { local V; V=$(cat "$STATE/$1" 2>/dev/null | tr -d '\r\n'); echo "${V:-$2}"; }
+rv() { local V; V=$(cat "$STATE/$1" 2>/dev/null \vert{} tr -d '\r\n'); echo "${V:-$2}"; }
 wv() { echo "$2" > "$STATE/$1"; }
 
 sys_stats() {
@@ -56,7 +56,7 @@ sys_stats() {
     MEM=$(awk '/MemAvailable/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null)
     [ -z "$MEM" ] && MEM=$(awk '/MemFree/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null)
     MEM=${MEM:-0}
-    U=$(( $(date +%s) - START ))
+    U=$(($(date +%s) - START ))
     UPTXT="$((U/3600))h$(((U%3600)/60))m"
 }
 
@@ -69,7 +69,7 @@ send_discord() {
     if [ -n "$1" ]; then CONTENT_JSON="\"content\":\"$1\","; else CONTENT_JSON=""; fi
     JSON="{${CONTENT_JSON}\"embeds\":[{\"title\":\"$3\",\"description\":\"$4\",\"color\":${2:-3066993},\"fields\":$FIELDS,\"footer\":{\"text\":\"$TIME_NOW\"}}]}"
     
-    RESP=$(curl -s -4 --connect-timeout 5 -m 15 --retry 2 -H "Content-Type: application/json" -X POST -d "$JSON" -w "\n%{http_code}" "$WEBHOOK_URL" 2>&1)
+    RESP=$(curl -s -4 --connect-timeout 5 -m 15 --retry 2 -H "Content-Type: application/json" -X POST -d "$JSON" -w "\n\%{http_code}" "$WEBHOOK_URL" 2>&1)
     CODE=$(echo "$RESP" | tail -n 1 | tr -cd '0-9')
     case "$CODE" in
         *200*|*204*) echo "[Discord] Gui OK luc $TIME_NOW" ;;
@@ -99,8 +99,6 @@ kill_tab() {
 }
 
 launch_app() {
-    monkey -p "$1" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
-    sleep 2
     am start -n "$1/com.roblox.client.ActivityProtocolLaunch" -a android.intent.action.VIEW -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
     if [ $? -ne 0 ]; then
         am start -a android.intent.action.VIEW -p "$1" -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
@@ -111,7 +109,7 @@ launch_app() {
 get_file_age() {
     local f="$1"
     if [ -f "$f" ]; then
-        local M=$(stat -c %Y "$f" 2>/dev/null | tr -cd '0-9')
+        local M=$(stat -c \%Y "$f" 2>/dev/null | tr -cd '0-9')
         if [ -n "$M" ]; then
             local N=$(date +%s)
             local A=$((N - M))
@@ -134,10 +132,11 @@ find_hb_age() {
             done
         fi
     fi
+
     for f in /storage/emulated/0/Delta/Workspace/farmhb_*.txt /sdcard/Delta/Workspace/farmhb_*.txt; do
         [ -f "$f" ] || continue
         u=$(basename "$f" .txt | sed 's/farmhb_//')
-        if grep -qisF "$u" /data/data/$p/shared_prefs/*.xml 2>/dev/null; then
+        if grep -qisF "$u" "/data/data/$p/shared_prefs"/*.xml 2>/dev/null; then
             echo "$u $p" >> "$ACC_FILE"
             AGE=$(get_file_age "$f")
             echo "$AGE"
@@ -159,3 +158,112 @@ cpu_total() {
     fi
     PREV_TOT=$TOT; PREV_IDLE=$IDLE
 }
+
+send_discord "" 3447003 "SCRIPT KHOI DONG" "Dang canh $TOTAL_CLONE tab bang Heartbeat Lua (210s)." &
+echo "--- BAT DAU CANH TAB (HEARTBEAT LUA) ---"
+
+LOOP_COUNT=0
+
+while true; do
+    ONLINE_COUNT=0
+    STATUS_TEXT=""
+    INDEX=1
+    NOW=$(date +%s)
+    cpu_total
+    sys_stats
+
+    for app in $LIST_CLONE; do
+        eval "CNT=\${CNT_$INDEX:-0}"
+        PID=$(get_pid "$app")
+        TAB_START=$(cat "$STATE/up_$INDEX" 2>/dev/null); TAB_START=${TAB_START:-$START}
+        RUN_TIME=$((NOW - TAB_START))
+        LAUNCHED=$(rv "launch_$app" 0)
+        SINCE=$((NOW - LAUNCHED))
+
+        # 1. Tab bi tat han -> Mo ngay
+        if [ -z "$PID" ]; then
+            echo "[!] Tab $INDEX ($app) chua mo/bi tat. Dang mo..."
+            CNT=$((CNT + 1)); eval "CNT_$INDEX=$CNT"
+            TOTAL_REJOIN=$((TOTAL_REJOIN + 1))
+            echo "$NOW" > "$STATE/up_$INDEX"
+            send_discord "<@$DISCORD_USER_ID>" 15158332 "CANH BAO: TAB BI VANG" "[LOI] **Tab $INDEX** (\`$app\`): bi vang -> da mo lai (lan $CNT)" &
+            STATUS_TEXT="${STATUS_TEXT}[LOI] **Tab $INDEX** (\`$app\`): mo lai tu dau\n"
+            launch_app "$app"
+            sleep $LAUNCH_WAIT
+            INDEX=$((INDEX + 1))
+            continue
+        fi
+
+        # 2. Reset sau 2 tieng lien tuc bang kill -9 de giai phong RAM
+        if [ "$RUN_TIME" -ge "$MAX_UPTIME" ]; then
+            echo "[2H RESET] Tab $INDEX ($app) da treo$RUN_TIME giay -> kill restart xoa lag"
+            send_discord "" 3447003 "🔄 AUTO RESET 2H" "🔵 **Tab $INDEX** (\`$app\`): Treo 2h lien tuc -> restart xoa lag" &
+            STATUS_TEXT="${STATUS_TEXT}[RESET 2H] **Tab $INDEX** (\`$app\`): da restart 2h\n"
+            kill_tab "$app"
+            sleep 2
+            launch_app "$app"
+            echo "$NOW" > "$STATE/up_$INDEX"
+            sleep $LAUNCH_WAIT
+            INDEX=$((INDEX + 1))
+            continue
+        fi
+
+        # 3. Kiem tra Heartbeat tu Lua
+        AGE=$(find_hb_age "$app")
+
+        if [ "$AGE" -le "$STALE" ]; then
+            ONLINE_COUNT=$((ONLINE_COUNT + 1))
+            APP_T=$(awk '{print $14+$15}' "/proc/$PID/stat" 2>/dev/null); APP_T=${APP_T:-0}
+            eval "PV=\${PT_$INDEX:-$APP_T}"
+            APP_CPU=$(( 100 * (APP_T - PV) / DTOT )); [ "$APP_CPU" -lt 0 ] && APP_CPU=0
+            eval "PT_$INDEX=$APP_T"
+            APP_RAM=$(awk '/VmRSS/{printf "%d", $2/1024}' "/proc/$PID/status" 2>/dev/null)
+            STATUS_TEXT="${STATUS_TEXT}[OK] **Tab $INDEX** (\`$app\`): hb ${AGE}s \vert{} CPU${APP_CPU}% | RAM ${APP_RAM:-0}MB \vert{} treo$((RUN_TIME/60))p\n"
+        elif [ "$LAUNCHED" -gt 0 ] && [ "$SINCE" -lt "$JOIN_GRACE" ]; then
+            echo "[CHO] Tab $INDEX ($app): dang load vao game (${SINCE}s)..."
+        else
+            echo "[KET SANH] Tab $INDEX ($app) khong co Heartbeat (${AGE}s). Dang day lai vao Blox Fruits..."
+            am start -a android.intent.action.VIEW -p "$app" -d "roblox://experiences/start?placeId=2753915549" > /dev/null 2>&1
+            sleep 15
+            
+            AGE_CHECK=$(find_hb_age "$app")
+            if [ "$AGE_CHECK" -gt "$STALE" ]; then
+                echo "[!] Tab $INDEX van kẹt! Kill -9 va vao lai tu dau..."
+                CNT=$((CNT + 1)); eval "CNT_$INDEX=$CNT"
+                TOTAL_REJOIN=$((TOTAL_REJOIN + 1))
+                send_discord "<@$DISCORD_USER_ID>" 16776960 "CANH BAO: KET SANH" "[KET] **Tab $INDEX** (\`$app\`): kẹt sảnh/mất heartbeat -> restart (lan $CNT)" &
+                STATUS_TEXT="${STATUS_TEXT}[KET] **Tab $INDEX** (\`$app\`): ket sanh -> restart\n"
+                kill_tab "$app"
+                echo "$NOW" > "$STATE/up_$INDEX"
+                sleep 2
+                launch_app "$app"
+                sleep $LAUNCH_WAIT
+                INDEX=$((INDEX + 1))
+                continue
+            fi
+        fi
+
+        INDEX=$((INDEX + 1))
+    done
+
+    LOOP_COUNT=$((LOOP_COUNT + 1))
+
+    WARN=""
+    [ "$MEM" -lt "$MIN_RAM" ] && WARN="${WARN}RAM trong chi con${MEM}MB\n"
+    if [ -n "$WARN" ] && [ $((LOOP_COUNT - LAST_ALERT)) -ge 10 ]; then
+        LAST_ALERT=$LOOP_COUNT
+        send_discord "<@$DISCORD_USER_ID>" 15105570 "CANH BAO HE THONG" "$WARN" &
+    fi
+
+    if [ "$ONLINE_COUNT" -eq 0 ]; then
+        send_discord "<@$DISCORD_USER_ID>" 15158332 "TAT CA TAB OFFLINE" "Khong con tab nao online, dang co mo lai." &
+    fi
+
+    if [ $((NOW - LAST_REPORT)) -ge "$REPORT_EVERY" ]; then
+        LAST_REPORT=$NOW
+        send_discord "" 3066993 "TRANG THAI ($ONLINE_COUNT/$TOTAL_CLONE ONLINE)" "$STATUS_TEXT" &
+        send_screenshot &
+    fi
+
+    sleep $CHECK_INTERVAL
+done
