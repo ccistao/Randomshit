@@ -5,9 +5,9 @@ echo "== debug v1 =="
 
 PLACE_ID="2753915549"
 FILTER="roblox|delta|aya"
-OUT=${OUT:-/data/local/tmp/debug_report.txt}
+OUT=${OUT:-$HOME/debug_report.txt}
 COPY_TO=${COPY_TO:-/sdcard/Download/debug_report.txt}
-TMP=${TMP:-/data/local/tmp/dbgtmp}
+TMP=${TMP:-$HOME/dbgtmp}
 TIMELINE=${TIMELINE:-45}          # giay de ban thu nho 1 tab
 SAMPLE_GAP=${SAMPLE_GAP:-2}
 METHOD_WAIT=${METHOD_WAIT:-8}     # giay cho sau moi cach bat tab
@@ -90,7 +90,7 @@ if [ -n "$HB_ROOT" ]; then
         rep "$f | chu(uid,quyen,mtime)=$(stat -c '%u %a %Y' "$f" 2>/dev/null) | noi dung=$(cat "$f" 2>/dev/null | head -c 80)"
     done
 fi
-[ -f /data/local/tmp/accounts.txt ] && { rep "--- accounts.txt:"; cat /data/local/tmp/accounts.txt >> "$OUT"; }
+[ -f $HOME/accounts.txt ] && { rep "--- accounts.txt:"; cat $HOME/accounts.txt >> "$OUT"; }
 
 if [ -z "$RUNNING" ]; then
     say "[!] Khong co tab nao dang chay. Hay mo cac tab vao game roi chay lai debug."
