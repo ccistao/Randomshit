@@ -7,11 +7,14 @@ DISCORD_USER_ID="982107241371013132"
 FILTER="roblox|delta|aya"
 CHECK_INTERVAL=${CHECK_INTERVAL:-15}    # giay giua cac lan kiem tra
 STALE=${STALE:-90}                      # heartbeat cu hon X giay -> coi la ket / disconnect / o sanh
-JOIN_GRACE=${JOIN_GRACE:-240}           # sau khi mo app, cho toi da X giay de vao game
+JOIN_GRACE=${JOIN_GRACE:-420}           # sau khi mo app, cho toi da X giay de vao game (may ao load cham thi tang len)
 LAUNCH_WAIT=${LAUNCH_WAIT:-5}
 KILL_WAIT=${KILL_WAIT:-3}
 REPORT_EVERY=${REPORT_EVERY:-3600}      # bao cao dinh ky (giay), khong ping
 ENABLE_WATCH=${ENABLE_WATCH:-1}          # 1 = tu bat lai bong bong tab bi thu nho, 0 = tat
+AUTO_CAL=${AUTO_CAL:-1}                # 1 = tu doan acc nao la tab nao bang cach tat thu tung tab (chi chay 1 lan)
+CAL_WAIT=${CAL_WAIT:-50}               # giay cho sau khi tat 1 tab de xem file heartbeat nao dung
+CAL_THRESH=${CAL_THRESH:-38}           # file cu hon X giay = cua tab vua bi tat
 
 STATE=${STATE:-/data/local/tmp/farmstate}
 WH_B64=${WH_B64:-/data/local/tmp/.wh}              # webhook ma hoa base64 (cach cu)
@@ -20,6 +23,7 @@ ACC_FILE=${ACC_FILE:-/data/local/tmp/accounts.txt} # tuy chon: moi dong "usernam
 PAUSE_FILE=${PAUSE_FILE:-/data/local/tmp/farm_pause}  # tao file nay de tam dung script
 HB_SHARED=${HB_SHARED:-"/sdcard/Delta /storage/emulated/0/Delta /sdcard"}
 HB_PKGBASE=${HB_PKGBASE:-"/sdcard/Android/data /data/data"}
+DATA_DIR=${DATA_DIR:-/data/data}
 # ------------------------------
 
 WEBHOOK_URL=""
@@ -107,7 +111,7 @@ hb_age() {
 
 # file heartbeat nay thuoc package nao? (in ra ten package, hoac de trong)
 map_file() {
-    local f="$1" n p fu pu
+    local f="$1" n p fu pu M K d
     n=$(basename "$f" .txt); n=${n#farmhb_}
     if [ -f "$ACC_FILE" ]; then
         p=$(awk -v n="$n" 'tolower($1)==tolower(n){print $2; exit}' "$ACC_FILE" | tr -d '\r')
@@ -116,10 +120,21 @@ map_file() {
     for p in $LIST_CLONE; do
         case "$f" in *"$p"*) echo "$p"; return 0 ;; esac
     done
+    # tim ten acc trong du lieu cua tung clone; chi nhan khi dung 1 clone khop
+    if [ ! -f "$STATE/ng_$n" ]; then
+        M=""; K=0
+        for p in $LIST_CLONE; do
+            for d in shared_prefs files app_webview; do
+                if grep -rlsF "$n" "$DATA_DIR/$p/$d" > /dev/null 2>&1; then M="$p"; K=$((K + 1)); break; fi
+            done
+        done
+        if [ "$K" -eq 1 ]; then echo "$M"; return 0; fi
+        : > "$STATE/ng_$n"
+    fi
     fu=$(stat -c %u "$f" 2>/dev/null)
     if [ -n "$fu" ] && [ "$fu" != "0" ]; then
         for p in $LIST_CLONE; do
-            pu=$(stat -c %u "/data/data/$p" 2>/dev/null)
+            pu=$(stat -c %u "$DATA_DIR/$p" 2>/dev/null)
             if [ "$pu" = "$fu" ]; then echo "$p"; return 0; fi
         done
     fi
@@ -159,6 +174,86 @@ discover_hb() {
             fi
         fi
     done < "$STATE/hbfiles"
+}
+
+# gan file heartbeat cho 1 package va nho vao accounts.txt (lan sau khoi tao nhanh)
+map_save() {
+    local f="$1" p="$2" n
+    n=$(basename "$f" .txt); n=${n#farmhb_}
+    wv "hb_$p" "$f"
+    if [ -f "$ACC_FILE" ]; then
+        grep -viE "^$n[[:space:]]" "$ACC_FILE" > "$ACC_FILE.tmp" 2>/dev/null
+        mv "$ACC_FILE.tmp" "$ACC_FILE"
+    fi
+    echo "$n $p" >> "$ACC_FILE"
+    echo "[HB] $n -> $p (da luu vao $ACC_FILE)"
+}
+
+# so file heartbeat dang tuoi nhung chua biet thuoc tab nao
+unmapped_fresh() {
+    local f a c=0
+    [ -f "$STATE/hbfiles" ] || { echo 0; return 0; }
+    while read -r f; do
+        [ -f "$f" ] || continue
+        a=$(hb_age "$f")
+        [ -n "$a" ] && [ "$a" -le "$STALE" ] || continue
+        [ -z "$(map_file "$f")" ] && c=$((c + 1))
+    done < "$STATE/hbfiles"
+    echo "$c"
+}
+
+# Tu doan acc nao la tab nao: tat tung tab, xem file heartbeat nao ngung cap nhat.
+calibrate() {
+    local UF="" UP="" f p a K cand NUF REM
+    while read -r f; do
+        [ -f "$f" ] || continue
+        [ -n "$(map_file "$f")" ] && continue
+        a=$(hb_age "$f")
+        if [ -n "$a" ] && [ "$a" -le "$STALE" ]; then UF="$UF$f
+"; fi
+    done < "$STATE/hbfiles"
+    for p in $LIST_CLONE; do
+        f=$(rv "hb_$p" "")
+        if [ -z "$f" ] || [ ! -f "$f" ]; then UP="$UP$p
+"; fi
+    done
+    NUF=$(echo "$UF" | grep -c .); REM=$(echo "$UP" | grep -c .)
+    if [ "$NUF" -eq 0 ] || [ "$REM" -eq 0 ]; then return 0; fi
+    : > "$STATE/cal_done"
+    echo "[CAL] $NUF file chua ro tab nao, thu tat tung tab de doan (~${CAL_WAIT}s/tab)"
+    for p in $UP; do
+        NUF=$(echo "$UF" | grep -c .)
+        [ "$NUF" -eq 0 ] && break
+        if [ "$NUF" -eq 1 ] && [ "$REM" -eq 1 ]; then
+            map_save "$(echo "$UF" | grep .)" "$p"
+            UF=""
+            break
+        fi
+        echo "[CAL] tat thu $p ..."
+        am force-stop "$p"
+        sleep "$CAL_WAIT"
+        cand=""; K=0
+        for f in $UF; do
+            a=$(hb_age "$f")
+            if [ -n "$a" ] && [ "$a" -gt "$CAL_THRESH" ]; then cand="$f"; K=$((K + 1)); fi
+        done
+        if [ "$K" -eq 1 ]; then
+            map_save "$cand" "$p"
+            UF=$(echo "$UF" | grep -vxF "$cand")
+        else
+            echo "[CAL] $p: khong chac file nao (K=$K), bo qua"
+        fi
+        launch_app "$p"
+        wv "launch_$p" "$(date +%s)"
+        sleep "$LAUNCH_WAIT"
+        REM=$((REM - 1))
+    done
+    NUF=$(echo "$UF" | grep -c .)
+    if [ "$NUF" -gt 0 ]; then
+        echo "[CAL] xong, con $NUF file chua map duoc: them dong 'username package' vao $ACC_FILE"
+    else
+        echo "[CAL] xong, da map het."
+    fi
 }
 
 # $1=package $2=so tab $3=ly do $4=1 neu can force-stop truoc
