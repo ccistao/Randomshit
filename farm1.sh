@@ -5,14 +5,13 @@ WEBHOOK_URL="https://discord.com/api/webhooks/1560579280906489906/jK4Gj1NoNmqY-3
 FILTER="roblox|delta|aya"
 
 CHECK_INTERVAL=15
-LAUNCH_WAIT=12        # Thoi gian cho nhe (Day tu Menu vao game)
-COLD_BOOT_WAIT=35     # Thoi gian cho nang (Khoi dong app tu dau) de chong tran RAM
+LAUNCH_WAIT=15        
+COLD_BOOT_WAIT=35     
 NET_RECHECK=10
 REPORT_INTERVAL=3600
 MAX_UPTIME=7200
 MIN_RAM=300
 STATE="/data/local/tmp/farmstate"
-INPUT_FILE="/data/local/tmp/farm_input"
 
 LIST_CLONE=$(pm list packages -3 | cut -d: -f2 | grep -iE "$FILTER" | tr -d '\r')
 if [ -z "$LIST_CLONE" ]; then
@@ -27,7 +26,6 @@ echo "$LIST_CLONE"
 
 rm -rf "$STATE"
 mkdir -p "$STATE"
-echo "continue" > "$INPUT_FILE"
 
 START=$(date +%s | tr -cd '0-9')
 START=${START:-0}
@@ -46,22 +44,6 @@ for app in $LIST_CLONE; do
     echo "0" > "$STATE/min_$IDX_INIT"
     IDX_INIT=$((IDX_INIT + 1))
 done
-
-get_cmd() {
-    cat "$INPUT_FILE" 2>/dev/null | tr -cd 'a-z'
-}
-
-wait_delay() {
-    local t=${1:-10}
-    local c=0
-    while [ "${c:-0}" -lt "${t:-10}" ]; do
-        if [ "$(get_cmd)" = "stop" ]; then
-            break
-        fi
-        sleep 1
-        c=$((c + 1))
-    done
-}
 
 sys_stats() {
     local NOW_S U
@@ -154,15 +136,19 @@ cpu_total() {
 }
 
 watch_visible() {
-    local W a IDX C
+    local W a IDX C TAB_UP NOW_TS AGE
     while true; do
-        if [ "$(get_cmd)" = "stop" ]; then
-            sleep 2
-            continue
-        fi
         W=$(dumpsys window windows 2>/dev/null)
         IDX=1
         for a in $LIST_CLONE; do
+            TAB_UP=$(cat "$STATE/up_$IDX" 2>/dev/null | tr -cd '0-9')
+            NOW_TS=$(date +%s | tr -cd '0-9')
+            AGE=$(( ${NOW_TS:-0} -${TAB_UP:-0} ))
+            if [ "${AGE:-0}" -lt 60 ]; then
+                IDX=$((IDX + 1))
+                continue
+            fi
+
             if pidof "$a" >/dev/null 2>&1; then
                 if ! echo "$W" \vert{} grep -A35 "$a/" | grep -q "mHasSurface=true"; then
                     echo "$(date +%T) [THU NHO] Tab $IDX ($a) -> bung cua so lai"
@@ -179,22 +165,9 @@ watch_visible() {
     done
 }
 
-(
-    while read -r user_cmd 2>/dev/null; do
-        user_cmd=$(echo "$user_cmd" | tr -cd 'a-z')
-        if [ "$user_cmd" = "stop" ] \vert{}\vert{} [ "$user_cmd" = "continue" ]; then
-            echo "$user_cmd" > "$INPUT_FILE"
-        fi
-    done
-) &
-INPUT_PID=$!
-
-trap 'kill $WATCH_PID$INPUT_PID 2>/dev/null; send_discord "" 9807270 "SCRIPT DA DUNG" "Nguoi dung hoac he thong da tat script."; exit 0' INT TERM
-
-send_discord "" 3447003 "🚀 BAT DAU CHAY SCRIPT" "Dang canh gac $TOTAL_CLONE tab. Chuyen che do khoi dong cham (Cold Boot) de chong tran RAM." &
-echo "--- BAT DAU CANH TAB ---"
-echo "=> Go 'stop' va nhan Enter de TAM DUNG."
-echo "=> Go 'continue' va nhan Enter de CHAY TIEP."
+send_discord "" 3447003 "🚀 BAT DAU CHAY SCRIPT" "Dang canh gac $TOTAL_CLONE tab. Da xoa Force-Stop de tranh chet chum." &
+echo "--- BAT DAU CANH TAB (FULL AUTO) ---"
+echo "=> (Nhan CTRL + C de dung tool)"
 
 watch_visible &
 WATCH_PID=$!
@@ -203,15 +176,6 @@ LOOP_COUNT=0
 LAST_REPORT=0
 
 while true; do
-    if [ "$(get_cmd)" = "stop" ]; then
-        echo "====== SCRIPT DANG TAM DUNG ======"
-        echo "=> Go 'continue' (roi nhan Enter) de chay tiep!"
-        while [ "$(get_cmd)" = "stop" ]; do
-            sleep 2
-        done
-        echo "====== SCRIPT DA TIEP TUC ======"
-    fi
-
     ONLINE_COUNT=0
     STATUS_TEXT=""
     LINE="$(date +%T)"
@@ -233,9 +197,9 @@ while true; do
 
         PID=$(get_pid "$app")
 
-        # 1. Kiem tra tab bi vang hoac chua bat -> DUNG COLD BOOT WAIT (35s)
+        # 1. Kiem tra tab bi vang
         if [ -z "$PID" ]; then
-            echo "[!] Tab $INDEX ($app) chua bat/bi vang. Dang mo lai tu dau..."
+            echo "[!] Tab $INDEX ($app) chua bat/bi vang. Dang mo lai..."
             CNT=$((CNT + 1))
             eval "CNT_$INDEX=$CNT"
             TOTAL_REJOIN=$((TOTAL_REJOIN + 1))
@@ -246,16 +210,15 @@ while true; do
             LINE="$LINE T$INDEX:vang"
             launch_app "$app"
 
-            # Doi han 35 giay cho load game xong moi chay tab tiep theo
-            wait_delay $COLD_BOOT_WAIT
+            sleep $COLD_BOOT_WAIT
             INDEX=$((INDEX + 1))
             continue
         fi
 
-        # 2. Tu reset xoa lag 2 tieng (So le 5 phut) -> DUNG COLD BOOT WAIT (35s)
+        # 2. Reset 2 tieng chong lag (DUNG KILL -9 THAY CHO FORCE-STOP)
         TAB_MAX_UPTIME=$(( MAX_UPTIME + (INDEX * 300) ))
         if [ "${RUN_TIME:-0}" -ge "$TAB_MAX_UPTIME" ]; then
-            echo "[🔄] Tab $INDEX ($app) da den gio reset. Tu dong restart xoa lag..."
+            echo "[🔄] Tab $INDEX ($app) da den gio reset xoa lag..."
             CNT=$((CNT + 1))
             eval "CNT_$INDEX=$CNT"
             TOTAL_REJOIN=$((TOTAL_REJOIN + 1))
@@ -264,46 +227,50 @@ while true; do
             STATUS_TEXT="${STATUS_TEXT}🔵 **Tab $INDEX** (\`$app\`): Vua reset xoa lag\n"
             LINE="$LINE T$INDEX:reset2h"
 
-            am force-stop "$app"
+            # Ban tia dung tab do bang kill -9
+            kill -9 "$PID" 2>/dev/null
             sleep 2
             launch_app "$app"
             echo "$(date +%s | tr -cd '0-9')" > "$STATE/up_$INDEX"
 
-            wait_delay $COLD_BOOT_WAIT
+            sleep $COLD_BOOT_WAIT
             INDEX=$((INDEX + 1))
             continue
         fi
 
-        # 3. Kiem tra loi 279 / Menu sanh
+        # 3. Kiem tra kẹt loi 279 / Sanh Menu (DUNG KILL -9 THAY CHO FORCE-STOP)
         UID_APP=$(awk '/^Uid:/{print $2}' /proc/$PID/status 2>/dev/null | tr -cd '0-9')
         if [ -n "$UID_APP" ] && ! has_net "$UID_APP"; then
-            echo "[?] Tab $INDEX ($app) o ngoai Menu Sanh hoac mat ket noi! Dang day vao Blox Fruits..."
-            launch_app "$app"
+            if [ "${RUN_TIME:-0}" -lt 60 ]; then
+                INDEX=$((INDEX + 1))
+                continue
+            fi
 
-            # Day tu menu vao game chi can doi nhanh 10s
-            wait_delay $NET_RECHECK
+            echo "[?] Tab $INDEX o ngoai Menu Sanh hoac mat ket noi! Dang day vao game..."
+            launch_app "$app"
+            sleep $NET_RECHECK
 
             if ! has_net "$UID_APP"; then
-                echo "[!] Tab $INDEX van ket cung. Tien hanh Force-Stop va mo lai tu dau..."
+                echo "[!] Tab $INDEX ket cung. Tien hanh Kill va mo lai..."
                 CNT=$((CNT + 1))
                 eval "CNT_$INDEX=$CNT"
                 TOTAL_REJOIN=$((TOTAL_REJOIN + 1))
 
-                send_discord "" 16776960 "THONG BAO: TAB KET MENU/LOI" "🟡 **Tab $INDEX** (\`$app\`): Ket o Menu/Loi 279 -> Da force-stop mo lai (Lan $CNT)" &
+                send_discord "" 16776960 "THONG BAO: TAB KET MENU/LOI" "🟡 **Tab $INDEX** (\`$app\`): Ket Menu/Loi 279 -> Da kill mo lai (Lan $CNT)" &
                 STATUS_TEXT="${STATUS_TEXT}🟡 **Tab $INDEX** (\`$app\`): Vua restart do ket\n"
                 LINE="$LINE T$INDEX:restart"
 
-                am force-stop "$app"
+                # Ban tia dung tab do bang kill -9
+                kill -9 "$PID" 2>/dev/null
                 sleep 2
                 launch_app "$app"
                 echo "$(date +%s | tr -cd '0-9')" > "$STATE/up_$INDEX"
 
-                # Bi Force Stop mo lai tu dau nen phai doi 35 giay
-                wait_delay $COLD_BOOT_WAIT
+                sleep $COLD_BOOT_WAIT
                 INDEX=$((INDEX + 1))
                 continue
             else
-                echo "[OK] Da day Tab $INDEX tu Menu vao Blox Fruits thanh cong!"
+                echo "[OK] Da day Tab $INDEX vao game thanh cong!"
             fi
         fi
 
@@ -347,5 +314,5 @@ while true; do
         LAST_REPORT=$CURRENT_TIME
     fi
 
-    wait_delay $CHECK_INTERVAL
+    sleep $CHECK_INTERVAL
 done
