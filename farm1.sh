@@ -11,6 +11,7 @@ JOIN_GRACE=${JOIN_GRACE:-240}           # sau khi mo app, cho toi da X giay de v
 LAUNCH_WAIT=${LAUNCH_WAIT:-5}
 KILL_WAIT=${KILL_WAIT:-3}
 REPORT_EVERY=${REPORT_EVERY:-3600}      # bao cao dinh ky (giay), khong ping
+ENABLE_WATCH=${ENABLE_WATCH:-1}          # 1 = tu bat lai bong bong tab bi thu nho, 0 = tat
 
 STATE=${STATE:-/data/local/tmp/farmstate}
 WH_B64=${WH_B64:-/data/local/tmp/.wh}              # webhook ma hoa base64 (cach cu)
