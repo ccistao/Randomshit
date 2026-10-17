@@ -1,32 +1,5 @@
-# Bung bong bong: Dung dung chuoi $a/ de khong bi danh lua boi lop bong bong
-watch_visible() {
-    local W a IDX C
-    while true; do
-        W=$(dumpsys window windows 2>/dev/null)
-        IDX=1
-        for a in $LIST_CLONE; do
-            if pidof "$a" >/dev/null 2>&1; then
-                if ! echo "$W" \vert{} grep -A35 "$a/" | grep -q "mHasSurface=true"; then
-                    echo "$(date +%T) [THU NHO] Tab $IDX ($a) -> bung lai bong bong"
-                    C=$(cat "$STATE/min_$IDX" 2>/dev/null)
-                    echo $((${C:-0} + 1 )) > "$STATE/min_$IDX"
-                    monkey -p "$a" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
-                    sleep 2
-                fi
-            fi
-            IDX=$((IDX + 1))
-        done
-        sleep 2
-    done
-}
-
-trap 'kill $WATCH_PID 2>/dev/null; send_discord "<@$DISCORD_USER_ID>" 9807270 "SCRIPT DA DUNG" "Script bi dung."; exit 0' INT TERM
-
 send_discord "" 3447003 "SCRIPT KHOI DONG" "Dang canh $TOTAL_CLONE tab bang Heartbeat Lua." &
 echo "--- BAT DAU CANH TAB (HEARTBEAT LUA) ---"
-
-watch_visible &
-WATCH_PID=$!
 
 LOOP_COUNT=0
 
@@ -40,14 +13,13 @@ while true; do
 
     for app in $LIST_CLONE; do
         eval "CNT=\${CNT_$INDEX:-0}"
-        MINC=$(cat "$STATE/min_$INDEX" 2>/dev/null); MINC=${MINC:-0}
         PID=$(get_pid "$app")
         TAB_START=$(cat "$STATE/up_$INDEX" 2>/dev/null); TAB_START=${TAB_START:-$START}
         RUN_TIME=$((NOW - TAB_START))
         LAUNCHED=$(rv "launch_$app" 0)
         SINCE=$((NOW - LAUNCHED))
 
-        # 1. Tab chua bat hoac bi tat -> Mo ngay
+        # 1. Tab bi tat han -> Mo ngay
         if [ -z "$PID" ]; then
             echo "[!] Tab $INDEX ($app) chua mo/bi tat. Dang mo..."
             CNT=$((CNT + 1)); eval "CNT_$INDEX=$CNT"
@@ -61,7 +33,7 @@ while true; do
             continue
         fi
 
-        # 2. Reset sau 2 tieng lien tuc bang kill -9 de giai phong RAM
+        # 2. Reset 2 tieng xoa lag
         if [ "$RUN_TIME" -ge "$MAX_UPTIME" ]; then
             echo "[2H RESET] Tab $INDEX ($app) da treo$RUN_TIME giay -> kill restart xoa lag"
             send_discord "" 3447003 "🔄 AUTO RESET 2H" "🔵 **Tab $INDEX** (\`$app\`): Treo 2h lien tuc -> restart xoa lag" &
@@ -79,7 +51,6 @@ while true; do
         AGE=$(find_hb_age "$app")
 
         if [ "$AGE" -le "$STALE" ]; then
-            # Lua ghi Heartbeat deu dan duoi 45s -> Dang farm binh thuong
             ONLINE_COUNT=$((ONLINE_COUNT + 1))
             APP_T=$(awk '{print $14+$15}' "/proc/$PID/stat" 2>/dev/null); APP_T=${APP_T:-0}
             eval "PV=\${PT_$INDEX:-$APP_T}"
@@ -88,23 +59,28 @@ while true; do
             APP_RAM=$(awk '/VmRSS/{printf "%d", $2/1024}' "/proc/$PID/status" 2>/dev/null)
             STATUS_TEXT="${STATUS_TEXT}[OK] **Tab $INDEX** (\`$app\`): hb ${AGE}s \vert{} CPU${APP_CPU}% | RAM ${APP_RAM:-0}MB \vert{} treo$((RUN_TIME/60))p\n"
         elif [ "$LAUNCHED" -gt 0 ] && [ "$SINCE" -lt "$JOIN_GRACE" ]; then
-            # App vua mo hoac vua day vao game (duoi 55s) -> Cho game tai map, KHONG DUOC KILL
-            echo "[CHO] Tab $INDEX ($app): dang load vao game (${SINCE}s/${JOIN_GRACE}s)..."
+            echo "[CHO] Tab $INDEX ($app): dang load vao game (${SINCE}s)..."
         else
-            # Da cho du 55s ma van khong co Heartbeat -> Ket Menu sanh hoac ket man hinh loi 279
-            echo "[KET SANH] Tab $INDEX ($app) khong co Heartbeat (${AGE}s, da cho${SINCE}s). Kill -9 va vao lai..."
-            CNT=$((CNT + 1)); eval "CNT_$INDEX=$CNT"
-            TOTAL_REJOIN=$((TOTAL_REJOIN + 1))
-            send_discord "<@$DISCORD_USER_ID>" 16776960 "CANH BAO: KET SANH" "[KET] **Tab $INDEX** (\`$app\`): kẹt sảnh/mất heartbeat -> restart (lan $CNT)" &
-            STATUS_TEXT="${STATUS_TEXT}[KET] **Tab $INDEX** (\`$app\`): ket sanh -> restart\n"
+            # Ket Menu -> Day vao game BANG INTENT MOI
+            echo "[KET SANH] Tab $INDEX ($app) mat Heartbeat (${AGE}s). Dang day lai vao Blox Fruits..."
+            am start -a android.intent.action.VIEW -p "$app" -d "roblox://experiences/start?placeId=2753915549" > /dev/null 2>&1
+            sleep 10
             
-            kill_tab "$app"
-            echo "$NOW" > "$STATE/up_$INDEX"
-            sleep 2
-            launch_app "$app"
-            sleep $LAUNCH_WAIT
-            INDEX=$((INDEX + 1))
-            continue
+            AGE_CHECK=$(find_hb_age "$app")
+            if [ "$AGE_CHECK" -gt "$STALE" ]; then
+                echo "[!] Tab $INDEX van kẹt! Kill -9 va vao lai tu dau..."
+                CNT=$((CNT + 1)); eval "CNT_$INDEX=$CNT"
+                TOTAL_REJOIN=$((TOTAL_REJOIN + 1))
+                send_discord "<@$DISCORD_USER_ID>" 16776960 "CANH BAO: KET SANH" "[KET] **Tab $INDEX** (\`$app\`): kẹt sảnh/mất heartbeat -> restart (lan $CNT)" &
+                STATUS_TEXT="${STATUS_TEXT}[KET] **Tab $INDEX** (\`$app\`): ket sanh -> restart\n"
+                kill_tab "$app"
+                echo "$NOW" > "$STATE/up_$INDEX"
+                sleep 2
+                launch_app "$app"
+                sleep $LAUNCH_WAIT
+                INDEX=$((INDEX + 1))
+                continue
+            fi
         fi
 
         INDEX=$((INDEX + 1))
