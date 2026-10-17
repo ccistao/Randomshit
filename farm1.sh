@@ -2,14 +2,16 @@
 PLACE_ID="2753915549"
 DISCORD_USER_ID="982107241371013132"
 FILTER="roblox|delta|aya"
-CHECK_INTERVAL=15
-REPORT_EVERY=3600
+CHECK_INTERVAL=10
+STALE=45                # Lua ghi moi 30s -> neu qua 45s khong co tin hieu la ket Menu/Loi
+JOIN_GRACE=45           # Cho toi da 45s de load vao game
 LAUNCH_WAIT=5
-NET_RECHECK=5
-MIN_RAM=300
-MAX_UPTIME=7200 # 2 tieng (7200 giay) tu kill mo lai xoa lag
+REPORT_EVERY=3600       # 1 gio bao cao dinh ky + chup man hinh
+MAX_UPTIME=7200         # 2 tieng tu restart bang kill -9 xoa lag
 WH_FILE="/data/local/tmp/.wh"
 STATE="/data/local/tmp/farmstate"
+ACC_FILE="/data/local/tmp/accounts.txt"
+DATA_DIR="/data/data"
 
 WEBHOOK_URL=$(base64 -d "$WH_FILE" 2>/dev/null || toybox base64 -d "$WH_FILE" 2>/dev/null)
 if [ -z "$WEBHOOK_URL" ]; then
@@ -21,14 +23,14 @@ if [ -z "$LIST_CLONE" ]; then
     echo "Khong tim thay clone nao!"
     exit 1
 fi
-TOTAL_CLONE=$(echo "$LIST_CLONE" | wc -l)
+TOTAL_CLONE=$(echo "$LIST_CLONE" | wc -l | tr -cd '0-9')
 echo "Da nhan dien $TOTAL_CLONE tab:"
 echo "$LIST_CLONE"
 
 mkdir -p "$STATE"
 rm -f "$STATE"/min_*
 
-START=$(date +%s)
+START=$(date +%s | tr -cd '0-9')
 LAST_REPORT=$START
 PREV_TOT=""
 PREV_IDLE=0
@@ -38,12 +40,15 @@ TOTAL_REJOIN=0
 LAST_ALERT=-100
 MEM=0; UPTXT="0h0m"
 
-# Khoi tao moc dem 2h cho tung tab
 IDX_INIT=1
 for app in $LIST_CLONE; do
     echo "$START" > "$STATE/up_$IDX_INIT"
+    echo "0" > "$STATE/launch_$app"
     IDX_INIT=$((IDX_INIT + 1))
 done
+
+rv() { local V; V=$(cat "$STATE/$1" 2>/dev/null | tr -d '\r\n'); echo "${V:-$2}"; }
+wv() { echo "$2" > "$STATE/$1"; }
 
 sys_stats() {
     local U
@@ -60,12 +65,7 @@ send_discord() {
     TIME_NOW=$(date +"%H:%M:%S")
     FIELDS="[{\"name\":\"CPU\",\"value\":\"${CPU:-0}%\",\"inline\":true},{\"name\":\"RAM trong\",\"value\":\"${MEM}MB\",\"inline\":true},{\"name\":\"Uptime\",\"value\":\"$UPTXT\",\"inline\":true},{\"name\":\"Tong rejoin\",\"value\":\"$TOTAL_REJOIN\",\"inline\":true}]"
     
-    if [ -n "$1" ]; then
-        CONTENT_JSON="\"content\":\"$1\","
-    else
-        CONTENT_JSON=""
-    fi
-    
+    if [ -n "$1" ]; then CONTENT_JSON="\"content\":\"$1\","; else CONTENT_JSON=""; fi
     JSON="{${CONTENT_JSON}\"embeds\":[{\"title\":\"$3\",\"description\":\"$4\",\"color\":${2:-3066993},\"fields\":$FIELDS,\"footer\":{\"text\":\"$TIME_NOW\"}}]}"
     
     RESP=$(curl -s -4 --connect-timeout 5 -m 15 --retry 2 \
@@ -88,34 +88,66 @@ send_screenshot() {
     echo "[Discord] Da gui anh chup man hinh."
 }
 
+# Tim PID chuan xac 100% qua cmdline, khong bao gio bi cat cut ten app
 get_pid() {
-    local P
-    P=$(pidof "$1" 2>/dev/null | awk '{print $1}')
-    if [ -z "$P" ]; then
-        P=$(pgrep -f "^$1" 2>/dev/null | head -n 1)
-    fi
-    echo "$P" | tr -cd '0-9'
+    local p="$1"
+    grep -sl "$p" /proc/[0-9]*/cmdline 2>/dev/null | head -n 1 | cut -d/ -f3 | tr -cd '0-9'
 }
 
-# Ban tia dung tab do bang PID de khong lam vang cac tab clone khac
 kill_tab() {
     local P
     P=$(get_pid "$1")
-    if [ -n "$P" ]; then
-        kill -9 "$P" 2>/dev/null
-    else
-        am force-stop "$1" 2>/dev/null
-    fi
+    if [ -n "$P" ]; then kill -9 "$P" 2>/dev/null; fi
 }
 
 launch_app() {
     monkey -p "$1" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
     sleep 2
-    am start -a android.intent.action.VIEW -p "$1" -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
+    am start -n "$1/com.roblox.client.ActivityProtocolLaunch" -a android.intent.action.VIEW -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        am start -a android.intent.action.VIEW -p "$1" -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
+    fi
+    wv "launch_$1" "$(date +%s)"
 }
 
-has_net() {
-    awk -v u="$1" 'NR>1 && $8==u {f=1} END{exit !f}' /proc/net/udp /proc/net/udp6 2>/dev/null
+# Doc thoi gian troi qua tu file Heartbeat cua Lua
+hb_age() {
+    local T N A
+    T=$(cut -d, -f1 "$1" 2>/dev/null | tr -cd '0-9')
+    if [ -z "$T" ]; then T=$(stat -c %Y "$1" 2>/dev/null | tr -cd '0-9'); fi
+    [ -z "$T" ] && return 999
+    N=$(date +%s); A=$((N - T)); [ "$A" -lt 0 ] && A=0
+    echo "$A"
+}
+
+# Tu dong map file farmhb_<TenAcc>.txt voi dung package
+map_file() {
+    local f="$1" n p d
+    n=$(basename "$f" .txt | sed 's/farmhb_//g')
+    if [ -f "$ACC_FILE" ]; then
+        p=$(awk -v n="$n" 'tolower($1)==tolower(n){print $2; exit}' "$ACC_FILE" 2>/dev/null | tr -d '\r')
+        if [ -n "$p" ]; then echo "$p"; return 0; fi
+    fi
+    for p in $LIST_CLONE; do
+        if grep -rlsF -i "$n" "$DATA_DIR/$p/shared_prefs" "$DATA_DIR/$p/files" > /dev/null 2>&1; then
+            echo "$n $p" >> "$ACC_FILE"
+            echo "$p"
+            return 0
+        fi
+    done
+    return 1
+}
+
+find_hb() {
+    local p="$1" f mp
+    for f in $(find /sdcard/Delta /storage/emulated/0/Delta /sdcard /storage/emulated/0 -maxdepth 4 -name 'farmhb_*.txt' 2>/dev/null); do
+        mp=$(map_file "$f")
+        if [ "$mp" = "$p" ]; then
+            echo "$f"
+            return 0
+        fi
+    done
+    return 1
 }
 
 cpu_total() {
