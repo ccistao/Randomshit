@@ -7,8 +7,8 @@ FILTER="roblox|delta|aya"
 CHECK_INTERVAL=15
 LAUNCH_WAIT=12
 NET_RECHECK=10
-REPORT_INTERVAL=3600  # 1 tieng (3600s) gui bao cao + chup man hinh 1 lan
-MAX_UPTIME=7200       # 2 tieng (7200s) treo lien tuc khong vang -> tu tat bat lai xoa lag
+REPORT_INTERVAL=3600  
+MAX_UPTIME=7200       
 MIN_RAM=300
 STATE="/data/local/tmp/farmstate"
 INPUT_FILE="/data/local/tmp/farm_input"
@@ -39,7 +39,7 @@ LAST_ALERT=-100
 MEM=0
 UPTXT="0h0m"
 
-# Khoi tao moc dem 2 tieng cho tung tab
+# Khoi tao moc dem cho tung tab
 IDX_INIT=1
 for app in $LIST_CLONE; do
     echo "$START" > "$STATE/up_$IDX_INIT"
@@ -74,19 +74,28 @@ sys_stats() {
     UPTXT="$((U/3600))h$(((U%3600)/60))m"
 }
 
+# FIX: Xu ly loi 400 Bad Request cua Discord khi content bi trong
 send_discord() {
-    local TIME_NOW JSON FIELDS RESP CODE
+    local TIME_NOW JSON FIELDS RESP CODE CONTENT_JSON
     sys_stats
     TIME_NOW=$(date +"%H:%M:%S")
     FIELDS="[{\"name\":\"CPU\",\"value\":\"${CPU:-0}%\",\"inline\":true},{\"name\":\"RAM Trong\",\"value\":\"${MEM:-0}MB\",\"inline\":true},{\"name\":\"Uptime\",\"value\":\"$UPTXT\",\"inline\":true},{\"name\":\"Tong Rejoin\",\"value\":\"${TOTAL_REJOIN:-0}\",\"inline\":true}]"
-    JSON="{\"content\":\"$1\",\"embeds\":[{\"title\":\"$3\",\"description\":\"$4\",\"color\":${2:-3066993},\"fields\":$FIELDS,\"footer\":{\"text\":\"$TIME_NOW\"}}]}"
+    
+    if [ -n "$1" ]; then
+        CONTENT_JSON="\"content\":\"$1\","
+    else
+        CONTENT_JSON=""
+    fi
+    
+    JSON="{${CONTENT_JSON}\"embeds\":[{\"title\":\"$3\",\"description\":\"$4\",\"color\":${2:-3066993},\"fields\":$FIELDS,\"footer\":{\"text\":\"$TIME_NOW\"}}]}"
+    
     RESP=$(curl -s -4 --connect-timeout 5 -m 15 --retry 2 \
         -H "Content-Type: application/json" -X POST -d "$JSON" \
         -w "\n%{http_code}" "$WEBHOOK_URL" 2>&1)
     CODE=$(echo "$RESP" | tail -n 1 | tr -cd '0-9')
     case "$CODE" in
         *200*|*204*) echo "[Discord] Gui OK luc $TIME_NOW" ;;
-        *) echo "[Discord] LOI HTTP $CODE" ;;
+        *) echo "[Discord] LOI HTTP $CODE (Kiem tra lai Payload JSON)" ;;
     esac
 }
 
@@ -145,7 +154,6 @@ cpu_total() {
     PREV_IDLE=$IDLE
 }
 
-# Luong canh bong bong thu nho (chay doc lap lien tuc moi 3 giay)
 watch_visible() {
     local W a IDX C
     while true; do
@@ -156,14 +164,14 @@ watch_visible() {
         W=$(dumpsys window windows 2>/dev/null)
         IDX=1
         for a in $LIST_CLONE; do
-            if [ -n "$(get_pid "$a")" ]; then
-                if ! echo "$W" \vert{} grep -A40 "u0 $a/com.roblox.client.ActivityNativeMain" | grep -q "mHasSurface=true"; then
+            if pidof "$a" >/dev/null 2>&1; then
+                if ! echo "$W" \vert{} grep -A35 "$a/" | grep -q "mHasSurface=true"; then
                     echo "$(date +%T) [THU NHO] Tab $IDX ($a) -> bung cua so lai"
                     C=$(cat "$STATE/min_$IDX" 2>/dev/null | tr -cd '0-9')
                     C=${C:-0}
                     echo $(( C + 1 )) > "$STATE/min_$IDX"
                     monkey -p "$a" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
-                    sleep 2
+                    sleep 3
                 fi
             fi
             IDX=$((IDX + 1))
@@ -172,7 +180,6 @@ watch_visible() {
     done
 }
 
-# Luong doc lenh stop / continue tu ban phim
 (
     while read -r user_cmd 2>/dev/null; do
         user_cmd=$(echo "$user_cmd" | tr -cd 'a-z')
@@ -185,12 +192,11 @@ INPUT_PID=$!
 
 trap 'kill $WATCH_PID$INPUT_PID 2>/dev/null; send_discord "" 9807270 "SCRIPT DA DUNG" "Nguoi dung hoac he thong da tat script."; exit 0' INT TERM
 
-send_discord "" 3447003 "🚀 BAT DAU CHAY SCRIPT" "Dang canh gac $TOTAL_CLONE tab (Auto reset xoa lag moi 2h)." &
+send_discord "" 3447003 "🚀 BAT DAU CHAY SCRIPT" "Dang canh gac $TOTAL_CLONE tab (Da ban chong Crash Tab & Fix 400)." &
 echo "--- BAT DAU CANH TAB ---"
 echo "=> Go 'stop' va nhan Enter de TAM DUNG."
 echo "=> Go 'continue' va nhan Enter de CHAY TIEP."
 
-# Kich hoat luong bung bong bong ngay lap tuc
 watch_visible &
 WATCH_PID=$!
 
@@ -228,7 +234,7 @@ while true; do
 
         PID=$(get_pid "$app")
 
-        # 1. Kiem tra tab bi vang (tat app)
+        # 1. Kiem tra tab bi vang
         if [ -z "$PID" ]; then
             echo "[!] Tab $INDEX ($app) bi vang. Dang mo lai..."
             CNT=$((CNT + 1))
@@ -246,15 +252,16 @@ while true; do
             continue
         fi
 
-        # 2. Kiem tra neu tab treo lien tuc du 2 tieng (7200s) -> tu tat bat lai xoa lag
-        if [ "${RUN_TIME:-0}" -ge "${MAX_UPTIME:-7200}" ]; then
-            echo "[🔄] Tab $INDEX ($app) da treo lien tuc 2h. Tu dong restart xoa lag..."
+        # 2. FIX CHONG CRASH ALL TABS: Dat do lech thoi gian so le 5 phut (300s) giua cac tab
+        TAB_MAX_UPTIME=$(( MAX_UPTIME + (INDEX * 300) ))
+        if [ "${RUN_TIME:-0}" -ge "$TAB_MAX_UPTIME" ]; then
+            echo "[🔄] Tab $INDEX ($app) da den gio reset. Tu dong restart xoa lag..."
             CNT=$((CNT + 1))
             eval "CNT_$INDEX=$CNT"
             TOTAL_REJOIN=$((TOTAL_REJOIN + 1))
 
-            send_discord "" 3447003 "🔄 AUTO RESET 2H XOA LAG" "🔵 **Tab $INDEX** (\`$app\`): Da treo 2h lien tuc -> Tu dong tat bat lai de xoa lag." &
-            STATUS_TEXT="${STATUS_TEXT}🔵 **Tab $INDEX** (\`$app\`): Vua reset dinh ky 2h\n"
+            send_discord "" 3447003 "🔄 AUTO RESET XOA LAG" "🔵 **Tab $INDEX** (\`$app\`): Da treo $RUN_TIME giay -> Tu dong tat bat lai de xoa lag." &
+            STATUS_TEXT="${STATUS_TEXT}🔵 **Tab $INDEX** (\`$app\`): Vua reset dinh ky\n"
             LINE="$LINE T$INDEX:reset2h"
 
             am force-stop "$app"
@@ -267,7 +274,7 @@ while true; do
             continue
         fi
 
-        # 3. Kiem tra ket sanh Menu / mat ket noi 279
+        # 3. Kiem tra loi 279 / Menu sanh
         UID_APP=$(awk '/^Uid:/{print $2}' /proc/$PID/status 2>/dev/null | tr -cd '0-9')
         if [ -n "$UID_APP" ] && ! has_net "$UID_APP"; then
             echo "[?] Tab $INDEX ($app) o ngoai Menu Sanh hoac mat ket noi! Dang day vao Blox Fruits..."
