@@ -49,8 +49,10 @@ while true; do
     done
     if [ "$NEED" = "1" ] && { [ "$LOOP" -eq 1 ] || [ $((LOOP % 4)) -eq 0 ]; }; then
         discover_hb
+        if [ "$AUTO_CAL" = "1" ] && [ ! -f "$STATE/cal_done" ]; then calibrate; fi
     fi
 
+    NOW=$(date +%s)
     LINE="$(date +%T)"
     STATUS=""
     OK_COUNT=0
@@ -80,6 +82,9 @@ while true; do
         elif [ "$SINCE" -lt "$JOIN_GRACE" ]; then
             LINE="$LINE T$IDX:cho(${SINCE}s)"
             STATUS="${STATUS}[CHO] Tab $IDX (\`$p\`): dang vao game (${SINCE}s)\\n"
+        elif [ -z "$HBF" ] && [ "$(unmapped_fresh)" -gt 0 ]; then
+            LINE="$LINE T$IDX:chua-map"
+            STATUS="${STATUS}[?] Tab $IDX (\`$p\`): co heartbeat nhung chua biet file nao la cua tab nay, tam chua restart\n"
         else
             if [ -z "$AGE" ]; then
                 WHY="chua co heartbeat (o sanh / chua vao game)"
