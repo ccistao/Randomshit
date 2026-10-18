@@ -14,8 +14,8 @@ PLACE_ID="2753915549"
 DISCORD_USER_ID="982107241371013132"
 FILTER="roblox|delta|aya"
 CHECK_INTERVAL=${CHECK_INTERVAL:-10}    # giay giua cac lan kiem tra
-STALE=${STALE:-300}                     # heartbeat cu hon X giay -> coi la ket / o sanh
-JOIN_GRACE=${JOIN_GRACE:-300}           # sau khi mo app, cho toi da X giay de vao game
+STALE=${STALE:-210}                     # heartbeat cu hon X giay -> coi la ket / o sanh
+JOIN_GRACE=${JOIN_GRACE:-210}           # sau khi mo app, cho toi da X giay de vao game
 SOFT_GRACE=${SOFT_GRACE:-150}           # sau khi day lai vao game (chua kill), cho them X giay roi moi kill
 LAUNCH_WAIT=${LAUNCH_WAIT:-5}
 KILL_WAIT=${KILL_WAIT:-2}
@@ -26,11 +26,22 @@ OFFLINE_ALERT=${OFFLINE_ALERT:-600}     # tat ca tab mat heartbeat qua X giay mo
 MIN_RAM=${MIN_RAM:-300}                 # RAM trong thap hon X MB thi bao (khong ping)
 ENABLE_WATCH=${ENABLE_WATCH:-1}         # 1 = tu bat lai tab bi thu nho thanh bong bong
 AUTO_CAL=${AUTO_CAL:-1}                 # 1 = tu doan acc nao la tab nao (tat thu tung tab, chi 1 lan)
-CAL_WAIT=${CAL_WAIT:-50}
+CAL_WAIT=${CAL_WAIT:-60}
 CAL_THRESH=${CAL_THRESH:-38}
 CAL_FRESH=${CAL_FRESH:-45}
+CAL_COOLDOWN=${CAL_COOLDOWN:-600}         # toi thieu X giay giua 2 lan hieu chuan (kill thu)
 CAL_MIN_UP=${CAL_MIN_UP:-60}            # chi hieu chuan sau khi script chay it nhat X giay
+KICK_STALE=${KICK_STALE:-150}           # dang trong game ma mat heartbeat qua X giay -> day lai vao game ngay (may ban co luc heartbeat cach nhau 80s)
+INITIAL_WAIT=${INITIAL_WAIT:-100}       # tab da mo san luc bat script ma chua co heartbeat: cho X giay roi day vao game
+WATCH_INTERVAL=${WATCH_INTERVAL:-1}     # giay giua 2 lan kiem tra bong bong
+REOPEN_COOLDOWN=${REOPEN_COOLDOWN:-8}   # toi thieu X giay giua 2 lan bat lai cung 1 tab
+REJOIN_CHECK=${REJOIN_CHECK:-10}        # sau khi bat lai tab, cho X giay roi kiem tra game con song khong
+LAUNCH_RETRY=${LAUNCH_RETRY:-20}        # sau khi gui link vao game X giay ma chua co heartbeat moi thi gui lai 1 lan (0 = tat)
+ACT_GAP=${ACT_GAP:-25}                  # cach nhau it nhat X giay giua 2 lan mo/restart tab (tranh het RAM do mo nhieu tab cung luc)
+REMAP_FRESH=${REMAP_FRESH:-100}         # heartbeat moi hon X giay moi tinh la dang chay (de doan acc moi dang nhap vao tab nao)
 KILLER=${KILLER:-kill}
+DEBUG=${DEBUG:-1}                       # 1 = ghi log chi tiet vao file (khong lam roi man hinh)
+DEBUG_LOG=${DEBUG_LOG:-/data/local/tmp/farm_debug.log}
 
 STATE=${STATE:-/data/local/tmp/farmstate}
 WH_B64=${WH_B64:-/data/local/tmp/.wh}              # webhook ma hoa base64
@@ -65,6 +76,7 @@ echo "$LIST_CLONE"
 
 rm -rf "$STATE"
 mkdir -p "$STATE"
+: > "$DEBUG_LOG" 2>/dev/null
 
 START=$(date +%s)
 TOTAL_RESTART=0
@@ -76,6 +88,22 @@ PING=0
 
 rv() { local V; V=$(cat "$STATE/$1" 2>/dev/null | tr -d '\r\n'); echo "${V:-$2}"; }
 wv() { echo "$2" > "$STATE/$1"; }
+
+# ghi log chi tiet vao file: dbg "dong" hoac dbg "tieu de" "noi dung nhieu dong"
+dbg() {
+    [ "$DEBUG" = "1" ] || return 0
+    if [ -n "$2" ]; then
+        { echo "$(date +%T) $1"; echo "$2" | sed 's/^/      /'; } >> "$DEBUG_LOG" 2>/dev/null
+    else
+        echo "$(date +%T) $1" >> "$DEBUG_LOG" 2>/dev/null
+    fi
+}
+dbg_trim() {
+    [ -f "$DEBUG_LOG" ] || return 0
+    if [ "$(wc -c < "$DEBUG_LOG" 2>/dev/null | tr -cd '0-9')" -gt 400000 ]; then
+        tail -n 1500 "$DEBUG_LOG" > "$DEBUG_LOG.tmp" 2>/dev/null && mv "$DEBUG_LOG.tmp" "$DEBUG_LOG"
+    fi
+}
 
 for p in $LIST_CLONE; do
     wv "launch_$p" "$START"
@@ -123,6 +151,7 @@ get_pid() {
 kill_tab() {
     local P
     for P in $(pidof "$1" 2>/dev/null); do
+        echo "$(date +%T) [KILL] $1 pid=$P"
         $KILLER -9 "$P" 2>/dev/null
     done
     if [ -n "$(get_pid "$1")" ]; then
@@ -131,7 +160,7 @@ kill_tab() {
     fi
 }
 
-launch_app() {
+send_join() {
     local OUT
     OUT=$(am start -n "$1/com.roblox.client.ActivityProtocolLaunch" -a android.intent.action.VIEW -d "roblox://experiences/start?placeId=$PLACE_ID" 2>&1)
     case "$OUT" in
@@ -139,6 +168,27 @@ launch_app() {
             am start -a android.intent.action.VIEW -p "$1" -d "roblox://experiences/start?placeId=$PLACE_ID" > /dev/null 2>&1
             ;;
     esac
+}
+
+# gui link vao game; neu sau LAUNCH_RETRY giay van chua co heartbeat moi (app chi mo ma khong vao game) thi gui lai 1 lan
+launch_app() {
+    send_join "$1"
+    if [ "$LAUNCH_RETRY" -gt 0 ]; then
+        ( sleep "$LAUNCH_RETRY"; retry_join "$1" ) 2> /dev/null &
+    fi
+}
+
+retry_join() {
+    local p="$1" f age lt N
+    [ -n "$(get_pid "$p")" ] || return 0
+    f=$(rv "hb_$p" ""); lt=$(rv "lt_$p" 0); N=$(date +%s)
+    if [ -n "$f" ] && [ -f "$f" ]; then
+        age=$(hb_age "$f")
+        if [ -n "$age" ] && [ $((N - age)) -gt "$lt" ]; then return 0; fi
+    fi
+    echo "$(date +%T) [GUI LAI LINK] $p: chua co heartbeat moi sau ${LAUNCH_RETRY}s -> gui lai link vao game"
+    dbg "ACTION retry_join pkg=$p"
+    send_join "$p"
 }
 
 # tuoi cua heartbeat (giay). Doc thoi gian trong file, neu khong doc duoc thi dung mtime
@@ -186,6 +236,7 @@ discover_hb() {
             done
         done
     } | sort -u > "$STATE/hbfiles"
+    dbg "DISCOVER hbfiles" "$(while read -r f; do echo "$f age=$(hb_age "$f") mapped=$(map_file "$f")"; done < "$STATE/hbfiles")"
     while read -r f; do
         [ -f "$f" ] || continue
         p=$(map_file "$f")
@@ -222,6 +273,36 @@ map_save() {
     echo "[HB] $n -> $p (da luu vao $ACC_FILE)"
 }
 
+# file heartbeat dang tuoi (<= REMAP_FRESH) nhung chua biet thuoc tab nao
+cand_files() {
+    local f a
+    [ -f "$STATE/hbfiles" ] || return 0
+    while read -r f; do
+        [ -f "$f" ] || continue
+        a=$(hb_age "$f")
+        [ -n "$a" ] && [ "$a" -le "$REMAP_FRESH" ] || continue
+        [ -z "$(map_file "$f")" ] && echo "$f"
+    done < "$STATE/hbfiles"
+}
+
+# tab dang chay nhung khong co file heartbeat nao (da map) con tuoi
+orphan_pkgs() {
+    local p f a ok
+    for p in $LIST_CLONE; do
+        [ -n "$(get_pid "$p")" ] || continue
+        ok=0
+        if [ -f "$STATE/hbfiles" ]; then
+            while read -r f; do
+                [ -f "$f" ] || continue
+                [ "$(map_file "$f")" = "$p" ] || continue
+                a=$(hb_age "$f")
+                if [ -n "$a" ] && [ "$a" -le "$REMAP_FRESH" ]; then ok=1; break; fi
+            done < "$STATE/hbfiles"
+        fi
+        [ "$ok" = "0" ] && echo "$p"
+    done
+}
+
 # so file heartbeat dang tuoi nhung chua biet thuoc tab nao
 unmapped_fresh() {
     local f a c=0
@@ -235,25 +316,28 @@ unmapped_fresh() {
     echo "$c"
 }
 
+# Dang nhap acc moi vao 1 tab: tab do khong con file heartbeat tuoi + co dung 1 file moi chua map => ghep luon (khong can kill)
+remap() {
+    local C O NC NO f p
+    C=$(cand_files); O=$(orphan_pkgs)
+    NC=$(echo "$C" | grep -c .); NO=$(echo "$O" | grep -c .)
+    dbg "REMAP cand=$NC orphan=$NO" "candidates: $(echo $C)  orphans: $(echo $O)"
+    if [ "$NC" -eq 1 ] && [ "$NO" -eq 1 ]; then
+        f=$(echo "$C" | grep .); p=$(echo "$O" | grep .)
+        echo "$(date +%T) [REMAP] $(basename "$f") -> $p (acc moi dang nhap vao tab nay)"
+        map_save "$f" "$p"
+    fi
+}
+
 # Tu doan acc nao la tab nao: tat tung tab, xem file heartbeat nao ngung cap nhat.
 calibrate() {
-    local UF="" UP="" f p a K cand NUF REM NOWC
+    local UF UP f p a K cand NUF REM NOWC LASTC
     NOWC=$(date +%s)
     [ $((NOWC - START)) -ge "$CAL_MIN_UP" ] || return 0
     [ -f "$STATE/hbfiles" ] || return 0
-    while read -r f; do
-        [ -f "$f" ] || continue
-        [ -n "$(map_file "$f")" ] && continue
-        a=$(hb_age "$f")
-        if [ -n "$a" ] && [ "$a" -le "$CAL_FRESH" ]; then UF="$UF$f
-"; fi
-    done < "$STATE/hbfiles"
-    for p in $LIST_CLONE; do
-        [ -n "$(get_pid "$p")" ] || continue
-        f=$(rv "hb_$p" "")
-        if [ -z "$f" ] || [ ! -f "$f" ]; then UP="$UP$p
-"; fi
-    done
+    LASTC=$(rv "cal_last" 0)
+    [ $((NOWC - LASTC)) -ge "$CAL_COOLDOWN" ] || return 0
+    UF=$(cand_files); UP=$(orphan_pkgs)
     NUF=$(echo "$UF" | grep -c .); REM=$(echo "$UP" | grep -c .)
     if [ "$NUF" -eq 0 ] || [ "$REM" -eq 0 ]; then return 0; fi
     if [ "$NUF" -gt "$REM" ]; then
@@ -265,7 +349,7 @@ calibrate() {
     fi
     # con tab dang load thi doi them, tru khi da qua lau
     if [ "$NUF" -lt "$REM" ] && [ $((NOWC - START)) -lt $((JOIN_GRACE * 2)) ]; then return 0; fi
-    : > "$STATE/cal_done"
+    wv "cal_last" "$NOWC"
     echo "[CAL] $NUF file chua ro tab nao, thu tat tung tab de doan (~${CAL_WAIT}s/tab)"
     for p in $UP; do
         NUF=$(echo "$UF" | grep -c .)
@@ -276,12 +360,13 @@ calibrate() {
             break
         fi
         echo "[CAL] tat thu $p ..."
+        for f in $UF; do wv "a0_$(basename "$f")" "$(hb_age "$f")"; done
         kill_tab "$p"
         sleep "$CAL_WAIT"
         cand=""; K=0
         for f in $UF; do
             a=$(hb_age "$f")
-            if [ -n "$a" ] && [ "$a" -gt "$CAL_THRESH" ]; then cand="$f"; K=$((K + 1)); fi
+            if [ -n "$a" ] && [ "$a" -gt "$CAL_THRESH" ] && [ "$a" -ge $(( $(rv "a0_$(basename "$f")" 0) + CAL_WAIT - 10 )) ]; then cand="$f"; K=$((K + 1)); fi
         done
         if [ "$K" -eq 1 ]; then
             map_save "$cand" "$p"
@@ -290,7 +375,7 @@ calibrate() {
             echo "[CAL] $p: khong chac file nao (K=$K), bo qua"
         fi
         launch_app "$p"
-        wv "launch_$p" "$(date +%s)"; wv "up_$p" "$(date +%s)"
+        wv "launch_$p" "$(date +%s)"; wv "up_$p" "$(date +%s)"; wv "lt_$p" "$(date +%s)"
         sleep "$LAUNCH_WAIT"
         REM=$((REM - 1))
     done
@@ -300,6 +385,34 @@ calibrate() {
     else
         echo "[CAL] xong, da map het."
     fi
+}
+
+# nguong "heartbeat da dung" theo chu ky ghi cua Lua (truong thu 3 trong file), mac dinh chu ky 30s
+hb_fast_stale() {
+    local I
+    I=$(cut -d, -f3 "$1" 2>/dev/null | tr -cd '0-9')
+    echo $(( ${I:-30} * 4 + 10 ))
+}
+
+# day lai vao game bang link (KHONG kill app)
+soft_push() {   # $1=package $2=so tab $3=ly do
+    local N
+    N=$(date +%s)
+    echo "$(date +%T) [DAY LAI] Tab $2 ($1): $3 -> day lai vao game (chua kill)"
+    dbg "ACTION soft_push tab=$2 pkg=$1 why=$3"
+    launch_app "$1"
+    wv "launch_$1" "$((N - JOIN_GRACE + SOFT_GRACE))"
+    wv "stage_$1" 1; wv "lt_$1" "$N"; wv "up_$1" "$N"
+    EVENTS="${EVENTS}Tab $2 (\`$1\`): $3 -> day lai vao game (chua kill)\\n"
+}
+
+# tab da mo san luc bat script thi khong can cho het JOIN_GRACE, chi cho INITIAL_WAIT
+init_tabs() {
+    local p
+    for p in $LIST_CLONE; do
+        wv "lt_$p" "$((START - KICK_STALE))"
+        if [ -n "$(get_pid "$p")" ]; then wv "launch_$p" "$((START - JOIN_GRACE + INITIAL_WAIT))"; fi
+    done
 }
 
 # $1=package $2=so tab $3=ly do $4=1 neu can kill truoc $5=1 neu la restart dinh ky
@@ -317,6 +430,7 @@ restart_tab() {
             PINGMSG="${PINGMSG}Tab $2 da restart $C lan lien tiep van chua vao duoc game. Kiem tra acc/autoexec.\\n"
         fi
     fi
+    dbg "ACTION restart tab=$2 pkg=$1 kill=$4 sched=$5 why=$3"
     R=$(( $(rv "rj_$1" 0) + 1 )); wv "rj_$1" "$R"
     TOTAL_RESTART=$((TOTAL_RESTART + 1))
     if [ "$4" = "1" ]; then
@@ -325,6 +439,6 @@ restart_tab() {
     fi
     launch_app "$1"
     N=$(date +%s)
-    wv "launch_$1" "$N"; wv "up_$1" "$N"; wv "stage_$1" 0
+    wv "launch_$1" "$N"; wv "up_$1" "$N"; wv "stage_$1" 0; wv "lt_$1" "$N"
     sleep "$LAUNCH_WAIT"
 }
