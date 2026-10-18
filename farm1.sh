@@ -35,7 +35,7 @@ WATCH_INTERVAL=${WATCH_INTERVAL:-1}     # giay giua 2 lan kiem tra bong bong
 REOPEN_COOLDOWN=${REOPEN_COOLDOWN:-8}   # toi thieu X giay giua 2 lan bat lai cung 1 tab
 REJOIN_CHECK=${REJOIN_CHECK:-10}        # sau khi bat lai tab, cho X giay roi kiem tra game con song khong
 LAUNCH_RETRY=${LAUNCH_RETRY:-20}        # sau khi gui link vao game X giay ma chua co heartbeat moi thi gui lai 1 lan (0 = tat)
-ACT_GAP=${ACT_GAP:-25}                  # cach nhau it nhat X giay giua 2 lan mo/restart tab (tranh het RAM do mo nhieu tab cung luc)
+ACT_GAP=${ACT_GAP:-15}                  # cach nhau it nhat X giay giua 2 lan mo/restart tab (tranh het RAM do mo nhieu tab cung luc)
 REMAP_FRESH=${REMAP_FRESH:-100}         # heartbeat moi hon X giay moi tinh la dang chay (de doan acc moi dang nhap vao tab nao)
 KILLER=${KILLER:-kill}
 DEBUG=${DEBUG:-1}                       # 1 = ghi log chi tiet vao file (khong lam roi man hinh)
