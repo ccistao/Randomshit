@@ -11,7 +11,6 @@ fi
 
 # ---------- CAU HINH ----------
 PLACE_ID="2753915549"
-DISCORD_USER_ID="982107241371013132"
 FILTER="roblox|delta|aya"
 CHECK_INTERVAL=${CHECK_INTERVAL:-10}    # giay giua cac lan kiem tra
 STALE=${STALE:-210}                     # heartbeat cu hon X giay -> coi la ket / o sanh
@@ -19,11 +18,10 @@ JOIN_GRACE=${JOIN_GRACE:-210}           # sau khi mo app, cho toi da X giay de v
 SOFT_GRACE=${SOFT_GRACE:-150}           # sau khi day lai vao game (chua kill), cho them X giay roi moi kill
 LAUNCH_WAIT=${LAUNCH_WAIT:-5}
 KILL_WAIT=${KILL_WAIT:-2}
-MAX_RUN=${MAX_RUN:-7200}                # chay lien tuc X giay thi tu restart cho do lag (0 = tat)
-SCHED_GAP=${SCHED_GAP:-60}              # cach nhau it nhat X giay giua 2 lan restart dinh ky
-REPORT_EVERY=${REPORT_EVERY:-3600}      # bao cao dinh ky kem anh chup (khong ping)
-OFFLINE_ALERT=${OFFLINE_ALERT:-600}     # tat ca tab mat heartbeat qua X giay moi ping
-MIN_RAM=${MIN_RAM:-300}                 # RAM trong thap hon X MB thi bao (khong ping)
+CYCLE_RUN=${CYCLE_RUN:-28800}            # treo lien tuc X giay (mac dinh 8 tieng) roi tat het cac tab de nghi, bat ke dang o dau (0 = tat)
+CYCLE_REST=${CYCLE_REST:-5400}          # nghi X giay (mac dinh 1 tieng 30 phut) roi tu mo lai tat ca
+OFFLINE_ALERT=${OFFLINE_ALERT:-600}     # tat ca tab mat heartbeat qua X giay thi in canh bao tren man hinh
+MIN_RAM=${MIN_RAM:-300}                 # RAM trong thap hon X MB thi in canh bao tren man hinh
 ENABLE_WATCH=${ENABLE_WATCH:-1}         # 1 = tu bat lai tab bi thu nho thanh bong bong
 AUTO_CAL=${AUTO_CAL:-1}                 # 1 = tu doan acc nao la tab nao (tat thu tung tab, chi 1 lan)
 CAL_WAIT=${CAL_WAIT:-60}
@@ -44,26 +42,12 @@ DEBUG=${DEBUG:-1}                       # 1 = ghi log chi tiet vao file (khong l
 DEBUG_LOG=${DEBUG_LOG:-/data/local/tmp/farm_debug.log}
 
 STATE=${STATE:-/data/local/tmp/farmstate}
-WH_B64=${WH_B64:-/data/local/tmp/.wh}              # webhook ma hoa base64
-WH_TXT=${WH_TXT:-/data/local/tmp/webhook.txt}      # hoac webhook dang chu thuong
 ACC_FILE=${ACC_FILE:-/data/local/tmp/accounts.txt} # moi dong "username package" (script tu ghi)
 PAUSE_FILE=${PAUSE_FILE:-/data/local/tmp/farm_pause}
-HB_SHARED=${HB_SHARED:-"/sdcard/Delta /storage/emulated/0/Delta /sdcard"}
+HB_SHARED=${HB_SHARED:-"/storage/emulated/0/Delta /sdcard/Delta"}
 HB_PKGBASE=${HB_PKGBASE:-"/sdcard/Android/data /data/data"}
 DATA_DIR=${DATA_DIR:-/data/data}
 # ------------------------------
-
-WEBHOOK_URL=""
-if [ -f "$WH_B64" ]; then
-    WEBHOOK_URL=$(base64 -d "$WH_B64" 2>/dev/null || toybox base64 -d "$WH_B64" 2>/dev/null)
-fi
-if [ -z "$WEBHOOK_URL" ] && [ -f "$WH_TXT" ]; then
-    WEBHOOK_URL=$(tr -d '\r\n ' < "$WH_TXT")
-fi
-if [ -z "$WEBHOOK_URL" ]; then
-    echo "[TUY CHON] gui link webhook neu muon thong bao ve discord"
-    echo "           echo \"LINK_WEBHOOK\" > $WH_TXT   (khong co thi script van chay binh thuong)"
-fi
 
 LIST_CLONE=$(pm list packages -3 | cut -d: -f2 | grep -iE "$FILTER" | tr -d '\r')
 if [ -z "$LIST_CLONE" ]; then
@@ -79,12 +63,7 @@ mkdir -p "$STATE"
 : > "$DEBUG_LOG" 2>/dev/null
 
 START=$(date +%s)
-TOTAL_RESTART=0
-LAST_REPORT=$START
 LOOP=0
-EVENTS=""
-PINGMSG=""
-PING=0
 
 rv() { local V; V=$(cat "$STATE/$1" 2>/dev/null | tr -d '\r\n'); echo "${V:-$2}"; }
 wv() { echo "$2" > "$STATE/$1"; }
@@ -109,34 +88,6 @@ for p in $LIST_CLONE; do
     wv "launch_$p" "$START"
     wv "up_$p" "$START"
 done
-
-send_discord() {   # $1=noi dung (de @mention) $2=mau $3=tieu de $4=mo ta
-    local MEM U UPT FIELDS JSON RESP CODE
-    [ -z "$WEBHOOK_URL" ] && return 0
-    MEM=$(awk '/MemAvailable/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null)
-    U=$(( $(date +%s) - START )); UPT="$((U/3600))h$(((U%3600)/60))m"
-    FIELDS="[{\"name\":\"RAM trong\",\"value\":\"${MEM:-0}MB\",\"inline\":true},{\"name\":\"Uptime\",\"value\":\"$UPT\",\"inline\":true},{\"name\":\"Tong restart\",\"value\":\"$TOTAL_RESTART\",\"inline\":true}]"
-    JSON="{\"content\":\"$1\",\"embeds\":[{\"title\":\"$3\",\"description\":\"$4\",\"color\":$2,\"fields\":$FIELDS,\"footer\":{\"text\":\"$(date +%H:%M:%S)\"}}]}"
-    RESP=$(curl -s -4 --connect-timeout 5 -m 15 --retry 2 \
-        -H "Content-Type: application/json" -X POST -d "$JSON" \
-        -w "\n%{http_code}" "$WEBHOOK_URL" 2>&1)
-    CODE=$(echo "$RESP" | tail -n 1 | tr -cd '0-9')
-    case "$CODE" in
-        200|204) ;;
-        401|404) echo "[Discord] LOI HTTP $CODE: webhook sai hoac da bi xoa -> tao webhook moi" ;;
-        *) echo "[Discord] LOI HTTP ${CODE:-khong co phan hoi}" ;;
-    esac
-}
-
-send_screenshot() {
-    local FILE="/data/local/tmp/screen.png"
-    [ -z "$WEBHOOK_URL" ] && return 0
-    screencap -p "$FILE" 2>/dev/null || return 0
-    curl -s -4 --connect-timeout 5 -m 30 -X POST "$WEBHOOK_URL" \
-        -F "payload_json={\"embeds\":[{\"title\":\"ANH CHUP MAN HINH DINH KY\",\"color\":3066993,\"image\":{\"url\":\"attachment://screen.png\"}}]}" \
-        -F "file=@$FILE" > /dev/null 2>&1
-    rm -f "$FILE"
-}
 
 get_pid() {
     local P
@@ -235,7 +186,17 @@ discover_hb() {
                 find "$b/$p" -maxdepth 9 -name 'farmhb_*.txt' 2>/dev/null
             done
         done
-    } | sort -u > "$STATE/hbfiles"
+    } | sort -u | {
+        # cung 1 file that co the hien qua nhieu duong dan (/sdcard va /storage/emulated/0) -> chi giu 1 dong cho moi ten file
+        SEEN=""
+        while read -r f; do
+            b=${f##*/}
+            case "$SEEN" in
+                *"|$b|"*) ;;
+                *) SEEN="$SEEN|$b|"; echo "$f" ;;
+            esac
+        done
+    } > "$STATE/hbfiles"
     dbg "DISCOVER hbfiles" "$(while read -r f; do echo "$f age=$(hb_age "$f") mapped=$(map_file "$f")"; done < "$STATE/hbfiles")"
     while read -r f; do
         [ -f "$f" ] || continue
@@ -331,7 +292,7 @@ remap() {
 
 # Tu doan acc nao la tab nao: tat tung tab, xem file heartbeat nao ngung cap nhat.
 calibrate() {
-    local UF UP f p a K cand NUF REM NOWC LASTC
+    local UF UP f p a K cand NUF REM NOWC LASTC FAILS
     NOWC=$(date +%s)
     [ $((NOWC - START)) -ge "$CAL_MIN_UP" ] || return 0
     [ -f "$STATE/hbfiles" ] || return 0
@@ -350,6 +311,7 @@ calibrate() {
     # con tab dang load thi doi them, tru khi da qua lau
     if [ "$NUF" -lt "$REM" ] && [ $((NOWC - START)) -lt $((JOIN_GRACE * 2)) ]; then return 0; fi
     wv "cal_last" "$NOWC"
+    FAILS=0
     echo "[CAL] $NUF file chua ro tab nao, thu tat tung tab de doan (~${CAL_WAIT}s/tab)"
     for p in $UP; do
         NUF=$(echo "$UF" | grep -c .)
@@ -371,13 +333,20 @@ calibrate() {
         if [ "$K" -eq 1 ]; then
             map_save "$cand" "$p"
             UF=$(echo "$UF" | grep -vxF "$cand")
+            FAILS=0
         else
             echo "[CAL] $p: khong chac file nao (K=$K), bo qua"
+            FAILS=$((FAILS + 1))
         fi
         launch_app "$p"
         wv "launch_$p" "$(date +%s)"; wv "up_$p" "$(date +%s)"; wv "lt_$p" "$(date +%s)"
         sleep "$LAUNCH_WAIT"
         REM=$((REM - 1))
+        if [ "$FAILS" -ge 2 ]; then
+            echo "[CAL] doan sai 2 lan lien tiep -> dung, khong tat them tab nao. Hay ghi tay $ACC_FILE"
+            wv "cal_last" "$(( $(date +%s) + CAL_COOLDOWN * 2 ))"
+            return 0
+        fi
     done
     NUF=$(echo "$UF" | grep -c .)
     if [ "$NUF" -gt 0 ]; then
@@ -403,7 +372,6 @@ soft_push() {   # $1=package $2=so tab $3=ly do
     launch_app "$1"
     wv "launch_$1" "$((N - JOIN_GRACE + SOFT_GRACE))"
     wv "stage_$1" 1; wv "lt_$1" "$N"; wv "up_$1" "$N"
-    EVENTS="${EVENTS}Tab $2 (\`$1\`): $3 -> day lai vao game (chua kill)\\n"
 }
 
 # tab da mo san luc bat script thi khong can cho het JOIN_GRACE, chi cho INITIAL_WAIT
@@ -415,24 +383,26 @@ init_tabs() {
     done
 }
 
-# $1=package $2=so tab $3=ly do $4=1 neu can kill truoc $5=1 neu la restart dinh ky
+# mo tab sau gio nghi: khong tinh la loi, khong dem restart, khong gui tin
+open_tab() {   # $1=package $2=so tab
+    local N
+    echo "$(date +%T) [MO] Tab $2 ($1): mo lai sau gio nghi"
+    dbg "ACTION open_after_rest tab=$2 pkg=$1"
+    launch_app "$1"
+    N=$(date +%s)
+    wv "launch_$1" "$N"; wv "up_$1" "$N"; wv "stage_$1" 0; wv "lt_$1" "$N"
+    sleep "$LAUNCH_WAIT"
+}
+
+# $1=package $2=so tab $3=ly do $4=1 neu can kill truoc
 restart_tab() {
     local C R N
-    if [ "$5" = "1" ]; then
-        echo "$(date +%T) [DINH KY] Tab $2 ($1): $3"
-        EVENTS="${EVENTS}Tab $2 (\`$1\`): $3\\n"
-    else
-        C=$(( $(rv "consec_$1" 0) + 1 )); wv "consec_$1" "$C"
-        echo "$(date +%T) [RESTART] Tab $2 ($1): $3 (lan $C lien tiep)"
-        EVENTS="${EVENTS}Tab $2 (\`$1\`): $3 -> restart (lan $C)\\n"
-        if [ "$C" -eq 3 ] || { [ "$C" -gt 3 ] && [ $((C % 10)) -eq 0 ]; }; then
-            PING=1
-            PINGMSG="${PINGMSG}Tab $2 da restart $C lan lien tiep van chua vao duoc game. Kiem tra acc/autoexec.\\n"
-        fi
+    C=$(( $(rv "consec_$1" 0) + 1 )); wv "consec_$1" "$C"
+    echo "$(date +%T) [RESTART] Tab $2 ($1): $3 (lan $C lien tiep)"
+    if [ "$C" -eq 3 ] || { [ "$C" -gt 3 ] && [ $((C % 10)) -eq 0 ]; }; then
+        echo "$(date +%T) [CANH BAO] Tab $2 ($1) da restart $C lan lien tiep van chua vao duoc game. Kiem tra acc / autoexec."
     fi
-    dbg "ACTION restart tab=$2 pkg=$1 kill=$4 sched=$5 why=$3"
     R=$(( $(rv "rj_$1" 0) + 1 )); wv "rj_$1" "$R"
-    TOTAL_RESTART=$((TOTAL_RESTART + 1))
     if [ "$4" = "1" ]; then
         kill_tab "$1"
         sleep "$KILL_WAIT"
