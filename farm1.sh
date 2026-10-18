@@ -1,7 +1,6 @@
 #!/system/bin/sh
 echo "== farm v6 =="
 
-# ---- kiem tra file co bi loi ky tu la khi copy-paste khong ----
 P1='ver'; P2='t{}'; BS='\'
 if [ -r "$0" ] && { grep -qF "${P1}${P2}" "$0" 2>/dev/null || grep -qF "${BS}%{" "$0" 2>/dev/null; }; then
     printf '[!] File script bi loi ky tu la (%s%s%s hoac %s%%) do copy-paste.\n' "$BS" "$P1" "$P2" "$BS"
@@ -34,7 +33,7 @@ INITIAL_WAIT=${INITIAL_WAIT:-100}
 WATCH_INTERVAL=${WATCH_INTERVAL:-1}
 REOPEN_COOLDOWN=${REOPEN_COOLDOWN:-8}
 REJOIN_CHECK=${REJOIN_CHECK:-10}
-LAUNCH_RETRY=${LAUNCH_RETRY:-20}
+LAUNCH_RETRY=${LAUNCH_RETRY:-30} # Tang thoi gian cho them 10s tranh spam gui link
 ACT_GAP=${ACT_GAP:-25}
 REMAP_FRESH=${REMAP_FRESH:-100}
 KILLER=${KILLER:-kill}
@@ -114,7 +113,6 @@ send_join() {
     local target_id="$PLACE_ID"
     local hbf=$(rv "hb_$p" "")
     
-    # Doc ID game ma Lua da yeu cau truoc khi tu sat
     if [ -n "$hbf" ] && [ -f "$hbf" ]; then
         local bname=$(basename "$hbf" .txt)
         local cid=${bname#farmhb_}
@@ -213,7 +211,6 @@ discover_hb() {
             b=$(basename "$f")
             if [ ! -f "$STATE/w_$b" ]; then
                 : > "$STATE/w_$b"
-                echo "[HB] $b: chua biet thuoc tab nao"
             fi
             continue
         fi
@@ -223,7 +220,7 @@ discover_hb() {
         else
             ca=$(hb_age "$f"); oa=$(hb_age "$cur")
             if [ -n "$ca" ] && [ -n "$oa" ] && [ $((ca + 5)) -lt "$oa" ]; then
-                wv "hb_$p" "$f"; echo "[HB] $(basename "$f") -> $p"
+                wv "hb_$p" "$f"
             fi
         fi
     done < "$STATE/hbfiles"
@@ -306,7 +303,6 @@ calibrate() {
     if [ "$NUF" -gt "$REM" ]; then
         if [ ! -f "$STATE/cal_warn" ]; then
             : > "$STATE/cal_warn"
-            echo "[CAL] co $NUF file dang chay nhung chi $REM tab chua map -> khong hieu chuan duoc, hay ghi tay $ACC_FILE"
         fi
         return 0
     fi
@@ -344,17 +340,11 @@ calibrate() {
         sleep "$LAUNCH_WAIT"
         REM=$((REM - 1))
         if [ "$FAILS" -ge 2 ]; then
-            echo "[CAL] doan sai 2 lan lien tiep -> dung, khong tat them tab nao. Hay ghi tay $ACC_FILE"
+            echo "[CAL] doan sai 2 lan lien tiep -> dung, khong tat them tab nao."
             wv "cal_last" "$(( $(date +%s) + CAL_COOLDOWN * 2 ))"
             return 0
         fi
     done
-    NUF=$(echo "$UF" | grep -c .)
-    if [ "$NUF" -gt 0 ]; then
-        echo "[CAL] xong, con $NUF file chua map duoc: them dong 'username package' vao $ACC_FILE"
-    else
-        echo "[CAL] xong, da map het."
-    fi
 }
 
 hb_fast_stale() {
@@ -363,28 +353,16 @@ hb_fast_stale() {
     echo $(( ${I:-30} * 4 + 10 ))
 }
 
-# ==================================================
-# FIX LOI KET SANH: BAT BUOC KILL TRUOC KHI DAY LINK
-# ==================================================
 soft_push() { 
     local N
     N=$(date +%s)
     echo "$(date +%T) [DAY LAI] Tab $2 ($1): $3 -> Kill va day lai vao game"
-    dbg "ACTION soft_push tab=$2 pkg=$1 why=$3"
     
-    # KILL luon de dam bao Deep Link hoat dong khi kẹt sảnh
     kill_tab "$1"
     sleep "$KILL_WAIT"
 
-    # Goi app de doc target roi moi xoa bo nho
+    # CHI DAY LINK, KHONG XOA TRI NHO NUA
     launch_app "$1"
-
-    # Xoa bo nho tam de update acc/game moi
-    rm -f "$STATE/hb_$1"
-    if [ -f "$ACC_FILE" ]; then
-        grep -v "[[:space:]]$1$" "$ACC_FILE" > "$ACC_FILE.tmp" 2>/dev/null
-        mv "$ACC_FILE.tmp" "$ACC_FILE"
-    fi
 
     wv "launch_$1" "$((N - JOIN_GRACE + SOFT_GRACE))"
     wv "stage_$1" 1; wv "lt_$1" "$N"; wv "up_$1" "$N"
@@ -401,7 +379,6 @@ init_tabs() {
 open_tab() {
     local N
     echo "$(date +%T) [MO] Tab $2 ($1): mo lai sau gio nghi"
-    dbg "ACTION open_after_rest tab=$2 pkg=$1"
     launch_app "$1"
     N=$(date +%s)
     wv "launch_$1" "$N"; wv "up_$1" "$N"; wv "stage_$1" 0; wv "lt_$1" "$N"
@@ -412,32 +389,21 @@ restart_tab() {
     local C R N
     C=$(( $(rv "consec_$1" 0) + 1 )); wv "consec_$1" "$C"
     echo "$(date +%T) [RESTART] Tab $2 ($1): $3 (lan $C lien tiep)"
-    if [ "$C" -eq 3 ] || { [ "$C" -gt 3 ] && [ $((C % 10)) -eq 0 ]; }; then
-        echo "$(date +%T) [CANH BAO] Tab $2 ($1) da restart $C lan lien tiep van chua vao duoc game. Kiem tra acc / autoexec."
-    fi
     R=$(( $(rv "rj_$1" 0) + 1 )); wv "rj_$1" "$R"
-    
+
     if [ "$4" = "1" ]; then
         kill_tab "$1"
         sleep "$KILL_WAIT"
     fi
 
-    # Goi app de doc target roi moi xoa bo nho
+    # CHI DAY LINK, KHONG XOA TRI NHO NUA
     launch_app "$1"
-
-    # Xoa bo nho tam de update acc/game moi
-    rm -f "$STATE/hb_$1"
-    if [ -f "$ACC_FILE" ]; then
-        grep -v "[[:space:]]$1$" "$ACC_FILE" > "$ACC_FILE.tmp" 2>/dev/null
-        mv "$ACC_FILE.tmp" "$ACC_FILE"
-    fi
 
     N=$(date +%s)
     wv "launch_$1" "$N"; wv "up_$1" "$N"; wv "stage_$1" 0; wv "lt_$1" "$N"
     sleep "$LAUNCH_WAIT"
 }
 
-# Theo doi bong bong tab
 watch_visible() {
     local W A a L N S V ST BLK H KEY OLD HBF AGE TH PEND
     while true; do
@@ -472,7 +438,6 @@ watch_visible() {
                     if [ -n "$AGE" ] && [ "$AGE" -le "$TH" ]; then
                         :
                     elif [ -n "$AGE" ] && [ $((N - AGE)) -gt "$(rv "lt_$a" 0)" ] && [ $((N - $(rv "fastrj_$a" 0))) -ge 60 ]; then
-                        echo "$(date +%T) [REJOIN NHANH] $a: bi an -> game da dung ${AGE}s -> vao game lai"
                         wv "fastrj_$a" "$N"
                         launch_app "$a"
                         wv "launch_$a" "$N"; wv "up_$a" "$N"; wv "stage_$a" 0; wv "lt_$a" "$N"; wv "gap_$a" 1
@@ -498,7 +463,7 @@ watch_visible() {
 
 trap 'kill $WATCH_PID 2>/dev/null; exit 0' INT TERM
 
-echo "--- BAT DAU CANH TAB (tam dung: touch $PAUSE_FILE) ---"
+echo "--- BAT DAU CANH TAB ---"
 
 init_tabs
 WATCH_PID=""
@@ -524,7 +489,6 @@ while true; do
     LOOP=$((LOOP + 1))
 
     if [ -f "$PAUSE_FILE" ]; then
-        echo "$(date +%T) [PAUSE] xoa $PAUSE_FILE de chay tiep"
         sleep "$CHECK_INTERVAL"
         continue
     fi
@@ -536,17 +500,11 @@ while true; do
             for p in $LIST_CLONE; do
                 wv "consec_$p" 0; wv "stage_$p" 0; wv "gap_$p" 0; wv "up_$p" "$NOW"
             done
-            echo "$(date +%T) [BAT LAI] het gio nghi, mo lai $TOTAL_CLONE tab (moi tab cach nhau ${ACT_GAP}s)"
         else
-            if [ $((NOW - LAST_REST_PRINT)) -ge 60 ]; then
-                echo "$(date +%T) [NGHI] con $(( (REST_UNTIL - NOW) / 60 )) phut nua se mo lai"
-                LAST_REST_PRINT=$NOW
-            fi
             sleep "$CHECK_INTERVAL"
             continue
         fi
     elif [ "$CYCLE_RUN" -gt 0 ] && [ $((NOW - CYCLE_START)) -ge "$CYCLE_RUN" ]; then
-        echo "$(date +%T) [NGHI] da treo $((CYCLE_RUN / 3600))h$(((CYCLE_RUN % 3600) / 60))m -> tat het cac tab, nghi $((CYCLE_REST / 60)) phut"
         : > "$STATE/resting"
         for p in $LIST_CLONE; do
             kill_tab "$p"
@@ -627,7 +585,7 @@ while true; do
             LINE="$LINE T$IDX:chua-map"
         else
             wv "gap_$p" 1
-            WHY="chua co heartbeat moi (chua vao game / loi doi acc)"
+            WHY="chua co heartbeat moi (chua vao game)"
             
             if ! act_ok; then
                 LINE="$LINE T$IDX:xep-hang"
@@ -646,18 +604,8 @@ while true; do
 
     if [ "$OK_COUNT" -eq 0 ]; then
         [ "$OFFLINE_SINCE" -eq 0 ] && OFFLINE_SINCE=$NOW
-        if [ $((NOW - OFFLINE_SINCE)) -ge "$OFFLINE_ALERT" ] && [ "$OFFLINE_ALERTED" -eq 0 ]; then
-            OFFLINE_ALERTED=1
-            echo "$(date +%T) [CANH BAO] Khong tab nao co heartbeat tu $((OFFLINE_ALERT/60)) phut."
-        fi
     else
         OFFLINE_SINCE=0; OFFLINE_ALERTED=0
-    fi
-
-    MEM_NOW=$(awk '/MemAvailable/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null)
-    if [ -n "$MEM_NOW" ] && [ "$MEM_NOW" -lt "$MIN_RAM" ] && [ $((NOW - LAST_RAM_WARN)) -ge 1800 ]; then
-        LAST_RAM_WARN=$NOW
-        echo "$(date +%T) [CANH BAO] RAM trong con ${MEM_NOW}MB"
     fi
 
     [ $((LOOP % 60)) -eq 0 ] && dbg_trim
