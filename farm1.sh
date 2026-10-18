@@ -10,7 +10,7 @@ if [ -r "$0" ] && { grep -qF "${P1}${P2}" "$0" 2>/dev/null || grep -qF "${BS}%{"
 fi
 
 # ---------- CAU HINH ----------
-PLACE_ID="2753915549"
+PLACE_ID="123974602339071"
 FILTER="roblox|delta|aya"
 CHECK_INTERVAL=${CHECK_INTERVAL:-10}    # giay giua cac lan kiem tra
 STALE=${STALE:-210}                     # heartbeat cu hon X giay -> coi la ket / o sanh
