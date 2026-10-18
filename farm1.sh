@@ -10,8 +10,7 @@ if [ -r "$0" ] && { grep -qF "${P1}${P2}" "$0" 2>/dev/null || grep -qF "${BS}%{"
 fi
 
 # ---------- CAU HINH ----------
-# ĐỂ BASEPLATE LÀ GAME KHỞI ĐỘNG ĐẦU TIÊN GIÚP TAB MỞ LÊN SIÊU NHẸ
-PLACE_ID="123974602339071"
+PLACE_ID="123974602339071" # Baseplate lam game vao cua
 FILTER="roblox|delta|aya"
 CHECK_INTERVAL=${CHECK_INTERVAL:-10}
 STALE=${STALE:-210}
@@ -110,9 +109,6 @@ kill_tab() {
     fi
 }
 
-# ==================================================
-# HAM SEND JOIN NANG CAP: DOC MUC TIEU GAME TU LUA
-# ==================================================
 send_join() {
     local p="$1"
     local target_id="$PLACE_ID"
@@ -368,22 +364,28 @@ hb_fast_stale() {
 }
 
 # ==================================================
-# HAM PUSH VA RESTART TICH HOP XOA TRI NHO (FIX LOI DOI ACC)
+# FIX LOI KET SANH: BAT BUOC KILL TRUOC KHI DAY LINK
 # ==================================================
 soft_push() { 
     local N
     N=$(date +%s)
-    echo "$(date +%T) [DAY LAI] Tab $2 ($1): $3 -> day lai vao game (chua kill)"
+    echo "$(date +%T) [DAY LAI] Tab $2 ($1): $3 -> Kill va day lai vao game"
     dbg "ACTION soft_push tab=$2 pkg=$1 why=$3"
     
-    # Xoa bo nho tam de update acc moi
+    # KILL luon de dam bao Deep Link hoat dong khi kẹt sảnh
+    kill_tab "$1"
+    sleep "$KILL_WAIT"
+
+    # Goi app de doc target roi moi xoa bo nho
+    launch_app "$1"
+
+    # Xoa bo nho tam de update acc/game moi
     rm -f "$STATE/hb_$1"
     if [ -f "$ACC_FILE" ]; then
         grep -v "[[:space:]]$1$" "$ACC_FILE" > "$ACC_FILE.tmp" 2>/dev/null
         mv "$ACC_FILE.tmp" "$ACC_FILE"
     fi
 
-    launch_app "$1"
     wv "launch_$1" "$((N - JOIN_GRACE + SOFT_GRACE))"
     wv "stage_$1" 1; wv "lt_$1" "$N"; wv "up_$1" "$N"
 }
@@ -415,18 +417,21 @@ restart_tab() {
     fi
     R=$(( $(rv "rj_$1" 0) + 1 )); wv "rj_$1" "$R"
     
-    # Xoa bo nho tam de update acc moi
+    if [ "$4" = "1" ]; then
+        kill_tab "$1"
+        sleep "$KILL_WAIT"
+    fi
+
+    # Goi app de doc target roi moi xoa bo nho
+    launch_app "$1"
+
+    # Xoa bo nho tam de update acc/game moi
     rm -f "$STATE/hb_$1"
     if [ -f "$ACC_FILE" ]; then
         grep -v "[[:space:]]$1$" "$ACC_FILE" > "$ACC_FILE.tmp" 2>/dev/null
         mv "$ACC_FILE.tmp" "$ACC_FILE"
     fi
 
-    if [ "$4" = "1" ]; then
-        kill_tab "$1"
-        sleep "$KILL_WAIT"
-    fi
-    launch_app "$1"
     N=$(date +%s)
     wv "launch_$1" "$N"; wv "up_$1" "$N"; wv "stage_$1" 0; wv "lt_$1" "$N"
     sleep "$LAUNCH_WAIT"
@@ -575,7 +580,6 @@ while true; do
         SINCE=$((NOW - LAUNCHED))
         RUN=$((NOW - $(rv "up_$p" "$START")))
 
-        # Kich ban 1: App chet / văng / bị Lua Shutdown
         if [ -z "$PID" ]; then
             if act_ok; then
                 if [ "$((NOW - RESUME_AT))" -lt "$((ACT_GAP * TOTAL_CLONE + 120))" ]; then
@@ -625,13 +629,6 @@ while true; do
             wv "gap_$p" 1
             WHY="chua co heartbeat moi (chua vao game / loi doi acc)"
             
-            # Kich ban 2: Mat Heartbeat lau -> Xoa tri nho trong lenh day-lai
-            rm -f "$STATE/hb_$p"
-            if [ -f "$ACC_FILE" ]; then
-                grep -v "[[:space:]]$p$" "$ACC_FILE" > "$ACC_FILE.tmp" 2>/dev/null
-                mv "$ACC_FILE.tmp" "$ACC_FILE"
-            fi
-
             if ! act_ok; then
                 LINE="$LINE T$IDX:xep-hang"
             elif [ "$(rv "stage_$p" 0)" = "0" ]; then
