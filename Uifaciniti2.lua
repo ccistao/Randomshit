@@ -1930,49 +1930,28 @@ end
 
 local function isPlayerInMatchGlobal(plr)
     plr = plr or lp
-    local ga = Replicated:FindFirstChild("IsGameActive")
-    if ga and ga:IsA("BoolValue") and not ga.Value then return false end
-    local cm = Replicated:FindFirstChild("CurrentMap")
-    local map = cm and cm.Value
-    if not map or not map.Parent then return false end
-
     local stats = plr:FindFirstChild("TempPlayerStatsModule")
     if not stats then return false end
 
-    local escaped = stats:FindFirstChild("Escaped")
-    local health = stats:FindFirstChild("Health")
-    if (escaped and escaped.Value == true) or (health and health.Value <= 0) then
-        return false
-    end
-
-    local ib = stats:FindFirstChild("IsBeast")
-    if ib and ib.Value == true then
+    local isBeast = stats:FindFirstChild("IsBeast")
+    if isBeast and isBeast.Value == true then
         return true
     end
     if plr.Character and (plr.Character:FindFirstChild("Hammer") or plr.Character:FindFirstChild("BeastPowers")) then
         return true
     end
 
-    -- Kiểm tra trực tiếp trên thanh RoundBar.StatusBars của Game (tránh nhầm với ScreenGui.StatusBars rỗng)
-    local pg = lp:FindFirstChildOfClass("PlayerGui")
-    local sg = pg and pg:FindFirstChild("ScreenGui")
-    local rb = (sg and sg:FindFirstChild("RoundBar")) or (pg and pg:FindFirstChild("RoundBar", true))
-    local sb = rb and rb:FindFirstChild("StatusBars")
-    if sb then
-        local pNameLower = plr.Name:lower()
-        local pDispLower = tostring(plr.DisplayName or plr.Name):lower()
-        for _, d in ipairs(sb:GetDescendants()) do
-            if d:IsA("TextLabel") and d.Text ~= "" then
-                local txt = d.Text:lower()
-                if txt:find(pNameLower, 1, true) or txt:find(pDispLower, 1, true) then
-                    return true
-                end
-            end
-        end
+    local escaped = stats:FindFirstChild("Escaped")
+    if escaped and escaped.Value == true then
         return false
     end
 
-    return false
+    local health = stats:FindFirstChild("Health")
+    if health and health.Value <= 0 then
+        return false
+    end
+
+    return true
 end
 
 local function reloadESP()
@@ -2069,28 +2048,19 @@ local function reloadESP()
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= lp and p.Character then
                 local char = p.Character
-                local h = char:FindFirstChildOfClass("Highlight")
-                if h and not MyHub.Config.ESP.player then h:Destroy()
-                elseif not h and MyHub.Config.ESP.player then
-                    local a = Instance.new("Highlight", char)
-                    a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                    a.FillColor = Color3.fromRGB(0,255,0)
-                    a.OutlineColor = Color3.fromRGB(127,255,127)
-                    task.spawn(function()
-                        while a and a.Parent do
-                            task.wait(0.1)
-                            if getBeast()==p then
-                                a.FillColor = Color3.fromRGB(255,0,0)
-                                a.OutlineColor = Color3.fromRGB(255,127,127)
-                            elseif not isPlayerInMatchGlobal(p) then
-                                a.FillColor = Color3.fromRGB(150,150,150)
-                                a.OutlineColor = Color3.fromRGB(210,210,210)
-                            else
-                                a.FillColor = Color3.fromRGB(0,255,0)
-                                a.OutlineColor = Color3.fromRGB(127,255,127)
-                            end
-                        end
-                    end)
+                local h = char:FindFirstChild("PlayerESPHL") or char:FindFirstChildOfClass("Highlight")
+                if h and not MyHub.Config.ESP.player then
+                    h:Destroy()
+                elseif MyHub.Config.ESP.player then
+                    if not h then
+                        h = Instance.new("Highlight")
+                        h.Name = "PlayerESPHL"
+                        h.Adornee = char
+                        h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                        h.FillColor = Color3.fromRGB(0, 255, 0)
+                        h.OutlineColor = Color3.fromRGB(127, 255, 127)
+                        h.Parent = char
+                    end
                 end
             end
         end
@@ -2189,16 +2159,152 @@ task.spawn(function()
     preloadSound2:Destroy()
 end)
 
+local function isPlayerDeadOrLobby(p, stats)
+    local char = p.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum and hum.Health <= 0 then return true end
+    if not stats then return true end
+    local hp = stats:FindFirstChild("Health")
+    if hp and hp.Value <= 0 then return true end
+    local esc = stats:FindFirstChild("Escaped")
+    if esc and esc.Value == true then return true end
+    local rag = stats:FindFirstChild("Ragdoll")
+    local cap = stats:FindFirstChild("Captured")
+    if isGameActive() and char then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local lobby = workspace:FindFirstChild("FTFLobbySpring") or workspace:FindFirstChild("Lobby")
+        if hrp and lobby and lobby:IsA("Model") then
+            local lobbyPivot = lobby:GetPivot().Position
+            if (hrp.Position - lobbyPivot).Magnitude < 180 then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function updateSinglePlayerESP(p)
+    if p == lp then return end
+    local char = p.Character
+    if not char or not char.Parent then return end
+    local h = char:FindFirstChild("PlayerESPHL") or char:FindFirstChildOfClass("Highlight")
+    if not MyHub.Config.ESP.player then
+        if h then h:Destroy() end
+        return
+    end
+    if not h then
+        h = Instance.new("Highlight")
+        h.Name = "PlayerESPHL"
+        h.Adornee = char
+        h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        h.Parent = char
+    elseif h.Adornee ~= char then
+        h.Adornee = char
+    end
+
+    local stats = p:FindFirstChild("TempPlayerStatsModule")
+    local isB = stats and stats:FindFirstChild("IsBeast")
+    local cap = stats and stats:FindFirstChild("Captured")
+
+    if (isB and isB.Value == true) or getBeast() == p or char:FindFirstChild("Hammer") or char:FindFirstChild("BeastPowers") then
+        h.FillColor = Color3.fromRGB(255, 0, 0)
+        h.OutlineColor = Color3.fromRGB(255, 127, 127)
+    elseif cap and cap.Value == true then
+        h.FillColor = Color3.fromRGB(0, 120, 255)
+        h.OutlineColor = Color3.fromRGB(100, 180, 255)
+    elseif not isGameActive() or isPlayerDeadOrLobby(p, stats) then
+        h.FillColor = Color3.fromRGB(150, 150, 150)
+        h.OutlineColor = Color3.fromRGB(210, 210, 210)
+    else
+        h.FillColor = Color3.fromRGB(0, 255, 0)
+        h.OutlineColor = Color3.fromRGB(127, 255, 127)
+    end
+end
+
+local function hookPlayerESP(p)
+    if p == lp then return end
+    local function onChar(char)
+        if not char then return end
+        task.spawn(function()
+            char:WaitForChild("HumanoidRootPart", 5)
+            task.wait(0.2)
+            if MyHub.Config.ESP.player then
+                updateSinglePlayerESP(p)
+            end
+        end)
+        local hum = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 5)
+        if hum then
+            hum.Died:Connect(function()
+                task.wait(0.1)
+                updateSinglePlayerESP(p)
+            end)
+            hum:GetPropertyChangedSignal("Health"):Connect(function()
+                updateSinglePlayerESP(p)
+            end)
+        end
+    end
+    p.CharacterAdded:Connect(onChar)
+    if p.Character then task.spawn(onChar, p.Character) end
+
+    local function bindStats(stats)
+        if not stats or stats.Name ~= "TempPlayerStatsModule" then return end
+        for _, childName in ipairs({"IsBeast", "Captured", "Health", "Escaped", "Ragdoll"}) do
+            local valObj = stats:FindFirstChild(childName) or stats:WaitForChild(childName, 5)
+            if valObj and valObj:IsA("ValueBase") then
+                valObj:GetPropertyChangedSignal("Value"):Connect(function()
+                    updateSinglePlayerESP(p)
+                end)
+            end
+        end
+        stats.ChildAdded:Connect(function(ch)
+            if ch:IsA("ValueBase") then
+                ch:GetPropertyChangedSignal("Value"):Connect(function()
+                    updateSinglePlayerESP(p)
+                end)
+                updateSinglePlayerESP(p)
+            end
+        end)
+    end
+    local existingStats = p:FindFirstChild("TempPlayerStatsModule")
+    if existingStats then task.spawn(bindStats, existingStats) end
+    p.ChildAdded:Connect(function(ch)
+        if ch.Name == "TempPlayerStatsModule" then
+            bindStats(ch)
+            updateSinglePlayerESP(p)
+        end
+    end)
+    p.ChildRemoved:Connect(function(ch)
+        if ch.Name == "TempPlayerStatsModule" then
+            updateSinglePlayerESP(p)
+        end
+    end)
+end
+
+for _, p in ipairs(Players:GetPlayers()) do
+    hookPlayerESP(p)
+end
+Players.PlayerAdded:Connect(hookPlayerESP)
+
+task.spawn(function()
+    while true do
+        task.wait(0.25)
+        if MyHub.Config.ESP.player then
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= lp and p.Character then
+                    updateSinglePlayerESP(p)
+                end
+            end
+        end
+    end
+end)
+
 task.spawn(function()
     Replicated:WaitForChild("CurrentMap").Changed:Connect(function() task.wait(5); reloadESP() end)
 end)
 task.spawn(function()
-    Replicated:WaitForChild("IsGameActive").Changed:Connect(function() reloadESP() end)
-end)
-task.spawn(function()
-    Players.PlayerAdded:Connect(function(p)
-        p.CharacterAdded:Connect(function() reloadESP() end)
-        p.CharacterRemoving:Connect(function() reloadESP() end)
+    Replicated:WaitForChild("IsGameActive").Changed:Connect(function()
+        task.wait(0.5)
+        reloadESP()
     end)
 end)
 
@@ -2340,17 +2446,19 @@ local AutoFarm = (function()
 
     local function isGameActive()
         local ga = RS:FindFirstChild("IsGameActive")
-        if ga and ga:IsA("BoolValue") then
-            return ga.Value == true
+        if ga and ga:IsA("BoolValue") and ga.Value == true then
+            return true
         end
         local gs = RS:FindFirstChild("GameStatus")
         local txt = gs and tostring(gs.Value):upper() or ""
-        if txt == "" then return getMap() ~= nil end
-        if txt:find("GAME OVER") or txt:find("BEAST LEFT") or txt:find("INTERMISSION")
-            or txt:find("KET THUC") or txt:find("TRO CHOI KET THUC") then
-            return false
+        if txt ~= "" then
+            if txt:find("GAME OVER") or txt:find("BEAST LEFT") or txt:find("BEF LAI") or txt:find("INTERMISSION")
+                or txt:find("KET THUC") or txt:find("TRO CHOI KET THUC") then
+                return false
+            end
+            return true
         end
-        return true
+        return getMap() ~= nil
     end
 
     local isPlayerInMatch = isPlayerInMatchGlobal
@@ -2382,6 +2490,9 @@ local AutoFarm = (function()
     end
 
     local function isInRound()
+        if phaseHas("HACK", "HEAD START", "FIND", "ESCAPE", "LỐI RA", "LOI RA", "MÁY TÍNH", "MAY TINH") then
+            return isPlayerInMatch(player)
+        end
         if not isGameActive() then return false end
         if not getMap() then return false end
         return isPlayerInMatch(player)
@@ -3238,6 +3349,20 @@ local AutoFarm = (function()
         return best
     end
 
+    local function isPlayerRagdolled(p, hum)
+        local stats = p and p:FindFirstChild("TempPlayerStatsModule")
+        local rag = stats and stats:FindFirstChild("Ragdoll")
+        if rag and rag.Value == true then return true end
+        return hum ~= nil and hum.PlatformStand == true
+    end
+
+    local function isPlayerCaptured(p, torso)
+        local stats = p and p:FindFirstChild("TempPlayerStatsModule")
+        local cap = stats and stats:FindFirstChild("Captured")
+        if cap and cap.Value == true then return true end
+        return isCaptured(torso)
+    end
+
     local function nearestPlayer(root, filter)
         local best, bestD = nil, math.huge
         for _, p in ipairs(Players:GetPlayers()) do
@@ -3253,28 +3378,60 @@ local AutoFarm = (function()
         return best
     end
 
-    local function stepNextTo(root, torso)
-        local dir = root.Position - torso.Position
-        dir = dir.Magnitude > 0 and dir.Unit or Vector3.new(0, 0, 1)
-        root.CFrame = CFrame.new(torso.Position + dir)
-        task.wait(0.03)
+    local function stickToTarget(targetChar, offsetCF, duration, loopBody, breakCond)
+        local root = getRoot()
+        if not root or not targetChar then return end
+        local pin = true
+        local conn = RunService.Heartbeat:Connect(function()
+            if not pin or not alive or not S.enabled or S.paused then return end
+            local r = getRoot()
+            local tRoot = targetChar:FindFirstChild("HumanoidRootPart") or torsoOf(targetChar)
+            local myChar = player.Character
+            if r and tRoot and tRoot.Parent then
+                if myChar then
+                    for _, part in ipairs(myChar:GetDescendants()) do
+                        if part:IsA("BasePart") then part.CanCollide = false end
+                    end
+                end
+                local targetPos = (tRoot.CFrame * offsetCF).Position
+                r.CFrame = CFrame.lookAt(targetPos, tRoot.Position)
+                zeroVelocity(r)
+            end
+        end)
+        local t = 0
+        while alive and S.enabled and not S.paused and t < duration do
+            if breakCond and breakCond() then break end
+            if loopBody then loopBody() end
+            task.wait(0.12)
+            t += 0.12
+        end
+        pin = false
+        conn:Disconnect()
     end
 
     local function beastLoop()
         while alive do
-            task.wait(0.1)
+            task.wait(0.08)
             if not S.enabled or S.paused or not isSelfBeast() then continue end
 
-            if not isInRound() then
+            if not isGameActive() or phaseHas("HEAD START", "CHUẨN BỊ") then
                 setStatus("Beast: waiting for round...")
-                task.wait(1)
+                task.wait(0.5)
                 continue
             end
 
             local char = player.Character
             local root = getRoot()
-            local hammer = char and char:FindFirstChild("Hammer")
-            local remote = hammer and hammer:FindFirstChild("HammerEvent")
+            local remote = char and char:FindFirstChild("HammerEvent", true)
+            if not remote and char then
+                local bp = player:FindFirstChild("Backpack")
+                local hm = bp and bp:FindFirstChild("Hammer")
+                if hm then
+                    local hum = getHum()
+                    if hum then pcall(function() hum:EquipTool(hm) end) end
+                    remote = hm:FindFirstChild("HammerEvent", true)
+                end
+            end
             if not remote or not root then continue end
 
             if char:FindFirstChild("RopeConstraint", true) then
@@ -3288,45 +3445,61 @@ local AutoFarm = (function()
                 continue
             end
 
-            local ragdoll = nearestPlayer(root, function(_, hum) return hum.PlatformStand end)
-            if ragdoll then
-                local torso = torsoOf(ragdoll.Character)
+            local ragdoll = nearestPlayer(root, function(p, hum, torso)
+                return isPlayerRagdolled(p, hum) and not isPlayerCaptured(p, torso)
+            end)
+            if ragdoll and ragdoll.Character then
                 setStatus("Beast: roping " .. ragdoll.Name)
-                stepNextTo(root, torso)
-                local t = 0
-                while t < 2 do
-                    remote:FireServer("HammerTieUp", torso, torso.Position)
-                    if char:FindFirstChild("RopeConstraint", true) then break end
-                    task.wait(0.15)
-                    t += 0.15
-                end
+                stickToTarget(
+                    ragdoll.Character,
+                    CFrame.new(0, 0, 1.2),
+                    2.2,
+                    function()
+                        local torso = torsoOf(ragdoll.Character)
+                        if torso then
+                            remote:FireServer("HammerTieUp", torso, torso.Position)
+                        end
+                    end,
+                    function()
+                        return char:FindFirstChild("RopeConstraint", true) ~= nil
+                            or not ragdoll.Character
+                            or isPlayerCaptured(ragdoll, torsoOf(ragdoll.Character))
+                    end
+                )
                 task.wait(0.05)
                 continue
             end
 
-            local target = nearestPlayer(root, function(_, hum, torso)
-                return not hum.PlatformStand and not isCaptured(torso)
+            local target = nearestPlayer(root, function(p, hum, torso)
+                return not isPlayerRagdolled(p, hum) and not isPlayerCaptured(p, torso)
             end)
-            if not target then
+            if not target or not target.Character then
                 setStatus("Beast: all captured!")
-                task.wait(1)
+                task.wait(0.8)
                 continue
             end
 
-            local torso = torsoOf(target.Character)
             setStatus("Beast: hitting " .. target.Name)
-            stepNextTo(root, torso)
-            local t = 0
-            while t < 2 do
-                local h = target.Character and target.Character:FindFirstChildOfClass("Humanoid")
-                if not h or h.PlatformStand then break end
-                remote:FireServer("HammerClick", true)
-                task.wait(0.02)
-                remote:FireServer("HammerHit", torso)
-                task.wait(0.15)
-                t += 0.17
-            end
-            task.wait(0.1)
+            stickToTarget(
+                target.Character,
+                CFrame.new(0, 0, 1.5),
+                2.5,
+                function()
+                    local torso = torsoOf(target.Character)
+                    if torso then
+                        remote:FireServer("HammerClick", true)
+                        task.wait(0.02)
+                        remote:FireServer("HammerHit", torso)
+                    end
+                end,
+                function()
+                    if not target.Character or not isPlayerInMatch(target) then return true end
+                    local h = target.Character:FindFirstChildOfClass("Humanoid")
+                    local torso = torsoOf(target.Character)
+                    return not h or not torso or isPlayerRagdolled(target, h) or isPlayerCaptured(target, torso)
+                end
+            )
+            task.wait(0.05)
         end
     end
 
