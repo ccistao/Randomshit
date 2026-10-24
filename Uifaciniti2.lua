@@ -4460,10 +4460,8 @@ KB.Text = table.concat({
     "Upd 1.0.3.3",
     "+ Add Auto Farm (Auto tab)",
     "+ Add Auto Candy Quest (Auto tab)",
-    "+ Add Auto Farm ban risk & beta notice",
     "+ Add Feedback System (Config tab)",
-    "/ Fix Auto Candy Quest teleport & spam prompt until bag is empty",
-    "/ Instant cancel tween & go to Exit when Hack Extra PC is off",
+    "/ Improve Esp Player",
     "- Remove No Fog"
 }, "\n")
 
