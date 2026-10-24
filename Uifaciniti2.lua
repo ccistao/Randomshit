@@ -259,7 +259,7 @@ task.spawn(function()
     end)
 end)
 repeat task.wait() until loadingFinished
-local DISCORD_LINK = "https://www.google.com/search?q=https://discord.gg/Ep8rjFC7DM"
+local DISCORD_LINK = "https://discord.gg/Ep8rjFC7DM"
 
 local function CopyText(text)
      if setclipboard then pcall(function() setclipboard(text) end) return true end
