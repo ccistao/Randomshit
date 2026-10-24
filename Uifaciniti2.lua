@@ -4710,7 +4710,7 @@ addSection(Panes[3], "Farm Settings", 4)
 addToggle(Panes[3], "▣", "Hack Extra PC", "Keeps hacking during Find Exit", false, 5, function(s)
     AutoFarm.setExtraPC(s)
 end, "hackExtraPC")
-addToggle(Panes[3], "⚓", "No TP Jump", "Stands still while hacking (like co-op)", false, 6, function(s)
+addToggle(Panes[3], "⚓", "No TP Jump", "Stands still while hacking", false, 6, function(s)
     AutoFarm.setNoJump(s)
 end, "noJumpHack")
 
