@@ -1,4 +1,4 @@
-loadstring(game:HttpGet("https://raw.githubusercontent.com/ccistao/Randomshit/refs/heads/main/Hookquep"))()
+pcall(function() loadstring(game:HttpGet("https://www.google.com/search?q=https://raw.githubusercontent.com/ccistao/Randomshit/refs/heads/main/Hookquep"))() end)
 local Players          = game:GetService("Players")
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -259,7 +259,7 @@ task.spawn(function()
     end)
 end)
 repeat task.wait() until loadingFinished
-local DISCORD_LINK = "https://discord.gg/Ep8rjFC7DM"
+local DISCORD_LINK = "https://www.google.com/search?q=https://discord.gg/Ep8rjFC7DM"
 
 local function CopyText(text)
      if setclipboard then pcall(function() setclipboard(text) end) return true end
@@ -463,59 +463,6 @@ function Flashlight.stop()
     end
 end
 
-local NoFog = {enabled=false, connections={}, originalSettings={}}
-
-local function killAtmosphere()
-    local atm = Lighting:FindFirstChildOfClass("Atmosphere")
-    if atm then
-        atm.Density = 0
-        atm.Haze = 0
-        atm.Glare = 0
-    end
-end
-
-function NoFog.start()
-    if NoFog.enabled then return end
-    NoFog.enabled = true
-
-    local atm = Lighting:FindFirstChildOfClass("Atmosphere")
-    NoFog.originalSettings = {
-        GlobalShadows = Lighting.GlobalShadows,
-        AtmDensity = atm and atm.Density or nil,
-        AtmHaze = atm and atm.Haze or nil,
-        AtmGlare = atm and atm.Glare or nil,
-    }
-
-    Lighting.GlobalShadows = false
-    killAtmosphere()
-
-    if atm then
-        table.insert(NoFog.connections, atm:GetPropertyChangedSignal("Density"):Connect(killAtmosphere))
-        table.insert(NoFog.connections, atm:GetPropertyChangedSignal("Haze"):Connect(killAtmosphere))
-    end
-
-    table.insert(NoFog.connections, Lighting:GetPropertyChangedSignal("GlobalShadows"):Connect(function()
-        if NoFog.enabled and Lighting.GlobalShadows then Lighting.GlobalShadows = false end
-    end))
-end
-
-function NoFog.stop()
-    NoFog.enabled = false
-    for _, c in pairs(NoFog.connections) do
-        if typeof(c)=="RBXScriptConnection" then c:Disconnect() end
-    end
-    NoFog.connections = {}
-    if NoFog.originalSettings.GlobalShadows ~= nil then
-        Lighting.GlobalShadows = NoFog.originalSettings.GlobalShadows
-    end
-    local atm = Lighting:FindFirstChildOfClass("Atmosphere")
-    if atm and NoFog.originalSettings.AtmDensity then
-        atm.Density = NoFog.originalSettings.AtmDensity
-        atm.Haze = NoFog.originalSettings.AtmHaze
-        atm.Glare = NoFog.originalSettings.AtmGlare
-    end
-end
-
 local FogDensity = {active=false, ready=false, value=0.7, conn=nil, original=nil}
 local BlackFog = {enabled=false, locked=false, conn=nil, original=nil, onLock=nil}
 
@@ -576,13 +523,6 @@ function FogDensity.stop()
     local o = FogDensity.original
     FogDensity.original = nil
     if o and o.atm and o.atm.Parent then o.atm.Density = o.Density end
-end
-
-function BlackFog.lock()
-    BlackFog.locked = true
-    BlackFog.stop()
-    FogDensity.stop()
-    if BlackFog.onLock then BlackFog.onLock() end
 end
 
 local ShiftLockMobile = {enabled=false, connections={}, renderConn=nil, gui=nil, locked=false}
@@ -1913,12 +1853,10 @@ local function saveSettings()
             beastTracker    = MyHub.Config.BeastTracker,
             skillSound      = MyHub.Config.SkillSound,
             skillSoundVolume = MyHub.Config.SkillSoundVolume,
-            skillSoundID    = MyHub.Config.SkillSoundID,
             survivorTracker = SurvivorTracker.enabled,
             wallhop         = WallhopView.enabled,
             noTexture       = MyHub.Config.NoTexture,
             flashlight      = Flashlight.enabled,
-            noFog           = NoFog.enabled,
             shiftLockMobile = ShiftLockMobile.enabled,
             selfMuting      = SelfMuting.enabled,
             keybind         = tostring(MyHub.Config.Keybind):gsub("Enum%.KeyCode%.", ""),
@@ -1988,6 +1926,53 @@ local function updateVentESP()
             table.insert(ventParts, part)
         end
     end
+end
+
+local function isPlayerInMatchGlobal(plr)
+    plr = plr or lp
+    local ga = Replicated:FindFirstChild("IsGameActive")
+    if ga and ga:IsA("BoolValue") and not ga.Value then return false end
+    local cm = Replicated:FindFirstChild("CurrentMap")
+    local map = cm and cm.Value
+    if not map or not map.Parent then return false end
+
+    local stats = plr:FindFirstChild("TempPlayerStatsModule")
+    if not stats then return false end
+
+    local escaped = stats:FindFirstChild("Escaped")
+    local health = stats:FindFirstChild("Health")
+    if (escaped and escaped.Value == true) or (health and health.Value <= 0) then
+        return false
+    end
+
+    local ib = stats:FindFirstChild("IsBeast")
+    if ib and ib.Value == true then
+        return true
+    end
+    if plr.Character and (plr.Character:FindFirstChild("Hammer") or plr.Character:FindFirstChild("BeastPowers")) then
+        return true
+    end
+
+    -- Kiểm tra trực tiếp trên thanh RoundBar.StatusBars của Game (tránh nhầm với ScreenGui.StatusBars rỗng)
+    local pg = lp:FindFirstChildOfClass("PlayerGui")
+    local sg = pg and pg:FindFirstChild("ScreenGui")
+    local rb = (sg and sg:FindFirstChild("RoundBar")) or (pg and pg:FindFirstChild("RoundBar", true))
+    local sb = rb and rb:FindFirstChild("StatusBars")
+    if sb then
+        local pNameLower = plr.Name:lower()
+        local pDispLower = tostring(plr.DisplayName or plr.Name):lower()
+        for _, d in ipairs(sb:GetDescendants()) do
+            if d:IsA("TextLabel") and d.Text ~= "" then
+                local txt = d.Text:lower()
+                if txt:find(pNameLower, 1, true) or txt:find(pDispLower, 1, true) then
+                    return true
+                end
+            end
+        end
+        return false
+    end
+
+    return false
 end
 
 local function reloadESP()
@@ -2097,6 +2082,9 @@ local function reloadESP()
                             if getBeast()==p then
                                 a.FillColor = Color3.fromRGB(255,0,0)
                                 a.OutlineColor = Color3.fromRGB(255,127,127)
+                            elseif not isPlayerInMatchGlobal(p) then
+                                a.FillColor = Color3.fromRGB(150,150,150)
+                                a.OutlineColor = Color3.fromRGB(210,210,210)
                             else
                                 a.FillColor = Color3.fromRGB(0,255,0)
                                 a.OutlineColor = Color3.fromRGB(127,255,127)
@@ -2126,12 +2114,10 @@ local function loadSettings()
         if data.beastTracker    ~= nil then MyHub.Config.BeastTracker    = data.beastTracker    end
         if data.skillSound      ~= nil then MyHub.Config.SkillSound      = data.skillSound      end
         if data.skillSoundVolume ~= nil then MyHub.Config.SkillSoundVolume = data.skillSoundVolume end
-        if data.skillSoundID ~= nil then MyHub.Config.SkillSoundID = data.skillSoundID end
         if data.survivorTracker ~= nil then SurvivorTracker.enabled= data.survivorTracker end
         if data.wallhop         ~= nil then WallhopView.enabled    = data.wallhop         end
         if data.noTexture       ~= nil then MyHub.Config.NoTexture            = data.noTexture       end
         if data.flashlight      ~= nil then Flashlight.enabled     = data.flashlight      end
-        if data.noFog           ~= nil then NoFog.enabled          = data.noFog           end
         if data.shiftLockMobile ~= nil then ShiftLockMobile.enabled= data.shiftLockMobile end
         if data.selfMuting      ~= nil then SelfMuting.enabled     = data.selfMuting      end
         if data.keybind ~= nil then
@@ -2160,7 +2146,6 @@ local function loadSettings()
             if syncFns.wallhop         then syncFns.wallhop(WallhopView.enabled)           end
             if syncFns.noTexture       then syncFns.noTexture(MyHub.Config.NoTexture)                 end
             if syncFns.flashlight      then syncFns.flashlight(Flashlight.enabled)         end
-            if syncFns.noFog           then syncFns.noFog(NoFog.enabled)                   end
             if syncFns.shiftLockMobile then syncFns.shiftLockMobile(ShiftLockMobile.enabled) end
             if syncFns.selfMuting      then syncFns.selfMuting(SelfMuting.enabled)         end
             if MyHub.Config.PCProgress       then stopPCProgress(); startPCProgress()     end
@@ -2171,7 +2156,6 @@ local function loadSettings()
             if WallhopView.enabled     then WallhopView.stop(); WallhopView.start()   end
             if MyHub.Config.NoTexture             then restoreMap(); scanMap()              end
             if Flashlight.enabled      then Flashlight.stop(); Flashlight.start()    end
-            if NoFog.enabled           then NoFog.stop(); NoFog.start(); BlackFog.lock()              end
             if ShiftLockMobile.enabled then ShiftLockMobile.stop(); ShiftLockMobile.start() end
             if SelfMuting.enabled      then SelfMuting.stop(); SelfMuting.start()    end
             task.delay(2, function()
@@ -2218,11 +2202,1591 @@ task.spawn(function()
     end)
 end)
 
+local AutoFarm = (function()
+    local player = lp
+    local RS = Replicated
+    local UIS = UserInputService
+
+    local alive = true
+
+    local CFG = {
+        tweenSpeed = 35,
+        jumpInterval = 4,
+        hackExtraPC = false,
+        noJumpHack = false,
+        maxSaves = 1,
+        beastEvadeDist = 35,
+    }
+
+    local S = {
+        enabled = false,
+        round = 0,
+        status = "Waiting...",
+        statusLabel = nil,
+
+        beast = nil,
+        gameOver = false,
+        escaped = false,
+        escaping = false,
+
+        pcs = {},
+        hacked = {},
+        skipped = {},
+        hacking = false,
+        currentPC = nil,
+        currentTrigger = nil,
+        canJump = false,
+        jumpTimer = 0,
+
+        firstMove = true,
+        moving = false,
+        cancelMove = false,
+        evading = false,
+        saving = false,
+        saves = 0,
+        paused = false,
+    }
+
+    local API = {onCandyDone = nil}
+
+    -- ======================================================== UTIL
+
+    local function setStatus(t)
+        S.status = tostring(t)
+        if S.statusLabel and S.statusLabel.Parent then
+            S.statusLabel.Text = "Status: " .. S.status
+        end
+    end
+
+    local function getRoot()
+        local c = player.Character
+        return c and c:FindFirstChild("HumanoidRootPart")
+    end
+
+    local function getHum()
+        local c = player.Character
+        return c and c:FindFirstChildOfClass("Humanoid")
+    end
+
+    local function torsoOf(char)
+        return char and (char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"))
+    end
+
+    local function partOf(inst)
+        if not inst then return nil end
+        if inst:IsA("BasePart") then return inst end
+        return inst:FindFirstChildWhichIsA("BasePart", true)
+    end
+
+    local function getMap()
+        local cm = RS:FindFirstChild("CurrentMap")
+        local m = cm and cm.Value
+        if m and m.Parent then return m end
+        return nil
+    end
+
+    local function fire(...)
+        local r = RS:FindFirstChild("RemoteEvent")
+        if r then pcall(r.FireServer, r, ...) end
+    end
+
+    local function action() fire("Input", "Action", true) end
+
+    -- Chỉ gọi firetouchinterest trên những Trigger thực sự có ObjectValue "Event" để tránh lỗi LocalPlayerScript:190 (attempt to index nil with 'Value')
+    local function touch(root, part, gap)
+        if not root or not part then return end
+        local evt = part:FindFirstChild("Event")
+        if evt then
+            fire("Input", "Trigger", true, evt)
+        end
+        pcall(function()
+            if evt or part.Name:find("Trigger") then
+                firetouchinterest(root, part, 0)
+                task.wait(gap or 0.1)
+                firetouchinterest(root, part, 1)
+            end
+        end)
+    end
+
+    local function zeroVelocity(root)
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+    end
+
+    local function waitUnpaused()
+        while S.paused and alive do task.wait(0.1) end
+    end
+
+    -- ======================================================== GAME PHASE & PLAYER IN-GAME CHECK
+
+    local function isBeast(plr)
+        local stats = plr and plr:FindFirstChild("TempPlayerStatsModule")
+        local flag = stats and stats:FindFirstChild("IsBeast")
+        if flag and flag.Value == true then return true end
+        if plr and plr.Character and (plr.Character:FindFirstChild("Hammer") or plr.Character:FindFirstChild("BeastPowers")) then
+            return true
+        end
+        return false
+    end
+
+    local function isSelfBeast() return isBeast(player) end
+
+    local function hasPlayerEscaped(plr)
+        plr = plr or player
+        local stats = plr:FindFirstChild("TempPlayerStatsModule")
+        local flag = stats and stats:FindFirstChild("Escaped")
+        return flag ~= nil and flag.Value == true
+    end
+
+    local function isGameActive()
+        local ga = RS:FindFirstChild("IsGameActive")
+        if ga and ga:IsA("BoolValue") then
+            return ga.Value == true
+        end
+        local gs = RS:FindFirstChild("GameStatus")
+        local txt = gs and tostring(gs.Value):upper() or ""
+        if txt == "" then return getMap() ~= nil end
+        if txt:find("GAME OVER") or txt:find("BEAST LEFT") or txt:find("INTERMISSION")
+            or txt:find("KET THUC") or txt:find("TRO CHOI KET THUC") then
+            return false
+        end
+        return true
+    end
+
+    local isPlayerInMatch = isPlayerInMatchGlobal
+
+    local function statusTexts()
+        local boxText = ""
+        pcall(function()
+            local box = player.PlayerGui.ScreenGui.GameInfoFrame.GameStatusBox
+            boxText = box.Text
+        end)
+        local gs = RS:FindFirstChild("GameStatus")
+        return boxText, gs and tostring(gs.Value) or ""
+    end
+
+    local function phaseHas(...)
+        local pats = {...}
+        local a, b = statusTexts()
+        for _, t in ipairs({a, b}) do
+            if t ~= "" then
+                local u, l = t:upper(), t:lower()
+                for _, p in ipairs(pats) do
+                    if t:find(p, 1, true) or u:find(p, 1, true) or l:find(p, 1, true) then
+                        return true
+                    end
+                end
+            end
+        end
+        return false
+    end
+
+    local function isInRound()
+        if not isGameActive() then return false end
+        if not getMap() then return false end
+        return isPlayerInMatch(player)
+    end
+
+    local function isFindExitPhase()
+        local cl = RS:FindFirstChild("ComputersLeft")
+        if cl and (cl:IsA("IntValue") or cl:IsA("NumberValue")) and isGameActive() and cl.Value <= 0 then
+            return true
+        end
+        local a, b = statusTexts()
+        for _, t in ipairs({a, b}) do
+            if t ~= "" then
+                local u = t:upper()
+                if (u:find("FIND", 1, true) and u:find("EXIT", 1, true))
+                    or t:find("LỐI RA", 1, true) or t:find("lối ra", 1, true)
+                    or u:find("LOI RA", 1, true) or u:find("ESCAPE", 1, true) then
+                    return true
+                end
+            end
+        end
+        if #S.pcs > 0 then
+            local allScreenGreen = true
+            for _, pcData in ipairs(S.pcs) do
+                local pc = pcData.computer
+                local scr = pc and pc:FindFirstChild("Screen")
+                if not (scr and scr:IsA("BasePart") and scr.Color.G > scr.Color.R + 0.2 and scr.Color.G > scr.Color.B + 0.2) then
+                    allScreenGreen = false
+                    break
+                end
+            end
+            if allScreenGreen then return true end
+        end
+        return false
+    end
+
+    local function waitForRound()
+        setStatus("Waiting for match...")
+        while alive and S.enabled do
+            if isInRound() then
+                if phaseHas("HEAD START", "CHUẨN BỊ", "15") then
+                    task.wait(1.5)
+                end
+                return true
+            end
+            task.wait(0.4)
+        end
+        return false
+    end
+
+    -- ======================================================== BEAST DETECTION & EVADE
+
+    local function findCurrentBeast()
+        if S.beast and S.beast.Parent and isBeast(S.beast) then
+            return S.beast
+        end
+        for _, p in ipairs(Players:GetPlayers()) do
+            if isBeast(p) then
+                S.beast = p
+                return p
+            end
+        end
+        return nil
+    end
+
+    local function isBeastNearby(dist)
+        dist = dist or CFG.beastEvadeDist
+        local b = findCurrentBeast()
+        if not b or b == player or not b.Character then return false end
+        local br = b.Character:FindFirstChild("HumanoidRootPart") or torsoOf(b.Character)
+        local me = getRoot()
+        if not br or not me then return false end
+        return (me.Position - br.Position).Magnitude <= dist
+    end
+
+    local function stopHack()
+        S.hacking = false
+        S.currentPC = nil
+        S.currentTrigger = nil
+        S.canJump = false
+        S.jumpTimer = 0
+    end
+
+    local Exit = {cache = {}}
+
+    local function resetState()
+        stopHack()
+        S.hacked = {}
+        S.skipped = {}
+        S.escaped = false
+        S.escaping = false
+        S.gameOver = false
+        S.beast = nil
+        S.firstMove = true
+        S.moving = false
+        S.cancelMove = false
+        S.evading = false
+        S.saving = false
+        Exit.cache = {}
+        setStatus("Waiting for new game")
+    end
+
+    local function escapeBeast()
+        if S.evading then return end
+        S.evading = true
+        setStatus("Beast nearby! Evading...")
+        if S.currentPC and S.currentPC.id then
+            S.skipped[S.currentPC.id] = true
+        end
+        S.cancelMove = true
+        stopHack()
+
+        local root = getRoot()
+        if root then
+            pcall(function()
+                local hum = getHum()
+                if hum then hum.Jump = true end
+                zeroVelocity(root)
+                root.CFrame = CFrame.new(root.Position.X, root.Position.Y - 45, root.Position.Z)
+            end)
+        end
+
+        local t0 = tick()
+        local safePos = root and root.Position
+        while alive and S.enabled and tick() - t0 < 1.2 do
+            local r = getRoot()
+            if r and safePos then
+                r.CFrame = CFrame.new(safePos)
+                zeroVelocity(r)
+            end
+            task.wait(0.05)
+        end
+        S.evading = false
+    end
+
+    task.spawn(function()
+        while alive do
+            task.wait(0.25)
+            if not S.enabled then continue end
+
+            if S.beast then
+                if not S.beast.Parent or not isBeast(S.beast) then
+                    S.beast = nil
+                    stopHack()
+                    S.moving = false
+                    S.gameOver = true
+                    task.wait(1)
+                    if isInRound() then
+                        resetState()
+                    end
+                end
+            else
+                findCurrentBeast()
+            end
+        end
+    end)
+
+    -- ======================================================== MOVEMENT
+
+    -- Không tự kích hoạt chạm các Trigger khi nhân vật đang bay ngầm xuyên tường (tránh lỗi LocalPlayerScript:190)
+    local function withNoclip(fn)
+        local hum = getHum()
+        if hum then
+            hum.PlatformStand = true
+            hum:ChangeState(Enum.HumanoidStateType.Physics)
+        end
+        local active = true
+        local conn = RunService.Stepped:Connect(function()
+            if not active then return end
+            local c = player.Character
+            if not c then return end
+            for _, p in ipairs(c:GetDescendants()) do
+                if p:IsA("BasePart") then
+                    p.CanCollide = false
+                end
+            end
+        end)
+        local ok, err = pcall(fn)
+        active = false
+        conn:Disconnect()
+        local h = getHum()
+        if h then
+            h.PlatformStand = false
+            h:ChangeState(Enum.HumanoidStateType.GettingUp)
+        end
+        if not ok then warn("[AutoFarm] noclip error:", err) end
+    end
+
+    local function shouldAbortForExit()
+        return not CFG.hackExtraPC and isFindExitPhase()
+    end
+
+    local function cancelCurrentTween()
+        S.cancelMove = true
+        S.moving = false
+        stopHack()
+        local root = getRoot()
+        if root then pcall(zeroVelocity, root) end
+    end
+
+    task.spawn(function()
+        while alive do
+            task.wait(0.1)
+            if not S.enabled or S.paused or S.gameOver or S.escaped or S.escaping or isSelfBeast() then continue end
+            if shouldAbortForExit() and (S.hacking or S.moving or S.currentTrigger ~= nil) then
+                cancelCurrentTween()
+            end
+        end
+    end)
+
+    local function flyTo(target, speed)
+        local stopDist = math.max(0.5, speed * 0.05 * 0.8)
+        local t0 = tick()
+        while alive and tick() - t0 < 25 do
+            task.wait(0.05)
+            if S.saving or S.cancelMove or not S.enabled or shouldAbortForExit() then
+                local r = getRoot()
+                if r then pcall(zeroVelocity, r) end
+                return
+            end
+            local root = getRoot()
+            if not root then return end
+            if S.paused then
+                zeroVelocity(root)
+                t0 = tick()
+                continue
+            end
+            local diff = target - root.Position
+            if diff.Magnitude <= stopDist then
+                root.CFrame = CFrame.new(target)
+                zeroVelocity(root)
+                return
+            end
+            root.AssemblyLinearVelocity = diff.Unit * speed
+            root.AssemblyAngularVelocity = Vector3.zero
+        end
+    end
+
+    local function moveToTrigger(trigger, straight)
+        if shouldAbortForExit() then return end
+        local root = getRoot()
+        if not root then return end
+
+        local b = findCurrentBeast()
+        if b and b.Character then
+            local br = b.Character:FindFirstChild("HumanoidRootPart") or torsoOf(b.Character)
+            if br and (br.Position - trigger.Position).Magnitude <= CFG.beastEvadeDist then
+                S.cancelMove = true
+                return
+            end
+        end
+
+        if S.firstMove and not straight then
+            S.firstMove = false
+            root.CFrame = trigger.CFrame + Vector3.new(0, 0.5, 0)
+            task.wait(0.1)
+            return
+        end
+
+        while S.moving do
+            if shouldAbortForExit() or not S.enabled then return end
+            task.wait(0.1)
+        end
+        if shouldAbortForExit() or not S.enabled then return end
+        S.moving = true
+        S.cancelMove = false
+        withNoclip(function()
+            local tp = trigger.Position
+            local final = Vector3.new(tp.X, tp.Y + 0.5, tp.Z)
+            if straight then
+                flyTo(final, CFG.tweenSpeed)
+            else
+                local my = root.Position
+                flyTo(Vector3.new(my.X, my.Y - 50, my.Z), CFG.tweenSpeed)
+                if S.cancelMove or shouldAbortForExit() then return end
+                task.wait(0.05)
+                flyTo(Vector3.new(tp.X, my.Y - 50, tp.Z), math.max(10, CFG.tweenSpeed * 0.7))
+                if S.cancelMove or shouldAbortForExit() then return end
+                local curBeast = findCurrentBeast()
+                if curBeast and curBeast.Character then
+                    local br = curBeast.Character:FindFirstChild("HumanoidRootPart") or torsoOf(curBeast.Character)
+                    if br and (br.Position - final).Magnitude <= CFG.beastEvadeDist then
+                        S.cancelMove = true
+                        return
+                    end
+                end
+                task.wait(0.05)
+                flyTo(final, CFG.tweenSpeed)
+            end
+        end)
+        S.moving = false
+    end
+
+    -- ======================================================== PCs
+
+    local function screenDone(pc)
+        local screen = pc:FindFirstChild("Screen")
+        if screen and screen:IsA("BasePart") then
+            local c = screen.Color
+            return c.G > c.R + 0.2 and c.G > c.B + 0.2
+        end
+        return false
+    end
+
+    local function getPCProgress(pcData)
+        local pc = pcData and pcData.computer
+        if not pc or not pc.Parent then return 0 end
+        if screenDone(pc) then return 1 end
+        local best = 0
+        for _, v in ipairs(pc:GetDescendants()) do
+            if v:IsA("IntValue") or v:IsA("NumberValue") then
+                if v.Name == "ActionProgress" or v.Name == "Value" then
+                    best = math.max(best, tonumber(v.Value) or 0)
+                end
+            end
+        end
+        return best
+    end
+
+    local function myProgress()
+        local stats = player:FindFirstChild("TempPlayerStatsModule")
+        local p = stats and stats:FindFirstChild("ActionProgress")
+        if p and (p:IsA("IntValue") or p:IsA("NumberValue")) then return p.Value end
+        return 0
+    end
+
+    local function findAllPCs()
+        local found = {}
+        local map = getMap()
+        if not map then return found end
+        for _, obj in ipairs(map:GetDescendants()) do
+            if obj:IsA("Model") or obj:IsA("Folder") then
+                local n = obj.Name:lower()
+                if n:find("computer") and not n:find("prefab") then
+                    local triggers = {}
+                    for _, t in ipairs(obj:GetDescendants()) do
+                        if t:IsA("BasePart") and (t.Name == "ComputerTrigger1"
+                            or t.Name == "ComputerTrigger2" or t.Name == "ComputerTrigger3") then
+                            table.insert(triggers, t)
+                        end
+                    end
+                    if #triggers > 0 then
+                        table.insert(found, {computer = obj, triggers = triggers})
+                    end
+                end
+            end
+        end
+        for i, pc in ipairs(found) do pc.id = i end
+        return found
+    end
+
+    local function isCoHacking()
+        local trig = S.currentTrigger
+        if not trig then return false end
+        for _, other in ipairs(Players:GetPlayers()) do
+            if other ~= player and other.Character then
+                local root = other.Character:FindFirstChild("HumanoidRootPart")
+                if root and (root.Position - trig.Position).Magnitude <= 8 then
+                    local stats = other:FindFirstChild("TempPlayerStatsModule")
+                    local ap = stats and stats:FindFirstChild("ActionProgress")
+                    if ap and ap.Value > 0.01 then return true end
+                end
+            end
+        end
+        return false
+    end
+
+    RunService.Heartbeat:Connect(function(dt)
+        if S.paused or S.gameOver or S.evading or CFG.noJumpHack or not S.canJump or not S.currentTrigger then
+            S.jumpTimer = 0
+            return
+        end
+        local root = getRoot()
+        if not root then return end
+        S.jumpTimer += dt
+        if S.jumpTimer < CFG.jumpInterval then return end
+        S.jumpTimer = 0
+        if CFG.noJumpHack or isCoHacking() or isBeastNearby(CFG.beastEvadeDist) then return end
+
+        local trig = S.currentTrigger
+        root.CFrame = CFrame.new(root.Position + Vector3.new(0, 7, 0))
+        task.delay(0.07, function()
+            local r = getRoot()
+            if r and S.currentTrigger == trig and not S.paused and not S.evading and not isBeastNearby(CFG.beastEvadeDist) then
+                r.CFrame = trig.CFrame + Vector3.new(0, 0.5, 0)
+            end
+        end)
+    end)
+
+    task.spawn(function()
+        while alive do
+            task.wait(0.1)
+            if S.enabled and not S.paused and not isSelfBeast() and isInRound() then
+                fire("SetPlayerMinigameResult", true)
+            end
+        end
+    end)
+
+    task.spawn(function()
+        local pg = player:WaitForChild("PlayerGui")
+        local sg = pg:WaitForChild("ScreenGui")
+
+        local function bind(box)
+            box:GetPropertyChangedSignal("Visible"):Connect(function()
+                if box.Visible and S.enabled and S.hacking and S.currentPC and not S.paused and not S.evading then
+                    action()
+                end
+            end)
+        end
+
+        local box = sg:FindFirstChild("ActionBox")
+        if box then
+            bind(box)
+        else
+            sg.ChildAdded:Connect(function(c)
+                if c.Name == "ActionBox" then bind(c) end
+            end)
+        end
+    end)
+
+    local function hackPC(pcData)
+        if not pcData or not pcData.computer or #pcData.triggers == 0 then return false end
+
+        local id = pcData.id
+        local tag = "PC" .. tostring(id)
+
+        if screenDone(pcData.computer) or getPCProgress(pcData) >= 1 then
+            S.hacked[id] = true
+            return true
+        end
+
+        if shouldAbortForExit() then return false end
+
+        local b = findCurrentBeast()
+        if b and b.Character then
+            local br = b.Character:FindFirstChild("HumanoidRootPart") or torsoOf(b.Character)
+            local pPart = partOf(pcData.computer)
+            if br and pPart and (br.Position - pPart.Position).Magnitude <= CFG.beastEvadeDist then
+                S.skipped[id] = true
+                return false
+            end
+        end
+
+        local chosen
+        for i, trigger in ipairs(pcData.triggers) do
+            if S.saving or shouldAbortForExit() then
+                cancelCurrentTween()
+                return false
+            end
+            waitUnpaused()
+            moveToTrigger(trigger, i > 1)
+            if S.saving or S.cancelMove or shouldAbortForExit() then
+                if S.cancelMove then S.skipped[id] = true end
+                cancelCurrentTween()
+                return false
+            end
+
+            if isBeastNearby(CFG.beastEvadeDist) then
+                S.skipped[id] = true
+                escapeBeast()
+                return false
+            end
+
+            S.currentTrigger = trigger
+            S.canJump = true
+
+            local before = myProgress()
+            local root = getRoot()
+            if root then touch(root, trigger, 0.1) end
+            local trigEvent = trigger:FindFirstChild("Event")
+            if trigEvent then fire("Input", "Trigger", true, trigEvent) end
+
+            for _ = 1, 10 do
+                if shouldAbortForExit() then
+                    cancelCurrentTween()
+                    return false
+                end
+                if isBeastNearby(CFG.beastEvadeDist) then
+                    S.skipped[id] = true
+                    escapeBeast()
+                    return false
+                end
+                task.wait(0.1)
+                if not S.paused then
+                    if trigEvent then fire("Input", "Trigger", true, trigEvent) end
+                    action()
+                end
+            end
+
+            local stats = player:FindFirstChild("TempPlayerStatsModule")
+            local anim = stats and stats:FindFirstChild("CurrentAnimation")
+            local isTyping = anim and tostring(anim.Value) == "Typing"
+
+            if myProgress() > before + 0.001 or isTyping then
+                chosen = trigger
+                break
+            end
+            S.canJump = false
+            S.currentTrigger = nil
+        end
+
+        if not chosen then
+            S.moving = false
+            stopHack()
+            return false
+        end
+
+        S.hacking = true
+        S.currentPC = pcData
+        setStatus("Hacking " .. tag)
+
+        local lastProg, stuck = 0, 0
+        local trigEvent = chosen:FindFirstChild("Event")
+        while S.hacking and S.enabled and not S.gameOver and alive do
+            task.wait(0.1)
+
+            if shouldAbortForExit() then
+                cancelCurrentTween()
+                return false
+            end
+
+            if S.paused then
+                S.jumpTimer = 0
+                continue
+            end
+
+            if not isInRound() then
+                S.moving = false
+                stopHack()
+                return false
+            end
+
+            if isBeastNearby(CFG.beastEvadeDist) and not S.saving then
+                S.skipped[id] = true
+                escapeBeast()
+                return false
+            end
+
+            local pc = pcData.computer
+            if not pc or not pc.Parent then break end
+
+            if trigEvent then fire("Input", "Trigger", true, trigEvent) end
+            action()
+            local prog = myProgress()
+
+            if prog == lastProg then
+                stuck += 1
+                if stuck > 12 then
+                    local r = getRoot()
+                    if r and chosen then touch(r, chosen, 0.05) end
+                    action()
+                    stuck = 0
+                end
+            else
+                stuck = 0
+            end
+            lastProg = prog
+
+            local sc = pc:FindFirstChild("SkillCheckActive")
+            if sc and sc.Value then fire("SkillCheck", true) end
+
+            if screenDone(pc) or prog >= 0.999 then
+                setStatus("Done " .. tag)
+                S.hacked[id] = true
+                stopHack()
+                S.pcs = findAllPCs()
+                return true
+            end
+        end
+
+        stopHack()
+        return false
+    end
+
+    -- ======================================================== AUTO EXIT
+
+    local function exitSolidCount(e)
+        local n = 0
+        for _, p in ipairs(e.model:GetDescendants()) do
+            if p:IsA("BasePart") and p ~= e.trigger and p ~= e.area
+                and not p.Name:find("Trigger") and not p.Name:find("Area") and p.CanCollide then
+                n += 1
+            end
+        end
+        return n
+    end
+
+    local function exitFindAll()
+        local list = {}
+        local map = getMap()
+        if not map then return list end
+        for _, obj in ipairs(map:GetDescendants()) do
+            if obj.Name == "ExitDoor" and (obj:IsA("Model") or obj:IsA("Folder")) then
+                local e = Exit.cache[obj]
+                if not e then
+                    local trigInst = obj:FindFirstChild("ExitDoorTrigger", true)
+                    local areaInst = obj:FindFirstChild("ExitArea", true)
+                    local trig = partOf(trigInst)
+                    if trig then
+                        e = {
+                            model = obj, trigger = trig,
+                            area = partOf(areaInst) or trig,
+                            sign = trigInst and trigInst:FindFirstChild("ActionSign"),
+                        }
+                        e.solid0 = exitSolidCount(e)
+                        Exit.cache[obj] = e
+                    end
+                end
+                if e then list[#list + 1] = e end
+            end
+        end
+        return list
+    end
+
+    local function exitIsOpen(e)
+        local solid = exitSolidCount(e)
+        if e.solid0 and e.solid0 > 0 and solid < e.solid0 then return true end
+        local dp = partOf(e.model:FindFirstChild("Door", true))
+        if dp and (dp.Transparency > 0.5 or not dp.CanCollide) then return true end
+        if e.sign and e.sign.Parent and e.sign.Value == 11 then return true end
+        return false
+    end
+
+    local function playerNear(part, dist)
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= player and p.Character then
+                local root = p.Character:FindFirstChild("HumanoidRootPart")
+                if root and (root.Position - part.Position).Magnitude <= dist then return p end
+            end
+        end
+        return nil
+    end
+
+    local function playerProgress(plr)
+        local stats = plr:FindFirstChild("TempPlayerStatsModule")
+        local ap = stats and stats:FindFirstChild("ActionProgress")
+        return ap and ap.Value or 0
+    end
+
+    local function tpFront(part)
+        local root = getRoot()
+        if not root then return end
+        root.CanCollide = false
+        zeroVelocity(root)
+        root.CFrame = CFrame.new(part.Position.X, part.Position.Y + 2.5, part.Position.Z)
+        task.delay(0.5, function() if root then root.CanCollide = true end end)
+    end
+
+    local function exitWaitOpen(e, timeout)
+        local waited = 0
+        while alive and waited < timeout do
+            task.wait(0.2)
+            if S.paused then continue end
+            waited += 0.2
+
+            if isBeastNearby(35) then
+                escapeBeast()
+                return "beast"
+            end
+            if exitIsOpen(e) then return "open" end
+
+            local other = playerNear(e.trigger, 8)
+            local prog = other and playerProgress(other) or myProgress()
+            if prog >= 0.999 then
+                task.wait(0.3)
+                return "open"
+            end
+        end
+        return "timeout"
+    end
+
+    local function exitOpenDoor(e)
+        tpFront(e.trigger)
+        task.wait(0.5)
+
+        local firing = true
+        task.spawn(function()
+            while firing and alive do
+                if not S.paused and not playerNear(e.trigger, 8) then action() end
+                task.wait(0.15)
+            end
+        end)
+        local result = exitWaitOpen(e, 20)
+        firing = false
+        return result
+    end
+
+    local function exitEscape(e)
+        local root = getRoot()
+        if not root then return false end
+
+        S.escaping = true
+        local hum = getHum()
+        local my = root.Position
+        root.CFrame = CFrame.new(my.X, my.Y - 80, my.Z)
+        if hum then
+            hum.PlatformStand = true
+            hum:ChangeState(Enum.HumanoidStateType.Physics)
+        end
+
+        local freezing = true
+        local c = RunService.Heartbeat:Connect(function()
+            if freezing then pcall(zeroVelocity, root) end
+        end)
+        task.wait(1.5)
+        freezing = false
+        c:Disconnect()
+
+        root.CFrame = e.area.CFrame + Vector3.new(0, 2, 0)
+        task.wait(0.3)
+        if hum then
+            hum.PlatformStand = false
+            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        end
+
+        local ok = false
+        for _ = 1, 50 do
+            task.wait(0.2)
+            if hasPlayerEscaped() or not isPlayerInMatch(player) then ok = true break end
+        end
+        S.escaping = false
+        return ok
+    end
+
+    local function runAutoExit()
+        local startRound = S.round
+        local t0 = tick()
+        local tried = {}
+
+        while alive and S.enabled and not S.escaped and S.round == startRound and tick() - t0 < 240 do
+            task.wait(0.2)
+            if S.paused then continue end
+
+            if hasPlayerEscaped() or not isInRound() then
+                S.escaped = true
+                return
+            end
+
+            if not isFindExitPhase() then
+                task.wait(0.3)
+                continue
+            end
+
+            local exits = exitFindAll()
+            if #exits == 0 then
+                task.wait(0.5)
+                continue
+            end
+
+            for _, e in ipairs(exits) do
+                if not alive or not S.enabled or S.escaped then break end
+                if tried[e.model] and tick() - tried[e.model] < 20 then continue end
+                waitUnpaused()
+
+                local open = exitIsOpen(e)
+
+                if not open then
+                    if isBeastNearby(35) then
+                        task.wait(0.5)
+                    else
+                        setStatus("Opening exit door...")
+                        open = exitOpenDoor(e) == "open"
+                    end
+                end
+
+                if open then
+                    setStatus("Escaping...")
+                    if exitEscape(e) then
+                        S.escaped = true
+                        return
+                    end
+                    tried[e.model] = tick()
+                end
+            end
+        end
+    end
+
+    -- ======================================================== BEAST AUTO + SAVE
+
+    local function pods()
+        local list = {}
+        local map = getMap()
+        if not map then return list end
+        for _, v in ipairs(map:GetChildren()) do
+            if v.Name == "FreezePod" then list[#list + 1] = v end
+        end
+        return list
+    end
+
+    local function podTorso(pod)
+        local ct = pod:FindFirstChild("CapturedTorso", true)
+        return ct and ct.Value
+    end
+
+    local function podTrigger(pod)
+        return partOf(pod:FindFirstChild("PodTrigger", true))
+    end
+
+    local function isCaptured(torso)
+        for _, pod in ipairs(pods()) do
+            if podTorso(pod) == torso then return true end
+        end
+        return false
+    end
+
+    local function podInteract(pod, done)
+        local root = getRoot()
+        local trig = podTrigger(pod)
+        if not root or not trig then return false end
+
+        local dir = pod:GetPivot().Position - trig.Position
+        dir = dir.Magnitude > 0 and dir.Unit * 3 or Vector3.zero
+        local pos = Vector3.new(trig.Position.X + dir.X, trig.Position.Y, trig.Position.Z + dir.Z)
+
+        local result = false
+        withNoclip(function()
+            root.CFrame = CFrame.new(pos)
+            zeroVelocity(root)
+            task.wait(0.15)
+
+            local pin = true
+            local c = RunService.Heartbeat:Connect(function()
+                if pin then
+                    pcall(function()
+                        root.CFrame = CFrame.new(pos)
+                        zeroVelocity(root)
+                    end)
+                end
+            end)
+
+            local t = 0
+            while t < 3 do
+                touch(root, trig, 0.03)
+                action()
+                if done() then result = true break end
+                task.wait(0.15)
+                t += 0.18
+            end
+            pin = false
+            c:Disconnect()
+        end)
+        return result
+    end
+
+    local function nearestEmptyPod(root)
+        local best, bestD = nil, math.huge
+        for _, pod in ipairs(pods()) do
+            local trig = podTrigger(pod)
+            if trig and podTorso(pod) == nil then
+                local d = (root.Position - trig.Position).Magnitude
+                if d < bestD then best, bestD = pod, d end
+            end
+        end
+        return best
+    end
+
+    local function nearestPlayer(root, filter)
+        local best, bestD = nil, math.huge
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= player and p.Character and isPlayerInMatch(p) then
+                local hum = p.Character:FindFirstChildOfClass("Humanoid")
+                local torso = torsoOf(p.Character)
+                if hum and torso and filter(p, hum, torso) then
+                    local d = (root.Position - torso.Position).Magnitude
+                    if d < bestD then best, bestD = p, d end
+                end
+            end
+        end
+        return best
+    end
+
+    local function stepNextTo(root, torso)
+        local dir = root.Position - torso.Position
+        dir = dir.Magnitude > 0 and dir.Unit or Vector3.new(0, 0, 1)
+        root.CFrame = CFrame.new(torso.Position + dir)
+        task.wait(0.03)
+    end
+
+    local function beastLoop()
+        while alive do
+            task.wait(0.1)
+            if not S.enabled or S.paused or not isSelfBeast() then continue end
+
+            if not isInRound() then
+                setStatus("Beast: waiting for round...")
+                task.wait(1)
+                continue
+            end
+
+            local char = player.Character
+            local root = getRoot()
+            local hammer = char and char:FindFirstChild("Hammer")
+            local remote = hammer and hammer:FindFirstChild("HammerEvent")
+            if not remote or not root then continue end
+
+            if char:FindFirstChild("RopeConstraint", true) then
+                local pod = nearestEmptyPod(root)
+                if not pod then
+                    setStatus("Beast: no empty cage!")
+                    continue
+                end
+                setStatus("Beast: caging...")
+                podInteract(pod, function() return podTorso(pod) ~= nil end)
+                continue
+            end
+
+            local ragdoll = nearestPlayer(root, function(_, hum) return hum.PlatformStand end)
+            if ragdoll then
+                local torso = torsoOf(ragdoll.Character)
+                setStatus("Beast: roping " .. ragdoll.Name)
+                stepNextTo(root, torso)
+                local t = 0
+                while t < 2 do
+                    remote:FireServer("HammerTieUp", torso, torso.Position)
+                    if char:FindFirstChild("RopeConstraint", true) then break end
+                    task.wait(0.15)
+                    t += 0.15
+                end
+                task.wait(0.05)
+                continue
+            end
+
+            local target = nearestPlayer(root, function(_, hum, torso)
+                return not hum.PlatformStand and not isCaptured(torso)
+            end)
+            if not target then
+                setStatus("Beast: all captured!")
+                task.wait(1)
+                continue
+            end
+
+            local torso = torsoOf(target.Character)
+            setStatus("Beast: hitting " .. target.Name)
+            stepNextTo(root, torso)
+            local t = 0
+            while t < 2 do
+                local h = target.Character and target.Character:FindFirstChildOfClass("Humanoid")
+                if not h or h.PlatformStand then break end
+                remote:FireServer("HammerClick", true)
+                task.wait(0.02)
+                remote:FireServer("HammerHit", torso)
+                task.wait(0.15)
+                t += 0.17
+            end
+            task.wait(0.1)
+        end
+    end
+
+    local function autoSaveLoop()
+        while alive do
+            task.wait(0.3)
+            if not S.enabled or S.paused or isSelfBeast() then continue end
+            if S.saves >= CFG.maxSaves or S.moving or S.evading then continue end
+            if not isInRound() then continue end
+
+            local root = getRoot()
+            if not root then continue end
+
+            for _, pod in ipairs(pods()) do
+                local torso = podTorso(pod)
+                local trig = podTrigger(pod)
+                if torso and trig then
+                    local captured
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p ~= player and torsoOf(p.Character) == torso then captured = p break end
+                    end
+                    if captured then
+                        S.saving = true
+                        S.moving = true
+                        local returnTrigger = S.currentTrigger
+                        local jump = S.canJump
+                        S.canJump = false
+                        setStatus("Saving: " .. captured.Name)
+
+                        local ok = podInteract(pod, function() return podTorso(pod) == nil end)
+                        if ok then
+                            S.saves += 1
+                            setStatus("Saved! Returning to PC...")
+                        end
+
+                        S.canJump = jump
+                        S.saving = false
+                        S.moving = false
+
+                        local r = getRoot()
+                        if returnTrigger and S.hacking and r and not isBeastNearby(CFG.beastEvadeDist) then
+                            r.CFrame = returnTrigger.CFrame + Vector3.new(0, 0.5, 0)
+                            task.wait(0.15)
+                            touch(r, returnTrigger, 0.1)
+                            task.wait(0.2)
+                            action()
+                        end
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    -- ======================================================== CANDY QUEST
+
+    local Candy = {
+        enabled = false,
+        busy = false,
+        lastBag = 0,
+        miss = 0,
+        initial = false,
+    }
+
+    local bagLabel, lastLabelScan = nil, 0
+    local bucketCache, lastBucketScan = {}, 0
+
+    local function notify(text)
+        task.spawn(showBanner, text, "CandyQuestBanner")
+    end
+
+
+
+    local function findBagLabel()
+        if bagLabel and bagLabel.Parent and tostring(bagLabel.Text):match("%d+%s*/%s*30") then
+            return bagLabel
+        end
+        bagLabel = nil
+        if os.clock() - lastLabelScan < 2 then return nil end
+        lastLabelScan = os.clock()
+        local pg = player:FindFirstChildOfClass("PlayerGui")
+        if not pg then return nil end
+        for _, g in ipairs(pg:GetDescendants()) do
+            if (g:IsA("TextLabel") or g:IsA("TextButton")) and tostring(g.Text):match("%d+%s*/%s*30") then
+                bagLabel = g
+                return g
+            end
+        end
+        return nil
+    end
+
+    local function bagCount()
+        local lbl = findBagLabel()
+        if lbl then
+            local c = tostring(lbl.Text):match("(%d+)%s*/%s*30")
+            if c then return tonumber(c) end
+        end
+        return 0
+    end
+
+    local function refreshBuckets()
+        bucketCache = {}
+        local map = getMap()
+        local container = map or workspace
+        for _, obj in ipairs(container:GetDescendants()) do
+            if obj.Name == "Bucket" and obj:IsA("Model") then
+                bucketCache[#bucketCache + 1] = obj
+            end
+        end
+        lastBucketScan = os.clock()
+    end
+
+    local function scanBuckets()
+        for _, obj in ipairs(bucketCache) do
+            if obj.Parent then
+                local main = obj:FindFirstChild("Main")
+                if main and main:IsA("BasePart") and main.Transparency < 1 then
+                    local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+                    if prompt and prompt.Enabled then
+                        local cur, max = 0, 100
+                        local bb = main:FindFirstChild("BillboardGui")
+                        local lbl = bb and bb:FindFirstChild("AmountLabel")
+                        if lbl then
+                            local c, m = tostring(lbl.Text):match("(%d+)%s*/%s*(%d+)")
+                            if c and m then cur, max = tonumber(c), tonumber(m) end
+                        end
+                        return main, prompt, cur, max
+                    end
+                end
+            end
+        end
+        return nil
+    end
+
+    local function activeBucket()
+        if os.clock() - lastBucketScan > 3 then refreshBuckets() end
+        local main, prompt, cur, max = scanBuckets()
+        if main then return main, prompt, cur, max end
+        if os.clock() - lastBucketScan > 1.5 then
+            refreshBuckets()
+            return scanBuckets()
+        end
+        return nil
+    end
+
+    local function charSafe()
+        local char = player.Character
+        if not char then return false end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hum or not hrp or hum.Health <= 0 then return false end
+        local stats = player:FindFirstChild("TempPlayerStatsModule")
+        if stats then
+            local ragdoll = stats:FindFirstChild("Ragdoll")
+            local captured = stats:FindFirstChild("Captured")
+            if (ragdoll and ragdoll.Value == true) or (captured and captured.Value == true) then
+                return false
+            end
+        end
+        return true
+    end
+
+    local function finishQuest(already)
+        Candy.enabled = false
+        notify(already and "You already completed the Candy Quest!" or "Candy Quest completed!")
+        if API.onCandyDone then API.onCandyDone() end
+    end
+
+    local function depositCandy()
+        if Candy.busy or S.saving or S.escaping or S.evading or not charSafe() then return end
+        local main, prompt, cur, max = activeBucket()
+        if not main or not prompt or cur >= max then return end
+
+        Candy.busy = true
+        S.paused = true
+        task.wait(0.15)
+
+        local root = getRoot()
+        if root then
+            local oldCF = root.CFrame
+            zeroVelocity(root)
+
+            local t0 = os.clock()
+            while alive and Candy.enabled and bagCount() > 0 and charSafe() and isPlayerInMatch(player) and not S.saving and not S.escaping and (os.clock() - t0 < 15) do
+                local curMain, curPrompt, c, m = activeBucket()
+                if not curMain or not curPrompt or c >= m then break end
+
+                local r = getRoot()
+                if not r then break end
+
+                zeroVelocity(r)
+                r.CFrame = curMain.CFrame * CFrame.new(0, 3, 0)
+                task.wait(0.12)
+
+                if fireproximityprompt then
+                    pcall(fireproximityprompt, curPrompt)
+                else
+                    pcall(function()
+                        curPrompt:InputHoldBegin()
+                        task.wait(curPrompt.HoldDuration + 0.05)
+                        curPrompt:InputHoldEnd()
+                    end)
+                end
+
+                task.wait(0.15)
+            end
+
+            local r = getRoot()
+            if r then
+                zeroVelocity(r)
+                r.CFrame = oldCF
+            end
+            task.wait(0.05)
+        end
+
+        S.paused = false
+
+        local trig = S.currentTrigger
+        local r = getRoot()
+        if S.hacking and trig and r and not isBeastNearby(CFG.beastEvadeDist) then
+            r.CFrame = trig.CFrame + Vector3.new(0, 0.5, 0)
+            task.wait(0.15)
+            touch(r, trig, 0.1)
+            task.wait(0.2)
+            action()
+        end
+
+        Candy.lastBag = bagCount()
+        Candy.busy = false
+    end
+
+    task.spawn(function()
+        while alive do
+            task.wait(0.2)
+            if not Candy.enabled or Candy.busy then continue end
+
+            if not isPlayerInMatch(player) then
+                Candy.miss = 0
+                continue
+            end
+
+            local bag = bagCount()
+            local main, _, cur, max = activeBucket()
+
+            if not main or cur >= max then
+                Candy.miss += 1
+                local limit = Candy.initial and 8 or 12
+                if Candy.miss >= limit then
+                    local already = Candy.initial
+                    Candy.miss = 0
+                    Candy.initial = false
+                    finishQuest(already)
+                end
+            else
+                Candy.miss = 0
+                Candy.initial = false
+                if bag > 0 then
+                    depositCandy()
+                end
+                Candy.lastBag = bagCount()
+            end
+        end
+    end)
+
+    -- ======================================================== MAIN LOOP
+
+    local function pickNextPC()
+        local root = getRoot()
+        local b = findCurrentBeast()
+        local bRoot = b and b.Character and (b.Character:FindFirstChild("HumanoidRootPart") or torsoOf(b.Character))
+
+        local bestPC, bestDist = nil, math.huge
+        for _, pcData in ipairs(S.pcs) do
+            local id = pcData.id
+            if not S.hacked[id] and not S.skipped[id] then
+                if getPCProgress(pcData) >= 1 then
+                    S.hacked[id] = true
+                else
+                    local pPart = partOf(pcData.computer)
+                    local beastTooClose = false
+                    if bRoot and pPart and (bRoot.Position - pPart.Position).Magnitude <= CFG.beastEvadeDist then
+                        beastTooClose = true
+                        S.skipped[id] = true
+                    end
+                    if not beastTooClose and pPart and root then
+                        local d = (root.Position - pPart.Position).Magnitude
+                        if d < bestDist then
+                            bestDist = d
+                            bestPC = pcData
+                        end
+                    elseif not beastTooClose and not bestPC then
+                        bestPC = pcData
+                    end
+                end
+            end
+        end
+        return bestPC
+    end
+
+    local function mainLoop()
+        while alive do
+            waitUnpaused()
+
+            if not S.enabled then
+                stopHack()
+                S.escaped = false
+                task.wait(0.5)
+                continue
+            end
+
+            if not waitForRound() then
+                task.wait(1)
+                continue
+            end
+
+            S.round += 1
+            resetState()
+            S.saves = 0
+
+            if isSelfBeast() then
+                setStatus("Beast mode - auto running")
+                repeat task.wait(1) until not alive or not S.enabled or not isSelfBeast() or not isInRound()
+                continue
+            end
+
+            for _ = 1, 10 do
+                S.pcs = findAllPCs()
+                if #S.pcs > 0 then break end
+                task.wait(0.5)
+            end
+
+            if #S.pcs == 0 then
+                setStatus("No PCs found in map")
+                task.wait(2)
+                continue
+            end
+            setStatus("Found " .. #S.pcs .. " PC(s)")
+
+            local attempts, maxAttempts = 0, #S.pcs * 6
+            while alive and S.enabled and attempts < maxAttempts
+                and not (isFindExitPhase() and not CFG.hackExtraPC) do
+
+                waitUnpaused()
+                if not isInRound() then break end
+
+                if isBeastNearby(CFG.beastEvadeDist) then
+                    escapeBeast()
+                end
+
+                local nextPC = pickNextPC()
+                if nextPC then
+                    hackPC(nextPC)
+                    attempts += 1
+                else
+                    local unhackedCount = 0
+                    for _, pcData in ipairs(S.pcs) do
+                        if getPCProgress(pcData) >= 1 then
+                            S.hacked[pcData.id] = true
+                        end
+                        if not S.hacked[pcData.id] then
+                            unhackedCount += 1
+                        end
+                    end
+
+                    if unhackedCount == 0 then
+                        break
+                    else
+                        setStatus("Evading Beast / Waiting for safe PC...")
+                        task.wait(1.2)
+                        S.skipped = {}
+                        attempts += 1
+                    end
+                end
+            end
+
+            if CFG.hackExtraPC then task.wait(1) end
+            cancelCurrentTween()
+
+            if isInRound() and not isFindExitPhase() then
+                setStatus("Waiting for Find Exit...")
+                local t0 = tick()
+                repeat task.wait(0.2)
+                until not alive or not S.enabled or not isInRound() or isFindExitPhase() or tick() - t0 > 30
+            end
+
+            if alive and S.enabled and isInRound() and isFindExitPhase() then
+                setStatus("Auto Exit started!")
+                local ok, err = pcall(runAutoExit)
+                if not ok then warn("[AutoFarm] exit error:", err) end
+                task.wait(2)
+            end
+        end
+    end
+
+    -- ======================================================== ANTI AFK
+
+    do
+        local VirtualUser = game:GetService("VirtualUser")
+        player.Idled:Connect(function()
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new())
+        end)
+        task.spawn(function()
+            while alive do
+                task.wait(600)
+                pcall(function()
+                    VirtualUser:CaptureController()
+                    VirtualUser:ClickButton2(Vector2.new())
+                end)
+            end
+        end)
+    end
+
+    -- ======================================================== API
+
+    function API.setEnabled(v)
+        S.enabled = v and true or false
+        if S.enabled then
+            S.escaped = false
+        else
+            S.paused = false
+            stopHack()
+            setStatus("Stopped")
+        end
+    end
+
+    function API.setCandy(v)
+        if not v then
+            Candy.enabled = false
+                return
+        end
+        Candy.enabled = true
+        Candy.miss = 0
+        Candy.initial = true
+        Candy.lastBag = 0
+    end
+
+    function API.setExtraPC(v) CFG.hackExtraPC = v and true or false end
+    function API.setNoJump(v) CFG.noJumpHack = v and true or false end
+    function API.setSpeed(v) CFG.tweenSpeed = v end
+
+    function API.bindStatus(label)
+        S.statusLabel = label
+        label.Text = "Status: " .. S.status
+    end
+
+    API.isPlayerInMatch = isPlayerInMatch
+
+    task.spawn(mainLoop)
+    task.spawn(beastLoop)
+    task.spawn(autoSaveLoop)
+
+    return API
+end)()
+
 local function _buildUI()
 
 local CFG = {
     Title    = "Extended Flee The Facility",
-    SubTitle = "v1.0.3.2",
+    SubTitle = "v1.0.3.3",
     W = 480, H = 320, SideW = 110,
     Tabs = {
         {name="Info",   icon="≡"},
@@ -2720,13 +4284,14 @@ KB.TextWrapped = true
 KB.LineHeight = 1.25
 KB.LayoutOrder = 2
 KB.Text = table.concat({
-    "Upd 1.0.3.2",
-    "+ Add Black Fog toggle + Fog Density slider (Misc tab)",
-    "+ Add No Fog warning (Black fog is locked until rejoin)",
-    "+ Add Wallhop Range slider ",
-    "/ Misc, Main and Visuals tabs now use sub-sections",
-    "/ Normal ESP options moved out of the dropdown, added Advanced ESP section",
-    "/ Fix Door ESP not work when execute fisrt time"
+    "Upd 1.0.3.3",
+    "+ Add Auto Farm (Auto tab)",
+    "+ Add Auto Candy Quest (Auto tab)",
+    "+ Add Auto Farm ban risk & beta notice",
+    "+ Add Feedback System (Config tab)",
+    "/ Fix Auto Candy Quest teleport & spam prompt until bag is empty",
+    "/ Instant cancel tween & go to Exit when Hack Extra PC is off",
+    "- Remove No Fog"
 }, "\n")
 
 HereBtn.MouseButton1Click:Connect(function()
@@ -2799,149 +4364,14 @@ task.spawn(function()
 end)
 
 addSection(Panes[2], "Trackers", 0)
+addToggle(Panes[2], "⊙", "Beast tracker", "Tracks beast selections and skill triggers", false, 1, function(s)
+    if s then startBeastTracker() else stopBeastTracker() end; saveSettings()
+end, "beastTracker")
+addToggle(Panes[2], "♪", "Skill Sound", "Plays a beep when the Beast uses a skill", false, 2, function(s)
+    MyHub.Config.SkillSound = s; saveSettings()
+end, "skillSound")
 do
-    local groupOpen = false
-    local headerRow = Instance.new("Frame", Panes[2])
-    headerRow.Size=UDim2.new(1,0,0,42); headerRow.BackgroundColor3=CFG.Card
-    headerRow.BorderSizePixel=0; headerRow.ZIndex=15; headerRow.LayoutOrder=1
-    corner(headerRow,9); stroke(headerRow,CFG.Border,1,0.91)
-
-    local hib = Instance.new("Frame", headerRow)
-    hib.Size=UDim2.new(0,26,0,26); hib.Position=UDim2.new(0,8,0.5,-13)
-    hib.BackgroundColor3=Color3.fromRGB(35,20,20); hib.BorderSizePixel=0; hib.ZIndex=16; corner(hib,7)
-    local hil = Instance.new("TextLabel", hib)
-    hil.Size=UDim2.new(1,0,1,0); hil.BackgroundTransparency=1
-    hil.Text="⊙"; hil.TextSize=12; hil.Font=Enum.Font.GothamBold; hil.ZIndex=17; hil.TextColor3=CFG.Accent
-
-    local hnl = Instance.new("TextLabel", headerRow)
-    hnl.Size=UDim2.new(0,130,0,15); hnl.Position=UDim2.new(0,42,0,8)
-    hnl.BackgroundTransparency=1; hnl.Text="Beast Tracker"; hnl.TextColor3=CFG.Text
-    hnl.TextSize=11; hnl.Font=Enum.Font.GothamBold
-    hnl.TextXAlignment=Enum.TextXAlignment.Left; hnl.ZIndex=16
-
-    local hdl = Instance.new("TextLabel", headerRow)
-    hdl.Size=UDim2.new(0,130,0,12); hdl.Position=UDim2.new(0,42,0,22)
-    hdl.BackgroundTransparency=1; hdl.Text="tracking + sound options"; hdl.TextColor3=CFG.TextMute
-    hdl.TextSize=9; hdl.Font=Enum.Font.Code
-    hdl.TextXAlignment=Enum.TextXAlignment.Left; hdl.ZIndex=16
-
-    local arrowLbl = Instance.new("TextLabel", headerRow)
-    arrowLbl.Size=UDim2.new(0,20,0,20); arrowLbl.Position=UDim2.new(1,-28,0.5,-10)
-    arrowLbl.BackgroundTransparency=1; arrowLbl.Text="↓"; arrowLbl.TextColor3=CFG.TextMute
-    arrowLbl.TextSize=13; arrowLbl.Font=Enum.Font.GothamBold; arrowLbl.ZIndex=16
-
-    local groupContent = Instance.new("Frame", Panes[2])
-    groupContent.Size=UDim2.new(1,0,0,0); groupContent.BackgroundTransparency=1
-    groupContent.BorderSizePixel=0; groupContent.ClipsDescendants=true
-    groupContent.Visible=false
-    groupContent.ZIndex=15; groupContent.LayoutOrder=2
-    local gcl = Instance.new("UIListLayout", groupContent)
-    gcl.SortOrder=Enum.SortOrder.LayoutOrder; gcl.Padding=UDim.new(0,5)
-    local gcp = Instance.new("UIPadding", groupContent); gcp.PaddingTop=UDim.new(0,5)
-
-    local btRow = Instance.new("Frame", groupContent)
-    btRow.Size=UDim2.new(1,0,0,42); btRow.BackgroundColor3=CFG.Card
-    btRow.BorderSizePixel=0; btRow.ZIndex=15; btRow.LayoutOrder=1
-    corner(btRow,9); stroke(btRow,CFG.Border,1,0.91)
-
-    local btib = Instance.new("Frame", btRow)
-    btib.Size=UDim2.new(0,26,0,26); btib.Position=UDim2.new(0,8,0.5,-13)
-    btib.BackgroundColor3=Color3.fromRGB(35,20,20); btib.BorderSizePixel=0; btib.ZIndex=16; corner(btib,7)
-    local btil = Instance.new("TextLabel", btib)
-    btil.Size=UDim2.new(1,0,1,0); btil.BackgroundTransparency=1
-    btil.Text="⊙"; btil.TextSize=12; btil.Font=Enum.Font.GothamBold; btil.ZIndex=17; btil.TextColor3=CFG.Accent
-
-    local btnl = Instance.new("TextLabel", btRow)
-    btnl.Size=UDim2.new(0,130,0,15); btnl.Position=UDim2.new(0,42,0,8)
-    btnl.BackgroundTransparency=1; btnl.Text="Beast tracker"; btnl.TextColor3=CFG.Text
-    btnl.TextSize=11; btnl.Font=Enum.Font.GothamBold
-    btnl.TextXAlignment=Enum.TextXAlignment.Left; btnl.ZIndex=16
-
-    local btdl = Instance.new("TextLabel", btRow)
-    btdl.Size=UDim2.new(0,130,0,12); btdl.Position=UDim2.new(0,42,0,22)
-    btdl.BackgroundTransparency=1; btdl.Text="Tracks beast selections and skill triggers"; btdl.TextColor3=CFG.TextMute
-    btdl.TextSize=9; btdl.Font=Enum.Font.Code
-    btdl.TextXAlignment=Enum.TextXAlignment.Left; btdl.ZIndex=16
-
-    local btpill = Instance.new("Frame", btRow)
-    btpill.Size=UDim2.new(0,32,0,18); btpill.Position=UDim2.new(1,-40,0.5,-9)
-    btpill.BackgroundColor3=Color3.fromRGB(42,36,36); btpill.BorderSizePixel=0; btpill.ZIndex=16; corner(btpill,9)
-    local btknob = Instance.new("Frame", btpill)
-    btknob.Size=UDim2.new(0,12,0,12); btknob.Position=UDim2.new(0,3,0.5,-6)
-    btknob.BackgroundColor3=Color3.fromRGB(255,255,255); btknob.BorderSizePixel=0; btknob.ZIndex=17; corner(btknob,6)
-
-    local btOn = false
-    local btBtn = Instance.new("TextButton", btRow)
-    btBtn.Size=UDim2.new(1,0,1,0); btBtn.BackgroundTransparency=1; btBtn.Text=""; btBtn.ZIndex=18
-    btBtn.MouseButton1Click:Connect(function()
-        btOn = not btOn
-        tw(btpill,fast,{BackgroundColor3=btOn and CFG.Accent or Color3.fromRGB(42,36,36)})
-        tw(btknob,fast,{Position=btOn and UDim2.new(1,-15,0.5,-6) or UDim2.new(0,3,0.5,-6)})
-        tw(btRow, fast,{BackgroundColor3=btOn and Color3.fromRGB(28,20,20) or CFG.Card})
-        if btOn then startBeastTracker() else stopBeastTracker() end
-        saveSettings()
-    end)
-    btBtn.MouseEnter:Connect(function() tw(btRow,fast,{BackgroundColor3=CFG.CardHov}) end)
-    btBtn.MouseLeave:Connect(function() tw(btRow,fast,{BackgroundColor3=btOn and Color3.fromRGB(28,20,20) or CFG.Card}) end)
-    syncFns["beastTracker"] = function(val)
-        btOn = val
-        btpill.BackgroundColor3 = val and CFG.Accent or Color3.fromRGB(42,36,36)
-        btknob.Position = val and UDim2.new(1,-15,0.5,-6) or UDim2.new(0,3,0.5,-6)
-        btRow.BackgroundColor3 = val and Color3.fromRGB(28,20,20) or CFG.Card
-    end
-
-    local ssRow = Instance.new("Frame", groupContent)
-    ssRow.Size=UDim2.new(1,0,0,42); ssRow.BackgroundColor3=CFG.Card
-    ssRow.BorderSizePixel=0; ssRow.ZIndex=15; ssRow.LayoutOrder=2
-    corner(ssRow,9); stroke(ssRow,CFG.Border,1,0.91)
-
-    local ssib = Instance.new("Frame", ssRow)
-    ssib.Size=UDim2.new(0,26,0,26); ssib.Position=UDim2.new(0,8,0.5,-13)
-    ssib.BackgroundColor3=Color3.fromRGB(35,20,20); ssib.BorderSizePixel=0; ssib.ZIndex=16; corner(ssib,7)
-    local ssil = Instance.new("TextLabel", ssib)
-    ssil.Size=UDim2.new(1,0,1,0); ssil.BackgroundTransparency=1
-    ssil.Text="♪"; ssil.TextSize=12; ssil.Font=Enum.Font.GothamBold; ssil.ZIndex=17; ssil.TextColor3=CFG.Accent
-
-    local ssnl = Instance.new("TextLabel", ssRow)
-    ssnl.Size=UDim2.new(0,130,0,15); ssnl.Position=UDim2.new(0,42,0,8)
-    ssnl.BackgroundTransparency=1; ssnl.Text="Skill Sound"; ssnl.TextColor3=CFG.Text
-    ssnl.TextSize=11; ssnl.Font=Enum.Font.GothamBold
-    ssnl.TextXAlignment=Enum.TextXAlignment.Left; ssnl.ZIndex=16
-
-    local ssdl = Instance.new("TextLabel", ssRow)
-    ssdl.Size=UDim2.new(0,130,0,12); ssdl.Position=UDim2.new(0,42,0,22)
-    ssdl.BackgroundTransparency=1; ssdl.Text="Plays a beep when the Beast uses a skill"; ssdl.TextColor3=CFG.TextMute
-    ssdl.TextSize=9; ssdl.Font=Enum.Font.Code
-    ssdl.TextXAlignment=Enum.TextXAlignment.Left; ssdl.ZIndex=16
-
-    local sspill = Instance.new("Frame", ssRow)
-    sspill.Size=UDim2.new(0,32,0,18); sspill.Position=UDim2.new(1,-40,0.5,-9)
-    sspill.BackgroundColor3=Color3.fromRGB(42,36,36); sspill.BorderSizePixel=0; sspill.ZIndex=16; corner(sspill,9)
-    local ssknob = Instance.new("Frame", sspill)
-    ssknob.Size=UDim2.new(0,12,0,12); ssknob.Position=UDim2.new(0,3,0.5,-6)
-    ssknob.BackgroundColor3=Color3.fromRGB(255,255,255); ssknob.BorderSizePixel=0; ssknob.ZIndex=17; corner(ssknob,6)
-
-    local ssOn = false
-    local ssBtn = Instance.new("TextButton", ssRow)
-    ssBtn.Size=UDim2.new(1,0,1,0); ssBtn.BackgroundTransparency=1; ssBtn.Text=""; ssBtn.ZIndex=18
-    ssBtn.MouseButton1Click:Connect(function()
-        ssOn = not ssOn
-        tw(sspill,fast,{BackgroundColor3=ssOn and CFG.Accent or Color3.fromRGB(42,36,36)})
-        tw(ssknob,fast,{Position=ssOn and UDim2.new(1,-15,0.5,-6) or UDim2.new(0,3,0.5,-6)})
-        tw(ssRow, fast,{BackgroundColor3=ssOn and Color3.fromRGB(28,20,20) or CFG.Card})
-        MyHub.Config.SkillSound = ssOn
-        saveSettings()
-    end)
-    ssBtn.MouseEnter:Connect(function() tw(ssRow,fast,{BackgroundColor3=CFG.CardHov}) end)
-    ssBtn.MouseLeave:Connect(function() tw(ssRow,fast,{BackgroundColor3=ssOn and Color3.fromRGB(28,20,20) or CFG.Card}) end)
-    syncFns["skillSound"] = function(val)
-        ssOn = val
-        sspill.BackgroundColor3 = val and CFG.Accent or Color3.fromRGB(42,36,36)
-        ssknob.Position = val and UDim2.new(1,-15,0.5,-6) or UDim2.new(0,3,0.5,-6)
-        ssRow.BackgroundColor3 = val and Color3.fromRGB(28,20,20) or CFG.Card
-    end
-
-    local idRow = Instance.new("Frame", groupContent)
+    local idRow = Instance.new("Frame", Panes[2])
     idRow.Size=UDim2.new(1,0,0,42); idRow.BackgroundColor3=CFG.Card
     idRow.BorderSizePixel=0; idRow.ZIndex=15; idRow.LayoutOrder=3
     corner(idRow,9); stroke(idRow,CFG.Border,1,0.91)
@@ -2958,6 +4388,12 @@ do
     idnl.BackgroundTransparency=1; idnl.Text="Sound ID"; idnl.TextColor3=CFG.Text
     idnl.TextSize=11; idnl.Font=Enum.Font.GothamBold
     idnl.TextXAlignment=Enum.TextXAlignment.Left; idnl.ZIndex=16
+
+    local iddl = Instance.new("TextLabel", idRow)
+    iddl.Size=UDim2.new(0,130,0,12); iddl.Position=UDim2.new(0,42,0,22)
+    iddl.BackgroundTransparency=1; iddl.Text="Custom rbxassetid for Skill Sound"; iddl.TextColor3=CFG.TextMute
+    iddl.TextSize=9; iddl.Font=Enum.Font.Code
+    iddl.TextXAlignment=Enum.TextXAlignment.Left; iddl.ZIndex=16
 
     local idBox = Instance.new("TextBox", idRow)
     idBox.Size=UDim2.new(0,120,0,24); idBox.Position=UDim2.new(1,-128,0.5,-12)
@@ -2981,7 +4417,7 @@ do
         saveSettings()
     end)
 
-    local volRow = Instance.new("Frame", groupContent)
+    local volRow = Instance.new("Frame", Panes[2])
     volRow.Size=UDim2.new(1,0,0,52); volRow.BackgroundColor3=CFG.Card
     volRow.BorderSizePixel=0; volRow.ZIndex=15; volRow.LayoutOrder=4
     corner(volRow,9); stroke(volRow,CFG.Border,1,0.91)
@@ -3056,44 +4492,55 @@ do
         local frac = (val - VOL_MIN) / (VOL_MAX - VOL_MIN)
         setVolumeFromFrac(frac)
     end
-
-    local fullH = 42 + 5 + 42 + 5 + 42 + 5 + 52 + 5
-    local hBtn = Instance.new("TextButton", headerRow)
-    hBtn.Size=UDim2.new(1,0,1,0); hBtn.BackgroundTransparency=1; hBtn.Text=""; hBtn.ZIndex=18
-    hBtn.MouseButton1Click:Connect(function()
-        groupOpen = not groupOpen
-        tw(arrowLbl,fast,{TextColor3=groupOpen and CFG.Accent or CFG.TextMute})
-        arrowLbl.Text = groupOpen and "↑" or "↓"
-        if groupOpen then groupContent.Visible = true end
-        local sizeTween = tw(groupContent, TweenInfo.new(0.25,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),
-            {Size=UDim2.new(1,0,0,groupOpen and fullH or 0)})
-        if not groupOpen then
-            sizeTween.Completed:Connect(function() groupContent.Visible = false end)
-        end
-    end)
-    hBtn.MouseEnter:Connect(function() tw(headerRow,fast,{BackgroundColor3=CFG.CardHov}) end)
-    hBtn.MouseLeave:Connect(function() tw(headerRow,fast,{BackgroundColor3=CFG.Card}) end)
 end
-addToggle(Panes[2], "∞", "Survivor tracker", "Renders overhead timer templates",           false, 4, function(s)
+addToggle(Panes[2], "∞", "Survivor tracker", "Renders overhead timer templates",           false, 5, function(s)
     if s then SurvivorTracker.start() else SurvivorTracker.stop() end; saveSettings()
 end, "survivorTracker")
-addSection(Panes[2], "Hacking", 5)
-addToggle(Panes[2], "⊘", "Never Fail",       "Auto pass minigame result to server",        false, 6, function(s)
+addSection(Panes[2], "Hacking", 6)
+addToggle(Panes[2], "⊘", "Never Fail",       "Auto pass minigame result to server",        false, 7, function(s)
     MyHub.Config.NeverFail = s; saveSettings()
 end, "neverfail")
-addToggle(Panes[2], "◍", "Far Hack", "hack PC from far, needs Never Fail", false, 7, function(s)
+addToggle(Panes[2], "◍", "Far Hack", "hack PC from far, needs Never Fail", false, 8, function(s)
     if s then RemoteHackPC.start() else RemoteHackPC.stop() end; saveSettings()
 end, "remoteHackPC")
 
-addSection(Panes[3], "Auto", 0)
-do
-    local note = Instance.new("TextLabel", Panes[3])
-    note.Size=UDim2.new(1,0,0,30); note.BackgroundTransparency=1
-    note.Text="Auto farm will be available here in the future."
-    note.TextColor3=CFG.TextMute; note.TextSize=11; note.Font=Enum.Font.Gotham
-    note.TextXAlignment=Enum.TextXAlignment.Left; note.TextWrapped=true
-    note.ZIndex=16; note.LayoutOrder=1
+local AutoFarmConfirmBg
+local showAutoFarmWarning
+local autoFarmWarnConfirmed = false
+
+addSection(Panes[3], "Auto Farm", 0)
+addToggle(Panes[3], "∞", "Auto Farm", "Hacks PCs, dodges beast, auto exit", false, 1, function(s)
+    if s then
+        if not autoFarmWarnConfirmed and showAutoFarmWarning then
+            showAutoFarmWarning()
+        else
+            AutoFarm.setEnabled(true)
+        end
+    else
+        AutoFarm.setEnabled(false)
+    end
+end, "autoFarm")
+addToggle(Panes[3], "◈", "Auto Candy Quest", "Deposits candy until bucket is full", false, 2, function(s)
+    AutoFarm.setCandy(s)
+end, "autoCandy")
+AutoFarm.onCandyDone = function()
+    if syncFns.autoCandy then syncFns.autoCandy(false) end
 end
+
+local farmStatus = Instance.new("TextLabel", Panes[3])
+farmStatus.Size=UDim2.new(1,0,0,18); farmStatus.BackgroundTransparency=1
+farmStatus.TextColor3=CFG.TextMute; farmStatus.TextSize=10; farmStatus.Font=Enum.Font.Code
+farmStatus.TextXAlignment=Enum.TextXAlignment.Left; farmStatus.TextTruncate=Enum.TextTruncate.AtEnd
+farmStatus.ZIndex=16; farmStatus.LayoutOrder=3
+AutoFarm.bindStatus(farmStatus)
+
+addSection(Panes[3], "Farm Settings", 4)
+addToggle(Panes[3], "▣", "Hack Extra PC", "Keeps hacking during Find Exit", false, 5, function(s)
+    AutoFarm.setExtraPC(s)
+end, "hackExtraPC")
+addToggle(Panes[3], "⚓", "No TP Jump", "Stands still while hacking (like co-op)", false, 6, function(s)
+    AutoFarm.setNoJump(s)
+end, "noJumpHack")
 
 addSection(Panes[4], "Normal ESP", 0)
 addToggle(Panes[4], "◉", "Player ESP", "survivors green / beast red", false, 1, function(s)
@@ -3129,70 +4576,103 @@ addToggle(Panes[4], "▦", "Vent ESP", "highlights vent blocks on the map", fals
     saveSettings()
 end, "espVents")
 
-local FogConfirmBg = Instance.new("Frame", SG)
-FogConfirmBg.Size=UDim2.new(1,0,1,0); FogConfirmBg.BackgroundColor3=Color3.fromRGB(0,0,0)
-FogConfirmBg.BackgroundTransparency=0.5; FogConfirmBg.ZIndex=200; FogConfirmBg.Visible=false
-FogConfirmBg.Active=true
+AutoFarmConfirmBg = Instance.new("Frame", Panel)
+AutoFarmConfirmBg.Size=UDim2.new(1,0,1,0); AutoFarmConfirmBg.BackgroundColor3=Color3.fromRGB(0,0,0)
+AutoFarmConfirmBg.BackgroundTransparency=0.45; AutoFarmConfirmBg.ZIndex=200; AutoFarmConfirmBg.Visible=false
+AutoFarmConfirmBg.Active=true; corner(AutoFarmConfirmBg,14)
 
-local FogConfirmBox = Instance.new("Frame", FogConfirmBg)
-FogConfirmBox.Size=UDim2.new(0,280,0,150); FogConfirmBox.Position=UDim2.new(0.5,-140,0.5,-75)
-FogConfirmBox.BackgroundColor3=CFG.Bg; FogConfirmBox.BorderSizePixel=0; FogConfirmBox.ZIndex=201
-corner(FogConfirmBox,12); stroke(FogConfirmBox,CFG.Border,1,0.8)
+local AutoFarmConfirmBox = Instance.new("Frame", AutoFarmConfirmBg)
+AutoFarmConfirmBox.Size=UDim2.new(0,280,0,150); AutoFarmConfirmBox.AnchorPoint=Vector2.new(0.5,0.5)
+AutoFarmConfirmBox.Position=UDim2.new(0.5,0,0.5,0)
+AutoFarmConfirmBox.BackgroundColor3=CFG.Bg; AutoFarmConfirmBox.BorderSizePixel=0; AutoFarmConfirmBox.ZIndex=201
+corner(AutoFarmConfirmBox,12); stroke(AutoFarmConfirmBox,CFG.Border,1,0.8)
 
-local FogConfirmTitle = Instance.new("TextLabel", FogConfirmBox)
-FogConfirmTitle.Size=UDim2.new(1,-24,0,20); FogConfirmTitle.Position=UDim2.new(0,12,0,12)
-FogConfirmTitle.BackgroundTransparency=1; FogConfirmTitle.Text="Do you want to enable No Fog?"
-FogConfirmTitle.TextColor3=CFG.Text; FogConfirmTitle.TextSize=13; FogConfirmTitle.Font=Enum.Font.GothamBold
-FogConfirmTitle.TextXAlignment=Enum.TextXAlignment.Left; FogConfirmTitle.ZIndex=202
+local AutoFarmConfirmTitle = Instance.new("TextLabel", AutoFarmConfirmBox)
+AutoFarmConfirmTitle.Size=UDim2.new(1,-24,0,20); AutoFarmConfirmTitle.Position=UDim2.new(0,12,0,12)
+AutoFarmConfirmTitle.BackgroundTransparency=1; AutoFarmConfirmTitle.Text="Warning! (1/2)"
+AutoFarmConfirmTitle.TextColor3=Color3.fromRGB(255,80,80); AutoFarmConfirmTitle.TextSize=13; AutoFarmConfirmTitle.Font=Enum.Font.GothamBold
+AutoFarmConfirmTitle.TextXAlignment=Enum.TextXAlignment.Left; AutoFarmConfirmTitle.ZIndex=202
 
-local FogConfirmMsg = Instance.new("TextLabel", FogConfirmBox)
-FogConfirmMsg.Size=UDim2.new(1,-24,0,50); FogConfirmMsg.Position=UDim2.new(0,12,0,36)
-FogConfirmMsg.BackgroundTransparency=1
-FogConfirmMsg.Text="If you enable it, you won't be able to use Black Fog or its slider unless you rejoin."
-FogConfirmMsg.TextColor3=CFG.TextMute; FogConfirmMsg.TextSize=11; FogConfirmMsg.Font=Enum.Font.Gotham
-FogConfirmMsg.TextWrapped=true; FogConfirmMsg.TextXAlignment=Enum.TextXAlignment.Left
-FogConfirmMsg.TextYAlignment=Enum.TextYAlignment.Top; FogConfirmMsg.ZIndex=202
+local AutoFarmConfirmMsg = Instance.new("TextLabel", AutoFarmConfirmBox)
+AutoFarmConfirmMsg.Size=UDim2.new(1,-24,0,50); AutoFarmConfirmMsg.Position=UDim2.new(0,12,0,36)
+AutoFarmConfirmMsg.BackgroundTransparency=1
+AutoFarmConfirmMsg.Text="Using Auto Farm can get you banned if someone records a video and reports it to an admin. Use at your own risk!"
+AutoFarmConfirmMsg.TextColor3=CFG.TextMute; AutoFarmConfirmMsg.TextSize=11; AutoFarmConfirmMsg.Font=Enum.Font.Gotham
+AutoFarmConfirmMsg.TextWrapped=true; AutoFarmConfirmMsg.TextXAlignment=Enum.TextXAlignment.Left
+AutoFarmConfirmMsg.TextYAlignment=Enum.TextYAlignment.Top; AutoFarmConfirmMsg.ZIndex=202
 
-local FogBtnRow = Instance.new("Frame", FogConfirmBox)
-FogBtnRow.Size=UDim2.new(1,-24,0,36); FogBtnRow.Position=UDim2.new(0,12,1,-48)
-FogBtnRow.BackgroundTransparency=1; FogBtnRow.ZIndex=202
-local FogBtnLayout = Instance.new("UIListLayout", FogBtnRow)
-FogBtnLayout.FillDirection=Enum.FillDirection.Horizontal
-FogBtnLayout.SortOrder=Enum.SortOrder.LayoutOrder; FogBtnLayout.Padding=UDim.new(0,10)
+local AutoFarmBtnRow = Instance.new("Frame", AutoFarmConfirmBox)
+AutoFarmBtnRow.Size=UDim2.new(1,-24,0,36); AutoFarmBtnRow.Position=UDim2.new(0,12,1,-48)
+AutoFarmBtnRow.BackgroundTransparency=1; AutoFarmBtnRow.ZIndex=202
+local AutoFarmBtnLayout = Instance.new("UIListLayout", AutoFarmBtnRow)
+AutoFarmBtnLayout.FillDirection=Enum.FillDirection.Horizontal
+AutoFarmBtnLayout.SortOrder=Enum.SortOrder.LayoutOrder; AutoFarmBtnLayout.Padding=UDim.new(0,10)
 
-local FogYesBtn = Instance.new("TextButton", FogBtnRow)
-FogYesBtn.Size=UDim2.new(0.5,-5,1,0); FogYesBtn.BackgroundColor3=Color3.fromRGB(160,30,30)
-FogYesBtn.BorderSizePixel=0; FogYesBtn.Text="Yes"; FogYesBtn.TextColor3=Color3.fromRGB(255,255,255)
-FogYesBtn.TextSize=12; FogYesBtn.Font=Enum.Font.GothamBold; FogYesBtn.ZIndex=203; FogYesBtn.LayoutOrder=1; corner(FogYesBtn,8)
+local AutoFarmYesBtn = Instance.new("TextButton", AutoFarmBtnRow)
+AutoFarmYesBtn.Size=UDim2.new(0.5,-5,1,0); AutoFarmYesBtn.BackgroundColor3=Color3.fromRGB(160,30,30)
+AutoFarmYesBtn.BorderSizePixel=0; AutoFarmYesBtn.Text="Yes"; AutoFarmYesBtn.TextColor3=Color3.fromRGB(255,255,255)
+AutoFarmYesBtn.TextSize=12; AutoFarmYesBtn.Font=Enum.Font.GothamBold; AutoFarmYesBtn.ZIndex=203; AutoFarmYesBtn.LayoutOrder=1; corner(AutoFarmYesBtn,8)
 
-local FogNoBtn = Instance.new("TextButton", FogBtnRow)
-FogNoBtn.Size=UDim2.new(0.5,-5,1,0); FogNoBtn.BackgroundColor3=Color3.fromRGB(40,40,40)
-FogNoBtn.BorderSizePixel=0; FogNoBtn.Text="No"; FogNoBtn.TextColor3=Color3.fromRGB(200,200,200)
-FogNoBtn.TextSize=12; FogNoBtn.Font=Enum.Font.GothamBold; FogNoBtn.ZIndex=203; FogNoBtn.LayoutOrder=2; corner(FogNoBtn,8)
+local AutoFarmNoBtn = Instance.new("TextButton", AutoFarmBtnRow)
+AutoFarmNoBtn.Size=UDim2.new(0.5,-5,1,0); AutoFarmNoBtn.BackgroundColor3=Color3.fromRGB(40,40,40)
+AutoFarmNoBtn.BorderSizePixel=0; AutoFarmNoBtn.Text="No"; AutoFarmNoBtn.TextColor3=Color3.fromRGB(200,200,200)
+AutoFarmNoBtn.TextSize=12; AutoFarmNoBtn.Font=Enum.Font.GothamBold; AutoFarmNoBtn.ZIndex=203; AutoFarmNoBtn.LayoutOrder=2; corner(AutoFarmNoBtn,8)
 
-FogYesBtn.MouseButton1Click:Connect(function()
-    FogConfirmBg.Visible = false
-    BlackFog.lock()
-    NoFog.start()
-    saveSettings()
+local autoFarmWarnPage = 1
+
+local function setAutoFarmWarnPage(page)
+    autoFarmWarnPage = page
+    if page == 1 then
+        AutoFarmConfirmTitle.Text = "Warning! (1/2)"
+        AutoFarmConfirmTitle.TextColor3 = Color3.fromRGB(255,80,80)
+        AutoFarmConfirmMsg.Text = "Using Auto Farm can get you banned if someone records a video and reports it to an admin. Use at your own risk!"
+        AutoFarmYesBtn.Size = UDim2.new(0.5,-5,1,0)
+        AutoFarmYesBtn.Text = "Next"
+        AutoFarmNoBtn.Visible = true
+    else
+        AutoFarmConfirmTitle.Text = "Beta Notice (2/2)"
+        AutoFarmConfirmTitle.TextColor3 = CFG.Text
+        AutoFarmConfirmMsg.Text = "Auto Farm is currently in Beta. If you encounter any bugs or have suggestions, please send us feedback in the Config tab!"
+        AutoFarmNoBtn.Visible = false
+        AutoFarmYesBtn.Size = UDim2.new(1,0,1,0)
+        AutoFarmYesBtn.Text = "OK, Start"
+    end
+end
+
+showAutoFarmWarning = function()
+    setAutoFarmWarnPage(1)
+    AutoFarmConfirmBg.Visible = true
+end
+
+AutoFarmYesBtn.MouseButton1Click:Connect(function()
+    if autoFarmWarnPage == 1 then
+        setAutoFarmWarnPage(2)
+    else
+        autoFarmWarnConfirmed = true
+        AutoFarmConfirmBg.Visible = false
+        AutoFarm.setEnabled(true)
+    end
 end)
-FogNoBtn.MouseButton1Click:Connect(function()
-    FogConfirmBg.Visible = false
-    if syncFns.noFog then syncFns.noFog(false) end
+AutoFarmNoBtn.MouseButton1Click:Connect(function()
+    AutoFarmConfirmBg.Visible = false
+    AutoFarm.setEnabled(false)
+    if syncFns.autoFarm then syncFns.autoFarm(false) end
 end)
     
 local wallhopSliderRow, wallhopSliderSet, wallhopSliderStop
-local WallhopConfirmBg = Instance.new("Frame", SG)
+local WallhopConfirmBg = Instance.new("Frame", Panel)
 WallhopConfirmBg.Size = UDim2.new(1,0,1,0)
 WallhopConfirmBg.BackgroundColor3 = Color3.fromRGB(0,0,0)
-WallhopConfirmBg.BackgroundTransparency = 0.5
+WallhopConfirmBg.BackgroundTransparency = 0.45
 WallhopConfirmBg.ZIndex = 200
 WallhopConfirmBg.Visible = false
 WallhopConfirmBg.Active = true
+corner(WallhopConfirmBg, 14)
 
 local WallhopConfirmBox = Instance.new("Frame", WallhopConfirmBg)
 WallhopConfirmBox.Size = UDim2.new(0,280,0,150)
-WallhopConfirmBox.Position = UDim2.new(0.5,-140,0.5,-75)
+WallhopConfirmBox.AnchorPoint = Vector2.new(0.5,0.5)
+WallhopConfirmBox.Position = UDim2.new(0.5,0,0.5,0)
 WallhopConfirmBox.BackgroundColor3 = CFG.Bg
 WallhopConfirmBox.BorderSizePixel = 0
 WallhopConfirmBox.ZIndex = 201
@@ -3339,6 +4819,10 @@ local function addSliderRow(pane, order, icon, name, initFrac, formatFn, onChang
     return row, setFrac, function() dragging = false end
 end
 
+addSliderRow(Panes[3], 7, "»", "Tween Speed", (35 - 10) / 90,
+    function(f) return math.floor(10 + f * 90 + 0.5) .. " st/s" end,
+    function(f) AutoFarm.setSpeed(math.floor(10 + f * 90 + 0.5)) end)
+
 addSection(Panes[5], "Graphics", 0)
 addToggle(Panes[5], "▣", "No Texture",  "Replaces world assets with solid plastic layers",  false, 1, function(s)
     MyHub.Config.NoTexture = s; if MyHub.Config.NoTexture then scanMap() else restoreMap() end; saveSettings()
@@ -3347,40 +4831,16 @@ addToggle(Panes[5], "☼", "Flashlight",  "Forces light shifts into bright ambie
     if s then Flashlight.start() else Flashlight.stop() end; saveSettings()
 end, "flashlight")
 addSection(Panes[5], "Fog", 3)
-addToggle(Panes[5], "☁", "No Fog",      "Removes map fog for clearer visibility",            false, 4, function(s)
-    if s then
-        FogConfirmBg.Visible = true
-    else
-        NoFog.stop(); saveSettings()
-    end
-end, "noFog")
-
-local blackFogRow = addToggle(Panes[5], "◉", "Black Fog", "Forces dark fog color", false, 5, function(s)
+local blackFogRow = addToggle(Panes[5], "◉", "Black Fog", "Forces dark fog color", false, 4, function(s)
     if s then BlackFog.start() else BlackFog.stop() end
 end, "blackFog")
 
-local fogSliderRow = addSliderRow(Panes[5], 6, "▒", "Fog Density", FogDensity.value,
+local fogSliderRow = addSliderRow(Panes[5], 5, "▒", "Fog Density", FogDensity.value,
     function(f) return math.floor(f * 100 + 0.5) .. "%" end,
     function(f)
         if FogDensity.ready then FogDensity.set(f) else FogDensity.value = f end
     end)
 FogDensity.ready = true
-
-BlackFog.onLock = function()
-    if syncFns.blackFog then syncFns.blackFog(false) end
-    for _, r in ipairs({blackFogRow, fogSliderRow}) do
-        if r and r.Parent and not r:FindFirstChild("LockOverlay") then
-            local o = Instance.new("TextButton", r)
-            o.Name="LockOverlay"; o.Size=UDim2.new(1,0,1,0)
-            o.BackgroundColor3=Color3.fromRGB(0,0,0); o.BackgroundTransparency=0.35
-            o.BorderSizePixel=0; o.AutoButtonColor=false
-            o.Text="Locked - rejoin to use"; o.TextColor3=CFG.TextMute
-            o.TextSize=10; o.Font=Enum.Font.Code; o.ZIndex=30
-            corner(o,9)
-        end
-    end
-end
-if BlackFog.locked then BlackFog.onLock() end
 addSection(Panes[5], "Utilities", 7)
 addToggle(Panes[5], "⊗", "Self muting", "Silences local player character audio triggers",    false, 8, function(s)
     if s then SelfMuting.start() else SelfMuting.stop() end; saveSettings()
@@ -3499,23 +4959,162 @@ keyBox.FocusLost:Connect(function(enterPressed)
     end
 end)
 
+addSection(Panes[6], "Feedback", 2)
+
+local FEEDBACK_WEBHOOK = "https://discord.com/api/webhooks/1563452610239791216/bse2tw9o2ehMvZYzqunPi9Arn43KVCp9H8s2EReujsg7si1ogSEQ443RC53DulEJCZxE"
+
+local FeedbackBox = Instance.new("Frame", Panes[6])
+FeedbackBox.Size = UDim2.new(1, 0, 0, 125)
+FeedbackBox.BackgroundColor3 = CFG.Card
+FeedbackBox.BorderSizePixel = 0
+FeedbackBox.ZIndex = 15
+FeedbackBox.LayoutOrder = 3
+corner(FeedbackBox, 9)
+stroke(FeedbackBox, CFG.Border, 1, 0.91)
+
+local FbTitle = Instance.new("TextLabel", FeedbackBox)
+FbTitle.Size = UDim2.new(1, -24, 0, 16)
+FbTitle.Position = UDim2.new(0, 12, 0, 8)
+FbTitle.BackgroundTransparency = 1
+FbTitle.TextColor3 = CFG.Text
+FbTitle.TextSize = 11
+FbTitle.Font = Enum.Font.GothamBold
+FbTitle.TextXAlignment = Enum.TextXAlignment.Left
+FbTitle.ZIndex = 16
+FbTitle.Text = "Feedback System"
+
+local FbInputBg = Instance.new("Frame", FeedbackBox)
+FbInputBg.Size = UDim2.new(1, -24, 0, 52)
+FbInputBg.Position = UDim2.new(0, 12, 0, 28)
+FbInputBg.BackgroundColor3 = Color3.fromRGB(18, 17, 17)
+FbInputBg.BorderSizePixel = 0
+FbInputBg.ZIndex = 16
+corner(FbInputBg, 8)
+stroke(FbInputBg, CFG.Border, 1, 0.9)
+
+local FbInput = Instance.new("TextBox", FbInputBg)
+FbInput.Size = UDim2.new(1, -16, 1, -10)
+FbInput.Position = UDim2.new(0, 8, 0, 5)
+FbInput.BackgroundTransparency = 1
+FbInput.Text = ""
+FbInput.PlaceholderText = "Write your feedback or bug report here..."
+FbInput.TextColor3 = CFG.Text
+FbInput.PlaceholderColor3 = CFG.TextMute
+FbInput.TextSize = 10
+FbInput.Font = Enum.Font.Code
+FbInput.TextXAlignment = Enum.TextXAlignment.Left
+FbInput.TextYAlignment = Enum.TextYAlignment.Top
+FbInput.TextWrapped = true
+FbInput.MultiLine = true
+FbInput.ClearTextOnFocus = false
+FbInput.ZIndex = 17
+
+local FbSendBtn = Instance.new("TextButton", FeedbackBox)
+FbSendBtn.Size = UDim2.new(0, 80, 0, 26)
+FbSendBtn.Position = UDim2.new(1, -92, 1, -34)
+FbSendBtn.BackgroundColor3 = CFG.Accent
+FbSendBtn.BorderSizePixel = 0
+FbSendBtn.Text = "Send"
+FbSendBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+FbSendBtn.TextSize = 11
+FbSendBtn.Font = Enum.Font.GothamBold
+FbSendBtn.ZIndex = 17
+corner(FbSendBtn, 7)
+
+local FbStatusLbl = Instance.new("TextLabel", FeedbackBox)
+FbStatusLbl.Size = UDim2.new(1, -110, 0, 26)
+FbStatusLbl.Position = UDim2.new(0, 12, 1, -34)
+FbStatusLbl.BackgroundTransparency = 1
+FbStatusLbl.Text = ""
+FbStatusLbl.TextColor3 = CFG.TextMute
+FbStatusLbl.TextSize = 10
+FbStatusLbl.Font = Enum.Font.Code
+FbStatusLbl.TextXAlignment = Enum.TextXAlignment.Left
+FbStatusLbl.ZIndex = 16
+
+local fbSending = false
+FbSendBtn.MouseButton1Click:Connect(function()
+    if fbSending then return end
+    local msg = FbInput.Text:gsub("^%s+", ""):gsub("%s+$", "")
+    if msg == "" then
+        FbStatusLbl.Text = "Please enter your feedback first!"
+        FbStatusLbl.TextColor3 = Color3.fromRGB(255, 70, 70)
+        task.delay(3, function()
+            if FbStatusLbl and FbStatusLbl.Parent and FbStatusLbl.Text == "Please enter your feedback first!" then
+                FbStatusLbl.Text = ""
+            end
+        end)
+        return
+    end
+    fbSending = true
+    FbSendBtn.Text = "Sending..."
+    FbSendBtn.BackgroundColor3 = Color3.fromRGB(90, 35, 35)
+    FbStatusLbl.Text = ""
+
+    task.spawn(function()
+        local req = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+        local payload = HttpService:JSONEncode({
+            username = "ExFTF Feedback",
+            embeds = {{
+                title = "New Feedback Received",
+                description = msg,
+                color = 12135725,
+                fields = {
+                    {name = "Player", value = lp.Name .. " (" .. tostring(lp.UserId) .. ")", inline = true},
+                    {name = "Version", value = CFG.SubTitle, inline = true}
+                },
+                timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+            }}
+        })
+
+        if req then
+            pcall(function()
+                req({
+                    Url = FEEDBACK_WEBHOOK,
+                    Method = "POST",
+                    Headers = {["Content-Type"] = "application/json"},
+                    Body = payload
+                })
+            end)
+        else
+            pcall(function()
+                HttpService:PostAsync(FEEDBACK_WEBHOOK, payload, Enum.HttpContentType.ApplicationJson)
+            end)
+        end
+
+        FbInput.Text = ""
+        FbSendBtn.Text = "Send"
+        FbSendBtn.BackgroundColor3 = CFG.Accent
+        FbStatusLbl.Text = "Feedback sent!"
+        FbStatusLbl.TextColor3 = Color3.fromRGB(70, 230, 90)
+        task.delay(3, function()
+            if FbStatusLbl and FbStatusLbl.Parent and FbStatusLbl.Text == "Feedback sent!" then
+                FbStatusLbl.Text = ""
+            end
+        end)
+        fbSending = false
+    end)
+end)
+
 local savedPX = -CFG.W/2
 local savedPY = -CFG.H/2
 local isOpen  = true
 local isBusy  = false
 
-local ConfirmBg = Instance.new("Frame", SG)
+local ConfirmBg = Instance.new("Frame", Panel)
 ConfirmBg.Size=UDim2.new(1,0,1,0); ConfirmBg.BackgroundColor3=Color3.fromRGB(0,0,0)
-ConfirmBg.BackgroundTransparency=0.5; ConfirmBg.ZIndex=200; ConfirmBg.Visible=false
+ConfirmBg.BackgroundTransparency=0.45; ConfirmBg.ZIndex=200; ConfirmBg.Visible=false
+ConfirmBg.Active=true; corner(ConfirmBg,14)
 
 local ConfirmBox = Instance.new("Frame", ConfirmBg)
-ConfirmBox.Size=UDim2.new(0,260,0,110); ConfirmBox.Position=UDim2.new(0.5,-130,0.5,-55)
+ConfirmBox.Size=UDim2.new(0,260,0,110); ConfirmBox.AnchorPoint=Vector2.new(0.5,0.5)
+ConfirmBox.Position=UDim2.new(0.5,0,0.5,0)
 ConfirmBox.BackgroundColor3=CFG.Bg; ConfirmBox.BorderSizePixel=0; ConfirmBox.ZIndex=201
 corner(ConfirmBox,12); stroke(ConfirmBox,CFG.Border,1,0.8)
 
 local ConfirmTitle = Instance.new("TextLabel", ConfirmBox)
 ConfirmTitle.Size=UDim2.new(1,0,0,40); ConfirmTitle.Position=UDim2.new(0,0,0,10)
-ConfirmTitle.BackgroundTransparency=1; ConfirmTitle.Text="Do you really want to destroy?"
+ConfirmTitle.BackgroundTransparency=1; ConfirmTitle.Text="Do you really want to destroy GUI?"
 ConfirmTitle.TextColor3=CFG.Text; ConfirmTitle.TextSize=13; ConfirmTitle.Font=Enum.Font.GothamBold
 ConfirmTitle.ZIndex=202
 
@@ -3603,7 +5202,8 @@ end)
 
 task.defer(function()
     switchTab(1); task.wait(0.1)
-    local vp = workspace.CurrentCamera.ViewportSize
+    local vp = SG.AbsoluteSize
+    if vp.X <= 0 or vp.Y <= 0 then vp = workspace.CurrentCamera.ViewportSize end
     local px = math.floor((vp.X-CFG.W)/2)
     local py = math.floor((vp.Y-CFG.H)/2)
     Panel.Position=UDim2.new(0,px,0,py); savedPX=px; savedPY=py
