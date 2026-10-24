@@ -4461,6 +4461,7 @@ KB.Text = table.concat({
     "+ Add Auto Farm (Auto tab)",
     "+ Add Auto Candy Quest (Auto tab)",
     "+ Add Feedback System (Config tab)",
+    "+ Add No TP Jump toggle (auto tab)",
     "/ Improve Esp Player",
     "- Remove No Fog"
 }, "\n")
