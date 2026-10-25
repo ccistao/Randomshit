@@ -1414,99 +1414,252 @@ local function getTriggerPart(trigger)
     return trigger:FindFirstChildWhichIsA("BasePart", true)
 end
 
-local RemoteHackPC = {enabled = false, stolenEvent = nil, hookInstalled = false, connections = {}}
+local RemoteHackPC = {
+    enabled = false,
+    stolenEvent = nil,
+    stolenTrigger = nil,
+    activeHacking = false,
+    connections = {},
+}
 
 local function isCurrentlyHacking()
     local stats = lp:FindFirstChild("TempPlayerStatsModule")
-    local anim = stats and stats:FindFirstChild("CurrentAnimation")
-    return anim ~= nil and anim.Value == "Typing"
+    if not stats then return false end
+    local anim = stats:FindFirstChild("CurrentAnimation")
+    if anim and tostring(anim.Value) == "Typing" then return true end
+    return false
 end
 
-local function installRemoteHackPCHook()
-    if RemoteHackPC.hookInstalled then return end
-    RemoteHackPC.hookInstalled = true
+local function isPCCompleted(evt)
+    if not evt or not evt.Parent then return true end
+    local pc = evt:FindFirstAncestor("ComputerTable")
+    if not pc or not pc.Parent then return true end
+    local scr = pc:FindFirstChild("Screen")
+    if scr and scr:IsA("BasePart") then
+        local c = scr.Color
+        if c.G > c.R + 0.2 and c.G > c.B + 0.2 then
+            return true
+        end
+    end
+    return false
+end
 
-    local remoteEventRef = Replicated:FindFirstChild("RemoteEvent")
-    local ok, mt = pcall(getrawmetatable, game)
-    if not ok or not mt then RemoteHackPC.hookInstalled = false; return end
+local function findNearestPCTrigger(maxDist)
+    local char = lp.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil, nil end
+    local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
+    if not map or not map.Parent then return nil, nil end
 
-    local oldNamecall = mt.__namecall
-    local okSet = pcall(setreadonly, mt, false)
-    if not okSet then RemoteHackPC.hookInstalled = false; return end
-
-    mt.__namecall = newcclosure(function(self, ...)
-        local method = getnamecallmethod()
-        local args = {...}
-
-        if not checkcaller() and method == "FireServer" and self == remoteEventRef then
-            if args[1] == "Input" and args[2] == "Trigger" then
-                local evt = args[4]
-                local isComputerEvent = evt and evt:FindFirstAncestor("ComputerTable") ~= nil
-
-                if args[3] == true and evt ~= nil then
-                    if isComputerEvent then
-                        RemoteHackPC.stolenEvent = evt
-                    end
-                elseif args[3] == false then
-
-                    if evt == RemoteHackPC.stolenEvent then
-                        if RemoteHackPC.enabled and isCurrentlyHacking() then
-                            return
-                        else
-                            RemoteHackPC.stolenEvent = nil
-                        end
-                    end
+    local bestTrig, bestEvt, bestDist = nil, nil, maxDist or 10
+    for _, obj in ipairs(map:GetDescendants()) do
+        if obj:IsA("BasePart") and (obj.Name == "ComputerTrigger1" or obj.Name == "ComputerTrigger2" or obj.Name == "ComputerTrigger3") then
+            local evt = obj:FindFirstChild("Event")
+            if evt and not isPCCompleted(evt) then
+                local d = (hrp.Position - obj.Position).Magnitude
+                if d < bestDist then
+                    bestDist = d
+                    bestTrig = obj
+                    bestEvt = evt
                 end
             end
         end
+    end
+    return bestTrig, bestEvt
+end
 
-        return oldNamecall(self, ...)
+-- Khôi phục hoàn toàn tương tác gốc của game (nhả PC đang kẹt và làm mới lại Trigger đang đứng gần)
+local function restoreOriginalInteraction()
+    local prevEvt = RemoteHackPC.stolenEvent
+    RemoteHackPC.activeHacking = false
+    RemoteHackPC.stolenEvent = nil
+    RemoteHackPC.stolenTrigger = nil
+
+    local remote = Replicated:FindFirstChild("RemoteEvent")
+    local stats = lp:FindFirstChild("TempPlayerStatsModule")
+    local actionEvent = stats and stats:FindFirstChild("ActionEvent")
+    local curEvt = actionEvent and actionEvent.Value
+
+    if remote then
+        pcall(function()
+            remote:FireServer("Input", "Action", false)
+            if prevEvt then
+                remote:FireServer("Input", "Trigger", false, prevEvt)
+            end
+            if curEvt and curEvt ~= prevEvt and curEvt:FindFirstAncestor("ComputerTable") then
+                remote:FireServer("Input", "Trigger", false, curEvt)
+            end
+        end)
+    end
+
+    -- Nếu đang đứng trong vùng Trigger của cửa/máy tính/lồng/tủ thì kích hoạt chạm lại để hiện nút E gốc ngay lập tức
+    task.spawn(function()
+        task.wait(0.05)
+        local char = lp.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
+        if not hrp or not map or not map.Parent then return end
+        for _, obj in ipairs(map:GetDescendants()) do
+            if obj:IsA("BasePart") and (obj.Name:find("Trigger") or obj:FindFirstChild("Event")) then
+                if (hrp.Position - obj.Position).Magnitude <= 8 then
+                    local evt = obj:FindFirstChild("Event")
+                    if firetouchinterest then
+                        pcall(function()
+                            firetouchinterest(hrp, obj, 1)
+                            task.wait(0.03)
+                            firetouchinterest(hrp, obj, 0)
+                        end)
+                    elseif evt and remote then
+                        pcall(function()
+                            remote:FireServer("Input", "Trigger", true, evt)
+                        end)
+                    end
+                    break
+                end
+            end
+        end
     end)
-    pcall(setreadonly, mt, true)
+end
+
+-- Nếu trước đó đã lỡ chạy bản cũ có cài hook metatable trong cùng phiên game thì tự động gỡ bỏ về hàm gốc
+if _G.__OrigFTFNamecall then
+    pcall(function()
+        local mt = getrawmetatable(game)
+        setreadonly(mt, false)
+        mt.__namecall = _G.__OrigFTFNamecall
+        setreadonly(mt, true)
+    end)
 end
 
 function RemoteHackPC.start()
     if RemoteHackPC.enabled then return end
-    installRemoteHackPCHook()
     RemoteHackPC.enabled = true
+    RemoteHackPC.activeHacking = false
+    RemoteHackPC.stolenEvent = nil
+    RemoteHackPC.stolenTrigger = nil
 
-    task.spawn(function()
-        local remote = Replicated:WaitForChild("RemoteEvent", 10)
-        if not remote then return end
+    local remote = Replicated:FindFirstChild("RemoteEvent") or Replicated:WaitForChild("RemoteEvent", 10)
+    if not remote then return end
 
-        local function tryRestore()
-            if not RemoteHackPC.enabled or not RemoteHackPC.stolenEvent then return end
-            local stats = lp:FindFirstChild("TempPlayerStatsModule")
-            local actionEvent = stats and stats:FindFirstChild("ActionEvent")
-            if actionEvent and actionEvent.Value == nil then
-                pcall(function()
-                    remote:FireServer("Input", "Trigger", true, RemoteHackPC.stolenEvent)
+    local function attachStats(stats)
+        if not stats then return end
+        local actionEvent = stats:FindFirstChild("ActionEvent") or stats:WaitForChild("ActionEvent", 5)
+        local anim = stats:FindFirstChild("CurrentAnimation") or stats:WaitForChild("CurrentAnimation", 5)
+
+        if actionEvent then
+            table.insert(RemoteHackPC.connections, actionEvent:GetPropertyChangedSignal("Value"):Connect(function()
+                if not RemoteHackPC.enabled then return end
+                local val = actionEvent.Value
+                if val and typeof(val) == "Instance" then
+                    if val:FindFirstAncestor("ComputerTable") then
+                        if not isPCCompleted(val) then
+                            RemoteHackPC.stolenEvent = val
+                            RemoteHackPC.stolenTrigger = val.Parent
+                        end
+                    else
+                        -- Người chơi vừa chạm vào Trigger của cửa / lồng / cổng thoát hiểm -> nhả Far Hack để tương tác bình thường
+                        RemoteHackPC.activeHacking = false
+                        RemoteHackPC.stolenEvent = nil
+                        RemoteHackPC.stolenTrigger = nil
+                    end
+                elseif val == nil and RemoteHackPC.activeHacking and RemoteHackPC.stolenEvent then
+                    if not isPCCompleted(RemoteHackPC.stolenEvent) and isPlayerInMatchGlobal(lp) then
+                        pcall(function()
+                            remote:FireServer("Input", "Trigger", true, RemoteHackPC.stolenEvent)
+                            remote:FireServer("Input", "Action", true)
+                        end)
+                    else
+                        restoreOriginalInteraction()
+                    end
+                end
+            end))
+        end
+
+        if anim then
+            table.insert(RemoteHackPC.connections, anim:GetPropertyChangedSignal("Value"):Connect(function()
+                if not RemoteHackPC.enabled then return end
+                if tostring(anim.Value) == "Typing" then
+                    if not RemoteHackPC.stolenEvent then
+                        local trig, nearEvt = findNearestPCTrigger(12)
+                        if nearEvt then
+                            RemoteHackPC.stolenTrigger = trig
+                            RemoteHackPC.stolenEvent = nearEvt
+                        end
+                    end
+                    if RemoteHackPC.stolenEvent then
+                        RemoteHackPC.activeHacking = true
+                    end
+                end
+            end))
+        end
+    end
+
+    local stats = lp:FindFirstChild("TempPlayerStatsModule")
+    if stats then task.spawn(attachStats, stats) end
+    table.insert(RemoteHackPC.connections, lp.ChildAdded:Connect(function(ch)
+        if ch.Name == "TempPlayerStatsModule" then attachStats(ch) end
+    end))
+
+    table.insert(RemoteHackPC.connections, UserInputService.InputBegan:Connect(function(inp, gp)
+        if gp or not RemoteHackPC.enabled then return end
+        if inp.KeyCode == Enum.KeyCode.E or inp.KeyCode == Enum.KeyCode.ButtonX then
+            local trig, evt = findNearestPCTrigger(9)
+            if trig and evt then
+                RemoteHackPC.stolenTrigger = trig
+                RemoteHackPC.stolenEvent = evt
+                RemoteHackPC.activeHacking = true
+                task.spawn(function()
+                    pcall(function()
+                        remote:FireServer("Input", "Trigger", true, evt)
+                        task.wait(0.05)
+                        remote:FireServer("Input", "Action", true)
+                    end)
                 end)
+            elseif RemoteHackPC.activeHacking then
+                -- Khi đang ở xa máy tính mà bấm E (ví dụ muốn mở cửa/cứu người), nhả Far Hack về gốc ngay lập tức
+                restoreOriginalInteraction()
             end
         end
+    end))
 
-        local stats = lp:FindFirstChild("TempPlayerStatsModule") or lp:WaitForChild("TempPlayerStatsModule", 5)
-        if stats then
-            local actionEvent = stats:FindFirstChild("ActionEvent")
-            if actionEvent then
-                table.insert(RemoteHackPC.connections, actionEvent:GetPropertyChangedSignal("Value"):Connect(tryRestore))
-            end
-        end
-
+    table.insert(RemoteHackPC.connections, task.spawn(function()
         while RemoteHackPC.enabled do
-            task.wait(0.2)
-            tryRestore()
+            task.wait(0.15)
+            if RemoteHackPC.activeHacking and RemoteHackPC.stolenEvent then
+                local st = lp:FindFirstChild("TempPlayerStatsModule")
+                local rag = st and st:FindFirstChild("Ragdoll")
+                local cap = st and st:FindFirstChild("Captured")
+                if not isGameActive()
+                    or not isPlayerInMatchGlobal(lp)
+                    or isPCCompleted(RemoteHackPC.stolenEvent)
+                    or (rag and rag.Value == true)
+                    or (cap and cap.Value == true) then
+                    restoreOriginalInteraction()
+                else
+                    pcall(function()
+                        local ae = st and st:FindFirstChild("ActionEvent")
+                        if ae and ae.Value ~= RemoteHackPC.stolenEvent then
+                            remote:FireServer("Input", "Trigger", true, RemoteHackPC.stolenEvent)
+                        end
+                        remote:FireServer("Input", "Action", true)
+                        if MyHub.Config.NeverFail then
+                            remote:FireServer("SetPlayerMinigameResult", true)
+                        end
+                    end)
+                end
+            end
         end
-    end)
+    end))
 end
 
 function RemoteHackPC.stop()
     RemoteHackPC.enabled = false
-    RemoteHackPC.stolenEvent = nil
     for _, c in ipairs(RemoteHackPC.connections) do
-        if typeof(c) == "RBXScriptConnection" then c:Disconnect() end
+        if typeof(c) == "RBXScriptConnection" then c:Disconnect()
+        elseif typeof(c) == "thread" then pcall(task.cancel, c) end
     end
     RemoteHackPC.connections = {}
+    restoreOriginalInteraction()
 end
 
 local _sharedOverlapParams = OverlapParams.new()
@@ -1954,116 +2107,179 @@ local function isPlayerInMatchGlobal(plr)
     return true
 end
 
-local function reloadESP()
-    task.spawn(function()
-        updateVentESP()
+-- ======================================================== SELF-HEALING PLAYER & MAP ESP
+local clearAllPlayerESP
+local updateSinglePlayerESP
+local rebuildAllPlayerESP
+local trimExcessMapHighlights
 
+trimExcessMapHighlights = function(maxMapHighlights)
+    maxMapHighlights = maxMapHighlights or 24
+    pcall(function()
         local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
-        if map then
-            for _, obj in ipairs(map:GetChildren()) do
-                if obj.Name == "ComputerTable" then
-                    local h = obj:FindFirstChildOfClass("Highlight")
-                    if h and not MyHub.Config.ESP.pc then h:Destroy()
-                    elseif not h and MyHub.Config.ESP.pc then
-                        local a = Instance.new("Highlight", obj)
-                        a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        a.FillColor = Color3.fromRGB(13,105,172)
-                        a.OutlineColor = Color3.fromRGB(20,165,255)
-                        task.spawn(function()
-                            while a and a.Parent do
-                                local scr = obj:FindFirstChild("Screen")
-                                if scr then
-                                    a.FillColor = scr.Color
-                                    a.OutlineColor = Color3.fromRGB(
-                                        math.clamp(scr.Color.R*400,0,255),
-                                        math.clamp(scr.Color.G*400,0,255),
-                                        math.clamp(scr.Color.B*400,0,255))
-                                end
-                                task.wait(1)
-                            end
-                        end)
+        local mapHLs = {}
+        local myHRP = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+        local myPos = myHRP and myHRP.Position or Vector3.zero
+        local CollectionService = game:GetService("CollectionService")
+
+        for _, inst in ipairs(workspace:GetDescendants()) do
+            if inst:IsA("Highlight") and inst.Name ~= "PlayerESPHL" then
+                local parentModel = inst.Parent
+                if not parentModel then
+                    inst.Adornee = nil
+                    inst:Destroy()
+                elseif Players:GetPlayerFromCharacter(parentModel) then
+                    -- Highlight của Player sẽ do updateSinglePlayerESP quản lý riêng
+                elseif map and not inst:IsDescendantOf(map) and not CollectionService:HasTag(parentModel, "LOCKER") then
+                    inst.Adornee = nil
+                    inst:Destroy()
+                else
+                    local priority = 1 -- 1 = Door / Locker, 2 = PC / Pod / Exit
+                    if parentModel.Name == "ComputerTable" or parentModel.Name == "FreezePod" or parentModel.Name == "ExitDoor" then
+                        priority = 2
                     end
-                end
-                if obj.Name == "FreezePod" then
-                    local h = obj:FindFirstChildOfClass("Highlight")
-                    if h and not MyHub.Config.ESP.pods then h:Destroy()
-                    elseif not h and MyHub.Config.ESP.pods then
-                        local a = Instance.new("Highlight", obj)
-                        a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        a.FillColor = Color3.fromRGB(120,200,255)
-                        a.OutlineColor = Color3.fromRGB(160,255,255)
-                    end
-                end
-                if obj.Name == "ExitDoor" then
-                    local h = obj:FindFirstChildOfClass("Highlight")
-                    if h and not MyHub.Config.ESP.exits then h:Destroy()
-                    elseif not h and MyHub.Config.ESP.exits then
-                        local a = Instance.new("Highlight", obj)
-                        a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        a.FillColor = Color3.fromRGB(252,255,100)
-                        a.OutlineColor = Color3.fromRGB(255,255,160)
-                    end
+                    local part = parentModel:IsA("BasePart") and parentModel or parentModel:FindFirstChildWhichIsA("BasePart", true)
+                    local dist = part and (part.Position - myPos).Magnitude or 9999
+                    table.insert(mapHLs, {hl = inst, priority = priority, dist = dist})
                 end
             end
+        end
 
-            for _, obj in ipairs(map:GetDescendants()) do
-                if obj.Name == "DoorTrigger" and obj:FindFirstChild("ActionSign") then
-                    local doorModel = obj.Parent
-                    if doorModel then
-                        local doorVisual = doorModel:FindFirstChild("Door") or doorModel
-                        local h = doorVisual:FindFirstChildOfClass("Highlight")
-                        if h and not MyHub.Config.DoorProgress then h:Destroy()
-                        elseif not h and MyHub.Config.DoorProgress then
-                            local a = Instance.new("Highlight", doorVisual)
-                            a.Name = "DoorESPHL"
+        -- Roblox giới hạn tối đa 31 Highlight toàn game; cắt bớt Door/Locker ở xa để luôn chừa ít nhất 6 slot cho Player ESP
+        if #mapHLs > maxMapHighlights then
+            table.sort(mapHLs, function(a, b)
+                if a.priority ~= b.priority then
+                    return a.priority > b.priority
+                end
+                return a.dist < b.dist
+            end)
+            for i = maxMapHighlights + 1, #mapHLs do
+                if mapHLs[i].hl and mapHLs[i].hl.Parent then
+                    mapHLs[i].hl.Adornee = nil
+                    mapHLs[i].hl:Destroy()
+                end
+            end
+        end
+    end)
+end
+
+local function reloadESP(forceRebuildPlayers)
+    pcall(function()
+        if not MyHub.Config.ESP.player then
+            if clearAllPlayerESP then clearAllPlayerESP() end
+        elseif forceRebuildPlayers and rebuildAllPlayerESP then
+            rebuildAllPlayerESP()
+        elseif updateSinglePlayerESP then
+            trimExcessMapHighlights(24)
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= lp then
+                    updateSinglePlayerESP(p, false)
+                end
+            end
+        end
+    end)
+
+    task.spawn(function()
+        pcall(updateVentESP)
+
+        pcall(function()
+            local map = Replicated:FindFirstChild("CurrentMap") and Replicated.CurrentMap.Value
+            if map then
+                for _, obj in ipairs(map:GetChildren()) do
+                    if obj.Name == "ComputerTable" then
+                        local h = obj:FindFirstChildOfClass("Highlight")
+                        if h and not MyHub.Config.ESP.pc then h.Adornee = nil; h:Destroy()
+                        elseif not h and MyHub.Config.ESP.pc then
+                            local a = Instance.new("Highlight", obj)
                             a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                            a.FillTransparency = 0.6
-                            a.FillColor = Color3.fromRGB(255,127,0)
-                            a.OutlineColor = Color3.fromRGB(255,170,60)
+                            a.FillColor = Color3.fromRGB(13,105,172)
+                            a.OutlineColor = Color3.fromRGB(20,165,255)
+                            task.spawn(function()
+                                while a and a.Parent do
+                                    local scr = obj:FindFirstChild("Screen")
+                                    if scr and scr:IsA("BasePart") then
+                                        a.FillColor = scr.Color
+                                        a.OutlineColor = Color3.fromRGB(
+                                            math.clamp(scr.Color.R*400,0,255),
+                                            math.clamp(scr.Color.G*400,0,255),
+                                            math.clamp(scr.Color.B*400,0,255))
+                                    end
+                                    task.wait(1)
+                                end
+                            end)
+                        end
+                    end
+                    if obj.Name == "FreezePod" then
+                        local h = obj:FindFirstChildOfClass("Highlight")
+                        if h and not MyHub.Config.ESP.pods then h.Adornee = nil; h:Destroy()
+                        elseif not h and MyHub.Config.ESP.pods then
+                            local a = Instance.new("Highlight", obj)
+                            a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                            a.FillColor = Color3.fromRGB(120,200,255)
+                            a.OutlineColor = Color3.fromRGB(160,255,255)
+                        end
+                    end
+                    if obj.Name == "ExitDoor" then
+                        local h = obj:FindFirstChildOfClass("Highlight")
+                        if h and not MyHub.Config.ESP.exits then h.Adornee = nil; h:Destroy()
+                        elseif not h and MyHub.Config.ESP.exits then
+                            local a = Instance.new("Highlight", obj)
+                            a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                            a.FillColor = Color3.fromRGB(252,255,100)
+                            a.OutlineColor = Color3.fromRGB(255,255,160)
+                        end
+                    end
+                end
+
+                for _, obj in ipairs(map:GetDescendants()) do
+                    if obj.Name == "DoorTrigger" and obj:FindFirstChild("ActionSign") then
+                        local doorModel = obj.Parent
+                        if doorModel then
+                            local doorVisual = doorModel:FindFirstChild("Door") or doorModel
+                            local h = doorVisual:FindFirstChildOfClass("Highlight")
+                            if h and not MyHub.Config.DoorProgress then h.Adornee = nil; h:Destroy()
+                            elseif not h and MyHub.Config.DoorProgress then
+                                local a = Instance.new("Highlight", doorVisual)
+                                a.Name = "DoorESPHL"
+                                a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                                a.FillTransparency = 0.6
+                                a.FillColor = Color3.fromRGB(255,127,0)
+                                a.OutlineColor = Color3.fromRGB(255,170,60)
+                            end
                         end
                     end
                 end
             end
-        end
 
-        local CollectionService = game:GetService("CollectionService")
-        for _, locker in ipairs(CollectionService:GetTagged("LOCKER")) do
-            if not locker then continue end
-            local h = locker:FindFirstChildOfClass("Highlight")
+            local CollectionService = game:GetService("CollectionService")
+            for _, locker in ipairs(CollectionService:GetTagged("LOCKER")) do
+                if not locker then continue end
+                local h = locker:FindFirstChildOfClass("Highlight")
 
-            if CollectionService:HasTag(locker, "MUST_CRAWL") then
-                if h then h:Destroy() end
-                continue
+                if CollectionService:HasTag(locker, "MUST_CRAWL") or (map and not locker:IsDescendantOf(map)) then
+                    if h then h.Adornee = nil; h:Destroy() end
+                    continue
+                end
+
+                if h and not MyHub.Config.ESP.lockers then h.Adornee = nil; h:Destroy()
+                elseif not h and MyHub.Config.ESP.lockers then
+                    local a = Instance.new("Highlight", locker)
+                    a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                    a.FillColor = Color3.fromRGB(200, 50, 255)
+                    a.OutlineColor = Color3.fromRGB(255, 100, 255)
+                end
             end
 
-            if h and not MyHub.Config.ESP.lockers then h:Destroy()
-            elseif not h and MyHub.Config.ESP.lockers then
-                local a = Instance.new("Highlight", locker)
-                a.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                a.FillColor = Color3.fromRGB(200, 50, 255)
-                a.OutlineColor = Color3.fromRGB(255, 100, 255)
-            end
-        end
+            trimExcessMapHighlights(24)
 
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= lp and p.Character then
-                local char = p.Character
-                local h = char:FindFirstChild("PlayerESPHL") or char:FindFirstChildOfClass("Highlight")
-                if h and not MyHub.Config.ESP.player then
-                    h:Destroy()
-                elseif MyHub.Config.ESP.player then
-                    if not h then
-                        h = Instance.new("Highlight")
-                        h.Name = "PlayerESPHL"
-                        h.Adornee = char
-                        h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        h.FillColor = Color3.fromRGB(0, 255, 0)
-                        h.OutlineColor = Color3.fromRGB(127, 255, 127)
-                        h.Parent = char
+            if MyHub.Config.ESP.player and updateSinglePlayerESP then
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= lp then
+                        updateSinglePlayerESP(p, false)
                     end
                 end
             end
-        end
+        end)
     end)
 end
 
@@ -2159,66 +2375,155 @@ task.spawn(function()
     preloadSound2:Destroy()
 end)
 
-local function isPlayerDeadOrLobby(p, stats)
-    local char = p.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum and hum.Health <= 0 then return true end
-    if not stats then return true end
-    local hp = stats:FindFirstChild("Health")
-    if hp and hp.Value <= 0 then return true end
-    local esc = stats:FindFirstChild("Escaped")
-    if esc and esc.Value == true then return true end
-    local rag = stats:FindFirstChild("Ragdoll")
-    local cap = stats:FindFirstChild("Captured")
-    if isGameActive() and char then
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        local lobby = workspace:FindFirstChild("FTFLobbySpring") or workspace:FindFirstChild("Lobby")
-        if hrp and lobby and lobby:IsA("Model") then
-            local lobbyPivot = lobby:GetPivot().Position
-            if (hrp.Position - lobbyPivot).Magnitude < 180 then
-                return true
-            end
-        end
-    end
-    return false
+if _G.__ExFTF_CleanupPlayerESP then
+    pcall(_G.__ExFTF_CleanupPlayerESP)
 end
 
-local function updateSinglePlayerESP(p)
-    if p == lp then return end
-    local char = p.Character
-    if not char or not char.Parent then return end
-    local h = char:FindFirstChild("PlayerESPHL") or char:FindFirstChildOfClass("Highlight")
-    if not MyHub.Config.ESP.player then
-        if h then h:Destroy() end
-        return
-    end
-    if not h then
-        h = Instance.new("Highlight")
-        h.Name = "PlayerESPHL"
-        h.Adornee = char
-        h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-        h.Parent = char
-    elseif h.Adornee ~= char then
-        h.Adornee = char
-    end
+local espLoopRunning = true
+local espConns = {}
+local lastCharSeen = {}
+local lastCreateTime = {}
 
-    local stats = p:FindFirstChild("TempPlayerStatsModule")
-    local isB = stats and stats:FindFirstChild("IsBeast")
-    local cap = stats and stats:FindFirstChild("Captured")
+local function isPlayerDeadOrLobby(p, stats)
+    local ok, res = pcall(function()
+        local char = p.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum and hum.Health <= 0 then return true end
+        if not stats then return true end
+        local hp = stats:FindFirstChild("Health")
+        if hp and hp.Value <= 0 then return true end
+        local esc = stats:FindFirstChild("Escaped")
+        if esc and esc.Value == true then return true end
+        if isGameActive() and char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local lobby = workspace:FindFirstChild("FTFLobbySpring") or workspace:FindFirstChild("Lobby")
+            if hrp and lobby and lobby:IsA("Model") then
+                local lobbyPivot = lobby:GetPivot().Position
+                if (hrp.Position - lobbyPivot).Magnitude < 180 then
+                    return true
+                end
+            end
+        end
+        return false
+    end)
+    return ok and res or false
+end
 
-    if (isB and isB.Value == true) or getBeast() == p or char:FindFirstChild("Hammer") or char:FindFirstChild("BeastPowers") then
-        h.FillColor = Color3.fromRGB(255, 0, 0)
-        h.OutlineColor = Color3.fromRGB(255, 127, 127)
-    elseif cap and cap.Value == true then
-        h.FillColor = Color3.fromRGB(0, 120, 255)
-        h.OutlineColor = Color3.fromRGB(100, 180, 255)
-    elseif not isGameActive() or isPlayerDeadOrLobby(p, stats) then
-        h.FillColor = Color3.fromRGB(150, 150, 150)
-        h.OutlineColor = Color3.fromRGB(210, 210, 210)
-    else
-        h.FillColor = Color3.fromRGB(0, 255, 0)
-        h.OutlineColor = Color3.fromRGB(127, 255, 127)
+clearAllPlayerESP = function()
+    pcall(function()
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p.Character then
+                for _, ch in ipairs(p.Character:GetChildren()) do
+                    if ch:IsA("Highlight") then
+                        ch.Adornee = nil
+                        ch:Destroy()
+                    end
+                end
+            end
+        end
+        for _, inst in ipairs(workspace:GetDescendants()) do
+            if inst:IsA("Highlight") and inst.Name == "PlayerESPHL" then
+                inst.Adornee = nil
+                inst:Destroy()
+            end
+        end
+    end)
+end
+
+updateSinglePlayerESP = function(p, forceRecreate)
+    pcall(function()
+        if not p or p == lp or not p.Parent then return end
+        local char = p.Character
+        if not char or not char.Parent then return end
+
+        if not MyHub.Config.ESP.player then
+            for _, ch in ipairs(char:GetChildren()) do
+                if ch:IsA("Highlight") then
+                    ch.Adornee = nil
+                    ch:Destroy()
+                end
+            end
+            return
+        end
+
+        if lastCharSeen[p] ~= char then
+            lastCharSeen[p] = char
+            forceRecreate = true
+        end
+
+        local h = char:FindFirstChild("PlayerESPHL") or char:FindFirstChildOfClass("Highlight")
+
+        if forceRecreate and h then
+            for _, ch in ipairs(char:GetChildren()) do
+                if ch:IsA("Highlight") then
+                    ch.Adornee = nil
+                    ch:Destroy()
+                end
+            end
+            h = nil
+        end
+
+        if not h or not h.Parent then
+            trimExcessMapHighlights(24)
+            h = Instance.new("Highlight")
+            h.Name = "PlayerESPHL"
+            h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            h.FillTransparency = 0.5
+            h.OutlineTransparency = 0
+            h.Adornee = char
+            h.Parent = char
+            lastCreateTime[p] = os.clock()
+        else
+            if h.Adornee ~= char then
+                h.Adornee = nil
+                h.Adornee = char
+            end
+            if not h.Enabled then
+                h.Enabled = true
+            end
+        end
+
+        local stats = p:FindFirstChild("TempPlayerStatsModule")
+        local isB = stats and stats:FindFirstChild("IsBeast")
+        local cap = stats and stats:FindFirstChild("Captured")
+
+        if (isB and isB.Value == true) or getBeast() == p or char:FindFirstChild("Hammer") or char:FindFirstChild("BeastPowers") then
+            h.FillColor = Color3.fromRGB(255, 0, 0)
+            h.OutlineColor = Color3.fromRGB(255, 127, 127)
+        elseif cap and cap.Value == true then
+            h.FillColor = Color3.fromRGB(0, 120, 255)
+            h.OutlineColor = Color3.fromRGB(100, 180, 255)
+        elseif not isGameActive() or isPlayerDeadOrLobby(p, stats) then
+            h.FillColor = Color3.fromRGB(150, 150, 150)
+            h.OutlineColor = Color3.fromRGB(210, 210, 210)
+        else
+            h.FillColor = Color3.fromRGB(0, 255, 0)
+            h.OutlineColor = Color3.fromRGB(127, 255, 127)
+        end
+    end)
+end
+
+rebuildAllPlayerESP = function()
+    pcall(function()
+        clearAllPlayerESP()
+        if not MyHub.Config.ESP.player then return end
+        trimExcessMapHighlights(24)
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= lp and p.Character then
+                updateSinglePlayerESP(p, true)
+            end
+        end
+    end)
+end
+
+_G.__ExFTF_CleanupPlayerESP = function()
+    espLoopRunning = false
+    for _, c in ipairs(espConns) do
+        if typeof(c) == "RBXScriptConnection" then
+            pcall(function() c:Disconnect() end)
+        end
     end
+    espConns = {}
 end
 
 local function hookPlayerESP(p)
@@ -2226,72 +2531,117 @@ local function hookPlayerESP(p)
     local function onChar(char)
         if not char then return end
         task.spawn(function()
-            char:WaitForChild("HumanoidRootPart", 5)
-            task.wait(0.2)
-            if MyHub.Config.ESP.player then
-                updateSinglePlayerESP(p)
+            char:WaitForChild("HumanoidRootPart", 8)
+            for _, delayTime in ipairs({0.1, 0.4, 1.0, 2.5}) do
+                task.wait(delayTime)
+                if espLoopRunning and MyHub.Config.ESP.player then
+                    updateSinglePlayerESP(p, delayTime <= 0.4)
+                end
             end
         end)
-        local hum = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 5)
-        if hum then
-            hum.Died:Connect(function()
-                task.wait(0.1)
-                updateSinglePlayerESP(p)
-            end)
-            hum:GetPropertyChangedSignal("Health"):Connect(function()
-                updateSinglePlayerESP(p)
-            end)
-        end
+        task.spawn(function()
+            local hum = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 8)
+            if hum and espLoopRunning then
+                table.insert(espConns, hum.Died:Connect(function()
+                    task.wait(0.1)
+                    updateSinglePlayerESP(p, false)
+                end))
+                table.insert(espConns, hum:GetPropertyChangedSignal("Health"):Connect(function()
+                    updateSinglePlayerESP(p, false)
+                end))
+            end
+        end)
     end
-    p.CharacterAdded:Connect(onChar)
+    table.insert(espConns, p.CharacterAdded:Connect(onChar))
     if p.Character then task.spawn(onChar, p.Character) end
 
     local function bindStats(stats)
         if not stats or stats.Name ~= "TempPlayerStatsModule" then return end
         for _, childName in ipairs({"IsBeast", "Captured", "Health", "Escaped", "Ragdoll"}) do
-            local valObj = stats:FindFirstChild(childName) or stats:WaitForChild(childName, 5)
-            if valObj and valObj:IsA("ValueBase") then
-                valObj:GetPropertyChangedSignal("Value"):Connect(function()
-                    updateSinglePlayerESP(p)
-                end)
-            end
+            task.spawn(function()
+                local valObj = stats:FindFirstChild(childName) or stats:WaitForChild(childName, 5)
+                if valObj and valObj:IsA("ValueBase") and espLoopRunning then
+                    table.insert(espConns, valObj:GetPropertyChangedSignal("Value"):Connect(function()
+                        updateSinglePlayerESP(p, false)
+                    end))
+                end
+            end)
         end
-        stats.ChildAdded:Connect(function(ch)
+        table.insert(espConns, stats.ChildAdded:Connect(function(ch)
             if ch:IsA("ValueBase") then
-                ch:GetPropertyChangedSignal("Value"):Connect(function()
-                    updateSinglePlayerESP(p)
-                end)
-                updateSinglePlayerESP(p)
+                table.insert(espConns, ch:GetPropertyChangedSignal("Value"):Connect(function()
+                    updateSinglePlayerESP(p, false)
+                end))
+                updateSinglePlayerESP(p, false)
             end
-        end)
+        end))
     end
     local existingStats = p:FindFirstChild("TempPlayerStatsModule")
     if existingStats then task.spawn(bindStats, existingStats) end
-    p.ChildAdded:Connect(function(ch)
+    table.insert(espConns, p.ChildAdded:Connect(function(ch)
         if ch.Name == "TempPlayerStatsModule" then
             bindStats(ch)
-            updateSinglePlayerESP(p)
+            updateSinglePlayerESP(p, false)
         end
-    end)
-    p.ChildRemoved:Connect(function(ch)
+    end))
+    table.insert(espConns, p.ChildRemoved:Connect(function(ch)
         if ch.Name == "TempPlayerStatsModule" then
-            updateSinglePlayerESP(p)
+            updateSinglePlayerESP(p, false)
         end
-    end)
+    end))
 end
 
 for _, p in ipairs(Players:GetPlayers()) do
     hookPlayerESP(p)
 end
-Players.PlayerAdded:Connect(hookPlayerESP)
+table.insert(espConns, Players.PlayerAdded:Connect(hookPlayerESP))
 
+-- Tự động phát hiện khi người chơi thoát ra ngoài màn hình / chuyển app 2s rồi quay lại (WindowFocused hoặc trễ frame > 0.65s) để tự làm mới Highlight
+local lastAppResumeRebuild = 0
+local function triggerAppResumeESPRebuild()
+    local now = os.clock()
+    if now - lastAppResumeRebuild < 0.4 then return end
+    lastAppResumeRebuild = now
+    task.spawn(function()
+        for _, w in ipairs({0.1, 0.5, 1.5}) do
+            task.wait(w)
+            if not espLoopRunning then return end
+            if MyHub.Config.ESP.player then
+                rebuildAllPlayerESP()
+            end
+            reloadESP(false)
+        end
+    end)
+end
+
+table.insert(espConns, UserInputService.WindowFocused:Connect(triggerAppResumeESPRebuild))
+
+local lastFrameClock = os.clock()
+table.insert(espConns, RunService.Heartbeat:Connect(function()
+    local now = os.clock()
+    local gap = now - lastFrameClock
+    lastFrameClock = now
+    if gap > 0.65 then
+        triggerAppResumeESPRebuild()
+    end
+end))
+
+-- Vòng lặp tự phục hồi (Self-Healing) có pcall bảo vệ tuyệt đối, không bao giờ bị crash khi đổi ván
 task.spawn(function()
-    while true do
+    local tickCount = 0
+    while espLoopRunning do
         task.wait(0.25)
+        tickCount += 1
         if MyHub.Config.ESP.player then
+            if tickCount % 16 == 0 then
+                trimExcessMapHighlights(24)
+            end
+            local now = os.clock()
             for _, p in ipairs(Players:GetPlayers()) do
                 if p ~= lp and p.Character then
-                    updateSinglePlayerESP(p)
+                    -- Định kỳ mỗi 6 giây tái tạo lại Highlight mới tinh để chống lỗi mất shader trên Mobile/PC
+                    local needFresh = (now - (lastCreateTime[p] or 0)) > 6
+                    updateSinglePlayerESP(p, needFresh)
                 end
             end
         end
@@ -2299,13 +2649,26 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    Replicated:WaitForChild("CurrentMap").Changed:Connect(function() task.wait(5); reloadESP() end)
+    local cm = Replicated:WaitForChild("CurrentMap")
+    table.insert(espConns, cm.Changed:Connect(function()
+        for _, w in ipairs({0.5, 2.0, 5.0, 8.0}) do
+            task.wait(w)
+            if espLoopRunning then
+                reloadESP(true)
+            end
+        end
+    end))
 end)
 task.spawn(function()
-    Replicated:WaitForChild("IsGameActive").Changed:Connect(function()
-        task.wait(0.5)
-        reloadESP()
-    end)
+    local ga = Replicated:WaitForChild("IsGameActive")
+    table.insert(espConns, ga.Changed:Connect(function()
+        for _, w in ipairs({0.2, 1.0, 2.5, 5.0}) do
+            task.wait(w)
+            if espLoopRunning then
+                reloadESP(true)
+            end
+        end
+    end))
 end)
 
 local AutoFarm = (function()
@@ -4716,7 +5079,14 @@ end, "noJumpHack")
 
 addSection(Panes[4], "Normal ESP", 0)
 addToggle(Panes[4], "◉", "Player ESP", "survivors green / beast red", false, 1, function(s)
-    MyHub.Config.ESP.player = s; reloadESP(); saveSettings()
+    MyHub.Config.ESP.player = s
+    if s then
+        if rebuildAllPlayerESP then rebuildAllPlayerESP() end
+    else
+        if clearAllPlayerESP then clearAllPlayerESP() end
+    end
+    reloadESP(true)
+    saveSettings()
 end, "espPlayer")
 addToggle(Panes[4], "⊙", "Pods ESP", "highlight freeze pods", false, 2, function(s)
     MyHub.Config.ESP.pods = s; reloadESP(); saveSettings()
